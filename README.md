@@ -19,16 +19,22 @@ fixed representations.
 
 ## Current findings
 
-> _Placeholder summary from the analysis — Zibo to finalize wording._
+Layer-wise linear probing of frozen Chronos-2 across UEA multivariate
+classification datasets, testing the "tunnel effect" hypothesis.
 
-- **Part 1: supported.** Linear-probe accuracy peaks in the middle band (L3–L7) and is
-  significantly lower at the last layer (L11) in **5 of 6** non-saturated datasets
-  (95% paired-bootstrap CIs exclude 0), robust to pooling choice and stable across re-splits.
-- **Part 2: not established (clean null).** The mid-vs-last gap does **not** reliably widen
-  under shift — significant in only ~1 of 6 shift×dataset conditions, with as many
-  wrong-direction hits as right-direction ones. Uniform shifts (time-warp) degrade all
-  layers about equally; Gaussian noise hits the *early* layers hardest, a separate effect.
-- Saturated datasets (Epilepsy, Cricket) are reference-only (flat ID curves at ceiling).
+- **Part 1 (in-domain decodability):** task-relevant information is more
+  linearly decodable at intermediate layers than at the final layers.
+  Holds robustly in 5/6 datasets (bootstrap CIs exclude zero). Note this
+  is *in-domain, same-task, linearly-decodable* — not a claim about
+  transfer or feature generality (cf. "Deeper is Not Always Better",
+  arXiv:2606.21906).
+- **Part 2 (OOD amplification):** whether OOD inputs *amplify* the
+  mid-vs-final gap is a strong null — effects are small and
+  inconsistently signed across 18 dataset×shift cells, consistent with noise.
+
+Scope: probes are trained and evaluated within each dataset (train/test
+split), univariate use of Chronos-2 (group-attention/multivariate
+functionality not used). See `paper/` for full writeup.
 
 Full numbers: [`results/perdataset_summary.json`](results/perdataset_summary.json);
 narrative: [`paper/perdataset_writeup.md`](paper/perdataset_writeup.md).
