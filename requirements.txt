@@ -1,0 +1,29 @@
+# Pinned to the versions used to produce the committed results.
+# Python 3.11 (a fresh 3.11 venv is recommended; 3.12 also works).
+#
+#   python -m venv .venv && source .venv/bin/activate
+#   pip install -r requirements.txt
+#
+# NOTE on numpy/numba: numpy is pinned < 2 because numba 0.60 (an aeon dependency)
+# is not compatible with numpy 2.x. Keep these three pins together.
+
+# --- core scientific stack ---
+numpy==1.26.4
+scipy==1.17.1
+pandas==2.3.3
+scikit-learn==1.7.2
+matplotlib==3.10.9
+
+# --- time-series datasets + numba stack (order-sensitive pins) ---
+aeon==1.4.0
+numba==0.60.0
+llvmlite==0.43.0
+pyarrow==24.0.0
+
+# --- Chronos-2 foundation model + backend ---
+torch==2.2.2
+chronos-forecasting==2.2.2
+
+# --- notebook tooling (only needed to (re)build/run the notebook in notebooks/) ---
+nbformat==5.10.4
+nbclient==0.10.4
