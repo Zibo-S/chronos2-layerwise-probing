@@ -33,7 +33,7 @@ datasets:
 | LSST | light-curves | .071 | +0.015 [.000, .029] | ✓ (borderline) | L7 |
 | SelfRegulationSCP2 | EEG | .500 | −0.018 [−.091, .058] | ✗ | — |
 
-![ID layer-wise probe accuracy per dataset; gold star = argmax layer](fig_grid_id_tunnel.png)
+![ID layer-wise probe accuracy per dataset; gold star = argmax layer](../results/fig_grid_id_tunnel.png)
 
 - **SCP2** is the lone null — its probe sits near chance at every layer, so it's *underpowered*,
   not a counterexample.
@@ -63,13 +63,13 @@ what Part 2 predicted):
   where OOD peels away more at the late layers (+0.040, the one pro-tunnel drift cell), and
   Ethanol, which degrades erratically (−0.086, sig negative).
 
-![ID vs timewarp-OOD per dataset — the OOD curve sits roughly parallel below ID (uniform degradation, no amplification).](fig_grid_idood_timewarp.png)
+![ID vs timewarp-OOD per dataset — the OOD curve sits roughly parallel below ID (uniform degradation, no amplification).](../results/fig_grid_idood_timewarp.png)
 
-![ID vs Gaussian-noise OOD per dataset — where resolvable, damage concentrates at the *early* layers (L0–L1), not the last.](fig_grid_idood_gauss.png)
+![ID vs Gaussian-noise OOD per dataset — where resolvable, damage concentrates at the *early* layers (L0–L1), not the last.](../results/fig_grid_idood_gauss.png)
 
-![ID vs drift-OOD per dataset — mostly mild / overlapping with ID, except Handwriting (late-layer peel-away) and Ethanol (erratic).](fig_grid_idood_drift.png)
+![ID vs drift-OOD per dataset — mostly mild / overlapping with ID, except Handwriting (late-layer peel-away) and Ethanol (erratic).](../results/fig_grid_idood_drift.png)
 
-![Overview: ID + all three shifts overlaid per dataset (no CI bands, for readability).](fig_grid_idood_all.png)
+![Overview: ID + all three shifts overlaid per dataset (no CI bands, for readability).](../results/fig_grid_idood_all.png)
 
 Tallying the 18 non-saturated amplification cells (mid-vs-last gap, OOD − ID): **3
 positive-significant** (SCP1/gauss, UWave/timewarp, Handwriting/drift), **2 negative-significant**

@@ -28,15 +28,16 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch
 
-from probe_pipeline import NUM_LAYERS, SEED, extract_features, fit_layerwise_probes
-from probe_improve import score_layerwise_correctness, bootstrap_ci, paired_diff_ci
+from probing.config import NUM_LAYERS, SEED, OUT_DIR
+from probing.extraction import extract_features, fit_layerwise_probes
+from probing.probes import score_layerwise_correctness
+from probing.stats import bootstrap_ci, paired_diff_ci
 
 
 # ----------------------------------------------------------------- #
 # Shared
 # ----------------------------------------------------------------- #
 
-OUT_DIR = Path(".")
 BOOT_B = 2000
 MIDDLE_BAND = list(range(3, 9))  # a priori, NOT data-selected: layers 3..8 inclusive
 LAST_LAYER = NUM_LAYERS - 1      # = 11

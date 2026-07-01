@@ -1,6 +1,9 @@
 import json, numpy as np
+from pathlib import Path
 
-J = json.load(open("perdataset_summary.json"))
+# Anchor to repo root so it works from anywhere: results/perdataset_summary.json
+_SUMMARY = Path(__file__).resolve().parent.parent / "results" / "perdataset_summary.json"
+J = json.load(open(_SUMMARY))
 D = J["datasets"]
 BAND = list(range(3,9)); LAST = 11
 def band(a): return float(np.mean([a[i] for i in BAND]))

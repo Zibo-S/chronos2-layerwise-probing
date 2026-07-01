@@ -23,16 +23,11 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch
 
-# Reuse extraction + probe-fit logic from probe_pipeline (no rewrite).
-from probe_pipeline import (
-    NUM_LAYERS,
-    SEED,
-    extract_features,
-    fit_layerwise_probes,
-)
+# Reuse extraction + probe-fit logic from the probing package (no rewrite).
+from probing.config import NUM_LAYERS, SEED, OUT_DIR
+from probing.extraction import extract_features, fit_layerwise_probes
 
 
-OUT_DIR = Path(".")
 BOOT_B = 2000
 
 

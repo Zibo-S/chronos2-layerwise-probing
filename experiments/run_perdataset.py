@@ -23,12 +23,8 @@ from matplotlib.lines import Line2D
 import numpy as np
 
 # Reuse the validated machinery (do NOT reimplement extraction / probe fit).
-from probe_pipeline import (
-    NUM_LAYERS,
-    SEED,
-    extract_features,
-    fit_layerwise_probes,
-)
+from probing.config import NUM_LAYERS, SEED, OUT_DIR
+from probing.extraction import extract_features, fit_layerwise_probes
 
 warnings.filterwarnings("ignore")
 
@@ -51,8 +47,6 @@ SHIFT_NAMES = [s[0] for s in SHIFTS]
 MIDDLE_BAND = list(range(3, 9))   # layers 3..8 inclusive
 LAST_LAYER = NUM_LAYERS - 1       # 11
 BOOT_B = 2000
-
-OUT_DIR = Path(".")
 
 # panel colors
 C_ID = "C0"
