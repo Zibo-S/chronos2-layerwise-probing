@@ -1,0 +1,20 @@
+# ---- environments ----
+.venv/
+venv/
+env/
+__pycache__/
+*.pyc
+*.pyo
+
+# ---- large / generated artifacts ----
+# Extracted Chronos-2 hidden-state features (~13 GB). Regenerate with `make regen-cache`
+# or on-demand by running the experiments (they extract any missing (dataset, split,
+# corruption, pooling) entry). See README > "Feature cache".
+features_cache/
+
+# ---- OS / editor cruft ----
+.DS_Store
+.ipynb_checkpoints/
+
+# ---- secrets (none currently committed; keep them out) ----
+.env

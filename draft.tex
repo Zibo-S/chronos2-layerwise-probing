@@ -1,0 +1,136 @@
+% =====================================================================
+% SECTION TO PASTE INTO THE SHARED OVERLEAF DRAFT
+% Author: Zibo.  Topic: frozen Chronos-2 layer-wise probing.
+% Requires \usepackage{booktabs} in the preamble. Adjust \section level as needed.
+% TODO before submit: verify author lists/venues against the arXiv PDFs you downloaded,
+% and fill the manifold-paper authors (your lab's paper) in the .bib below.
+% =====================================================================
+
+\section{Intermediate-layer transferability in a native time-series foundation model}
+\label{sec:chronos-probing}
+
+\subsection{Setup}
+We probe \emph{Chronos-2}, an encoder-only ($\sim$120M-parameter, 12-layer, T5-style)
+time-series \emph{forecasting} foundation model, as a frozen feature extractor. For each
+encoder layer $\ell \in \{0,\dots,11\}$ we read out the hidden state, mean-pool over the
+content patches (each channel passed through the encoder and concatenated), and fit a single
+linear probe---$\ell_2$-regularized logistic regression with features standardized on the
+clean training split only, and no hyperparameter tuning. The probe's held-out accuracy
+measures how \emph{linearly decodable} the class label is from layer $\ell$; a deliberately
+linear probe isolates the representation rather than probe capacity, following Head2Toe
+\cite{evci2022head2toe}. This mirrors the frozen-state linear-probing methodology used to
+study cross-modal transfer in \cite{roger2026manifold} and intermediate-layer reuse in
+\cite{roschmann2025tivit}. We evaluate on eight UEA multivariate classification tasks
+spanning EEG, handwriting, gesture, chemical spectra, and astronomical light-curves; two
+(Epilepsy, Cricket) saturate ($\geq 0.95$ at most layers) and are retained only as a ceiling
+reference.
+
+We test a two-part hypothesis adapted from the tunnel effect \cite{masarczyk2023tunnel}:
+(i)~middle layers carry more transfer-relevant information than the final layer, and
+(ii)~this middle-over-last advantage grows under distribution shift. Because Chronos-2's
+final layer is specialized for the forecasting objective, it is a natural place to shed the
+class-discriminative structure that intermediate layers retain.
+
+\subsection{Result 1: intermediate layers dominate the last layer}
+Across all six non-saturated tasks, probe accuracy rises through the early layers, plateaus,
+and falls at the final layer; the per-layer argmax lies in the middle band (layers 3--7) in
+every case. We quantify the deficit with a pre-declared statistic
+$\Delta = \overline{\mathrm{acc}}(\ell\!\in\!3\text{--}8) - \mathrm{acc}(\ell\!=\!11)$
+(paired bootstrap, $B{=}2000$). $\Delta$ is positive with its $95\%$ CI excluding zero in
+$5/6$ tasks (Table~\ref{tab:latedrop}). The lone exception, SelfRegulationSCP2, sits at
+chance at every layer ($\max_\ell|\mathrm{acc}-0.5|=0.05$) and is therefore underpowered
+rather than a counterexample; LSST's effect is small but resolvable owing to its large
+($2466$-sample) test set.
+
+\begin{table}[t]
+\centering
+\caption{Last-layer deficit $\Delta=\overline{\mathrm{acc}}(\ell\!\in\!3\text{--}8)-\mathrm{acc}(\ell\!=\!11)$ on a frozen Chronos-2 encoder (95\% paired-bootstrap CI). Positive $\Delta$ means middle layers beat the last layer.}
+\label{tab:latedrop}
+\begin{tabular}{llcc}
+\toprule
+Dataset & Domain & $\Delta$ (95\% CI) & argmax layer \\
+\midrule
+UWaveGestureLibrary  & gesture        & $+0.085\ [0.051,\,0.122]$ & 4 \\
+EthanolConcentration & chem.\ spectra & $+0.070\ [0.013,\,0.122]$ & 3 \\
+SelfRegulationSCP1   & EEG            & $+0.063\ [0.028,\,0.098]$ & 4 \\
+Handwriting          & handwriting    & $+0.050\ [0.026,\,0.075]$ & 6 \\
+LSST                 & light-curves   & $+0.015\ [0.000,\,0.029]$ & 7 \\
+SelfRegulationSCP2   & EEG            & $-0.018\ [-0.091,\,0.058]$ & --- \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+This is a native-TSFM confirmation of a finding that recurs across modalities---that the most
+transferable representations live in intermediate, not final, layers
+\cite{evci2022head2toe, masarczyk2023tunnel, roschmann2025tivit, feofanov2026mantis}---and it
+directly motivates intermediate-layer (Head2Toe-style) selection over the default last-layer
+readout when reusing forecasting TSFMs for downstream discrimination.
+
+\subsection{Result 2: OOD degradation is shift-dependent, not last-layer-concentrated}
+The amplification prediction~(ii) does not hold. We apply three synthetic, label-preserving
+input shifts---Gaussian noise, time-warp, and baseline drift---to the test inputs only,
+score with the probe and scaler frozen on the clean training split, and measure amplification
+$A = \Delta_{\mathrm{OOD}} - \Delta_{\mathrm{ID}}$. Of the $18$ non-saturated
+(task $\times$ shift) cells, only $3$ are positive with CI excluding zero, against $2$ that
+are significantly \emph{negative} and $13$ indistinguishable from zero---scattered across
+different tasks and shifts, consistent with multiple-comparison noise ($\approx0.9$ expected
+at $\alpha{=}0.05$).
+
+The per-layer curves explain why, and reveal a more specific structure. Time-warp degrades
+all layers roughly uniformly: the ID and OOD curves stay parallel (per-layer gap
+std~$<0.03$), leaving no last-layer-specific penalty. Gaussian noise---the most input-like
+shift---instead damages the \emph{early} layers most: on UWave and SCP1 the probe craters at
+layers~0--1 and recovers by the middle (e.g.\ UWave layers~0/1 score $0.37/0.28$ against a
+middle-band $0.73$), the opposite of a tunnel-style late-layer effect. This echoes
+\emph{surgical fine-tuning} \cite{lee2022surgical}, where the layers that matter under shift
+depend on the shift type and input-level corruptions are best addressed by adapting the
+earliest layers. Our layer-wise probes give the probing-side counterpart of that observation
+in a TSFM: where OOD damage localizes is shift-specific, and for input-space noise it
+localizes early, not at the last layer.
+
+\subsection{Discussion}
+The robust intermediate-over-final advantage (Result~1) strengthens the case for selective,
+intermediate-layer use of frozen TSFM representations. Result~2 is a deliberate negative: the
+tunnel \emph{shape} is robust, but the naive corollary that synthetic input shift amplifies
+it is false, and the early-layer fragility under Gaussian noise is a distinct input-coupling
+phenomenon rather than a tunnel effect. Cleanly separating the late-layer deficit (tunnel
+effect) from generic domain-mismatch requires a matched comparison of an \emph{in-distribution}
+versus \emph{out-of-distribution} task, where the deficit should grow with distance from the
+pretraining distribution if it is genuinely the tunnel effect---a natural next experiment, and
+a bridge to the selective-finetuning direction.
+
+
+% =====================================================================
+% BIBTEX --- move these into your .bib file. VERIFY author lists/venues
+% against the arXiv PDFs. Fill roger2026manifold (your lab's paper).
+% =====================================================================
+% @inproceedings{evci2022head2toe,
+%   title={Head2Toe: Utilizing Intermediate Representations for Better Transfer Learning},
+%   author={Evci, Utku and Dumoulin, Vincent and Larochelle, Hugo and Mozer, Michael C.},
+%   booktitle={International Conference on Machine Learning (ICML)}, year={2022}}
+%
+% @inproceedings{masarczyk2023tunnel,
+%   title={The Tunnel Effect: Building Data Representations in Deep Neural Networks},
+%   author={Masarczyk, Wojciech and Ostaszewski, Mateusz and Imani, Ehsan and Pascanu, Razvan
+%           and Mi{\l}o{\'s}, Piotr and Trzci{\'n}ski, Tomasz},
+%   booktitle={Advances in Neural Information Processing Systems (NeurIPS)}, year={2023}}
+%
+% @article{lee2022surgical,
+%   title={Surgical Fine-Tuning Improves Adaptation to Distribution Shifts},
+%   author={Lee, Yoonho and Chen, Annie S. and Tajwar, Fahim and Kumar, Ananya and Yao, Huaxiu
+%           and Liang, Percy and Finn, Chelsea},
+%   journal={arXiv preprint arXiv:2210.11466}, year={2022}}
+%
+% @article{roschmann2025tivit,
+%   title={Time Series Representations for Classification Lie Hidden in Pretrained Vision Transformers},
+%   author={Roschmann, Simon and Bouniot, Quentin and Feofanov, Vasilii and Redko, Ievgen and Akata, Zeynep},
+%   journal={arXiv preprint arXiv:2506.08641}, year={2025}}
+%
+% @inproceedings{feofanov2026mantis,
+%   title={Mantis: Lightweight Foundation Model for Time Series Classification},
+%   author={Feofanov, Vasilii and others},
+%   booktitle={International Conference on Machine Learning (ICML)}, year={2026}}
+%
+% @article{roger2026manifold,
+%   title={LLM Pretraining Shapes a Generalizable Manifold: Insights into Cross-Modal Transfer for Time Series},
+%   author={FILL IN --- your lab's paper}, journal={arXiv preprint arXiv:2605.20449}, year={2026}}
