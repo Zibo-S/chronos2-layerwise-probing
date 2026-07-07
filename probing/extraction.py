@@ -24,6 +24,13 @@ from sklearn.preprocessing import StandardScaler
 
 from probing.config import SEED, NUM_LAYERS, CACHE_DIR
 
+# Module-level singletons for the lazily-loaded Chronos-2 pipeline (populated by
+# get_pipeline on first call). Declared here so get_pipeline's `global` refers to a
+# defined name; every post-refactor run so far was a cache hit, which is why this was
+# never exercised until now.
+_PIPELINE = None
+_CFG = None
+
 
 def get_pipeline():
     global _PIPELINE, _CFG
