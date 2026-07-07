@@ -20,7 +20,9 @@
       "LSST",
       "SelfRegulationSCP2"
     ],
-    "binned_chance": 0.2
+    "binned_chance": 0.2,
+    "solar_note": "solar_1h ridge R^2 is pathological (context-normalized future-mean label fails on strongly diurnal series); demoted in the overlay. See paper/phase0_fixes.md.",
+    "m4_note": "m4_hourly uses a cross-series split (series too short for a within-series train/test span at C=512/H=64); comparable in shape, not absolute level."
   },
   "id_datasets": {
     "m4_hourly": {
@@ -355,5 +357,119 @@
       0.4777777777777778,
       0.49444444444444446
     ]
+  },
+  "late_layer_retention": {
+    "id": {
+      "m4_hourly": {
+        "content": {
+          "binned_accuracy": {
+            "peak_layer": 7,
+            "peak_value": 0.7616279069767442,
+            "retention_L11": 0.9255725190839695
+          },
+          "ridge_r2": {
+            "peak_layer": 5,
+            "peak_value": 0.8249101476553912,
+            "retention_L11": 0.980888309614291
+          }
+        },
+        "reg": {
+          "binned_accuracy": {
+            "peak_layer": 7,
+            "peak_value": 0.7819767441860465,
+            "retention_L11": 0.9479553903345725
+          },
+          "ridge_r2": {
+            "peak_layer": 9,
+            "peak_value": 0.8303150946858764,
+            "retention_L11": 0.9718539284107062
+          }
+        }
+      },
+      "monash_electricity_hourly": {
+        "content": {
+          "binned_accuracy": {
+            "peak_layer": 6,
+            "peak_value": 0.41333333333333333,
+            "retention_L11": 0.9387096774193548
+          },
+          "ridge_r2": {
+            "peak_layer": 4,
+            "peak_value": 0.4113380035788605,
+            "retention_L11": 0.9507063702977819
+          }
+        },
+        "reg": {
+          "binned_accuracy": {
+            "peak_layer": 10,
+            "peak_value": 0.42866666666666664,
+            "retention_L11": 0.9953343701399691
+          },
+          "ridge_r2": {
+            "peak_layer": 11,
+            "peak_value": 0.46196399850507475,
+            "retention_L11": 1.0
+          }
+        }
+      },
+      "solar_1h": {
+        "content": {
+          "binned_accuracy": {
+            "peak_layer": 4,
+            "peak_value": 0.28933333333333333,
+            "retention_L11": 0.8387096774193549
+          },
+          "ridge_r2": {
+            "peak_layer": 9,
+            "peak_value": -0.1459355017968702,
+            "retention_L11": 5.867738423993356
+          }
+        },
+        "reg": {
+          "binned_accuracy": {
+            "peak_layer": 1,
+            "peak_value": 0.284,
+            "retention_L11": 0.7535211267605635
+          },
+          "ridge_r2": {
+            "peak_layer": 9,
+            "peak_value": -0.49225125092793554,
+            "retention_L11": 2.7643910144944512
+          }
+        }
+      }
+    },
+    "uea_classification": {
+      "UWaveGestureLibrary": {
+        "peak_layer": 4,
+        "peak_value": 0.925,
+        "retention_L11": 0.8918918918918918
+      },
+      "EthanolConcentration": {
+        "peak_layer": 3,
+        "peak_value": 0.5475285171102662,
+        "retention_L11": 0.8124999999999999
+      },
+      "SelfRegulationSCP1": {
+        "peak_layer": 4,
+        "peak_value": 0.863481228668942,
+        "retention_L11": 0.8853754940711464
+      },
+      "Handwriting": {
+        "peak_layer": 6,
+        "peak_value": 0.38,
+        "retention_L11": 0.8359133126934984
+      },
+      "LSST": {
+        "peak_layer": 7,
+        "peak_value": 0.6253041362530414,
+        "retention_L11": 0.9559014267185474
+      },
+      "SelfRegulationSCP2": {
+        "peak_layer": 2,
+        "peak_value": 0.49444444444444446,
+        "retention_L11": 1.0
+      }
+    }
   }
 }
