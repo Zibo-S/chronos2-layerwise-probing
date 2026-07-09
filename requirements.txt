@@ -1,32 +1,24 @@
-# Pinned to the versions used to produce the committed results.
-# Python 3.11 (a fresh 3.11 venv is recommended; 3.12 also works).
+# Dependencies for the Chronos-2 layer-wise forecasting probes.  Python 3.11.
+# Versions are those used to produce the committed forecasting results (the Narval
+# Compute Canada builds, with the +computecanada local suffix dropped so they also
+# resolve from PyPI for off-cluster / CPU reproduction).
 #
-#   python -m venv .venv && source .venv/bin/activate
-#   pip install -r requirements.txt
+# Off-cluster:  python -m venv .venv && source .venv/bin/activate
+#               pip install -r requirements.txt          # pyarrow comes in transitively via `datasets`
 #
-# NOTE on numpy/numba: numpy is pinned < 2 because numba 0.60 (an aeon dependency)
-# is not compatible with numpy 2.x. Keep these three pins together.
+# On Narval:    the .venv is already built from Compute Canada wheels — do NOT reinstall from
+#               this file.  Just:  module load gcc python/3.11 arrow/24.0.0   (arrow supplies
+#               pyarrow, which is not a pip package on the cluster)  &&  source .venv/bin/activate.
+#               See README > Environment for the full recipe.
 
-# --- core scientific stack ---
-numpy==1.26.4
-scipy==1.17.1
-pandas==2.3.3
-scikit-learn==1.7.2
-matplotlib==3.10.9
+# --- Chronos-2 foundation model ---
+torch==2.12.1                 # frozen encoder (CUDA on Narval A100 / MPS / CPU)
+chronos-forecasting==2.3.1    # amazon/chronos-2 pipeline (pulls transformers, accelerate, tokenizers)
 
-# --- time-series datasets + numba stack (order-sensitive pins) ---
-aeon==1.4.0
-numba==0.60.0
-llvmlite==0.43.0
-pyarrow==24.0.0
+# --- forecasting datasets (autogluon/chronos_datasets: m4_hourly, monash_electricity_hourly, solar_1h) ---
+datasets==5.0.0               # pulls pyarrow off-cluster; on Narval pyarrow is the `arrow` module
 
-# --- Chronos-2 foundation model + backend ---
-torch==2.2.2
-chronos-forecasting==2.2.2
-
-# --- Phase 0: in-distribution forecasting probes (Chronos-2-seen datasets) ---
-datasets==3.6.0
-
-# --- notebook tooling (only needed to (re)build/run the notebook in notebooks/) ---
-nbformat==5.10.4
-nbclient==0.10.4
+# --- probes + numerics + figures ---
+numpy==1.26.4                 # <2 for Compute Canada wheel-stack compatibility
+scikit-learn==1.7.1           # linear probes: Ridge / LogisticRegression / StandardScaler
+matplotlib==3.10.8            # result figures

@@ -12,7 +12,7 @@ PROBE CONTRACT
     probe(train_feats, train_labels, test_feats, test_labels) -> dict[int, float]
 
     train_feats / test_feats : {layer_idx: np.ndarray of shape (n_samples, d)}
-                               d = n_channels * 768, produced by extract_features(...)
+                               d = n_channels * 768, produced by extract_window_features(...)
     train_labels / test_labels : 1-D array of labels aligned with the feature rows
     returns : {layer_idx: float}  — one scalar score per layer
               (higher = "more information", by convention)
@@ -35,35 +35,6 @@ from sklearn.metrics import r2_score
 from sklearn.preprocessing import StandardScaler
 
 from probing.config import NUM_LAYERS, SEED
-from probing.extraction import fit_layerwise_probes
-
-
-def score_layerwise_correctness(probes, features, y_true):
-    """Returns dict {layer_idx: float32 correctness array of shape (n_test,)}."""
-    y_true = np.asarray(y_true)
-    out = {}
-    for i in range(NUM_LAYERS):
-        Xs = probes[i]["scaler"].transform(features[i])
-        y_pred = probes[i]["clf"].predict(Xs)
-        out[i] = (y_pred == y_true).astype(np.float32)
-    return out
-
-
-# ============================ reference probe (linear) ============================ #
-
-def linear_probe(train_feats, train_labels, test_feats, test_labels):
-    """Reference probe: per-layer StandardScaler + LogisticRegression, test accuracy.
-
-    Numerically identical to the original pipeline: it simply composes the unchanged
-    ``fit_layerwise_probes`` (fit on train only) and ``score_layerwise_correctness``,
-    then reduces each layer's per-sample correctness to a mean accuracy.
-
-    Returns {layer_idx: test_accuracy}.
-    """
-    probes = fit_layerwise_probes(train_feats, train_labels)
-    correct = score_layerwise_correctness(probes, test_feats, test_labels)
-    # reduce in float64 (matches how the pipeline's bootstrap_ci computes point accuracy)
-    return {i: float(np.mean(correct[i], dtype=np.float64)) for i in range(NUM_LAYERS)}
 
 
 # ===================== ID forecasting probes (Phase 0, linear) ==================== #
@@ -152,7 +123,6 @@ def epiplexity(train_feats, train_labels, test_feats, test_labels):
 # ================================ probe registry ================================= #
 # name -> callable(train_feats, train_labels, test_feats, test_labels) -> {layer: score}
 PROBES = {
-    "linear": linear_probe,                       # UEA classification (reference)
     "ridge_regression": ridge_regression_probe,   # ID forecasting, R^2
     "binned_future": binned_future_probe,         # ID forecasting, accuracy (primary readout)
     # "effective_rank": effective_rank,           # uncomment once implemented
