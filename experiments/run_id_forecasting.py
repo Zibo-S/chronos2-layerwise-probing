@@ -26,7 +26,8 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 
-from probing.config import NUM_LAYERS, LAST_LAYER, OUT_DIR, QUANT_DIR, CACHE_DIR, OUTPUT_PATCH_SIZE
+from probing.config import (NUM_LAYERS, LAST_LAYER, OUT_DIR, QUANT_DIR, CACHE_DIR, BOOT_DIR,
+                            OUTPUT_PATCH_SIZE)
 from probing.id_data import ID_DATASETS, build_windows
 from probing.extraction import extract_window_features, extract_kout_features
 from probing.probes import (ridge_regression_probe, binned_future_probe, quantile_probe,
@@ -127,7 +128,12 @@ def native_median_forecast(tag, X_test, H):
 
 def compute_mase(tag, w, diags):
     """Per-layer probe MASE (median forecast, un-transformed to raw units) + native Chronos-2
-    MASE on the SAME test windows / horizon / seasonal-naive denominator. LOWER = better."""
+    MASE on the SAME test windows / horizon / seasonal-naive denominator. LOWER = better.
+
+    Returns (entry, per_window): entry holds the reported window-mean aggregates (computed
+    exactly as before); per_window holds the per-window MASE — native (n,) and (NUM_LAYERS, n)
+    per readout — whose row means equal the aggregates (equal-length rows), feeding the
+    series-level cluster bootstrap."""
     X_test, Y_traj = w["X_test"], w["Y_test_traj"]
     mu, s = _ctx_stats(X_test, w["meta"]["sigma_eps"])
     # raw future reconstructed from the arcsinh label with the SAME mu/s used to invert the
@@ -138,17 +144,87 @@ def compute_mase(tag, w, diags):
     d = np.maximum(d, 1e-8)[:, None]
 
     native = native_median_forecast(tag, X_test, Y_traj.shape[1])
+    A_nat = np.abs(y_raw - native) / d                      # (n, H) per-step scaled errors
     entry = {"seasonal_m": M_SEASON, "n_denominator_clamped": n_clamped,
-             "native_mase": float((np.abs(y_raw - native) / d).mean()),
+             "native_mase": float(A_nat.mean()),
              "poolings": {}}
+    per_window = {"native": A_nat.mean(axis=1)}
     for pool, diag in diags.items():
-        curve = []
+        curve, pw = [], []
         for i in range(NUM_LAYERS):
             zhat = diag["test_median"][i].astype(np.float64)
             yhat = mu[:, None] + s[:, None] * np.sinh(zhat)
-            curve.append(float((np.abs(y_raw - yhat) / d).mean()))
+            A = np.abs(y_raw - yhat) / d
+            curve.append(float(A.mean()))
+            pw.append(A.mean(axis=1))
         entry["poolings"][pool] = curve
-    return entry
+        per_window[pool] = np.stack(pw)                     # (NUM_LAYERS, n)
+    return entry, per_window
+
+
+def _val_selected_layer(diag):
+    """L* chosen on VALIDATION loss only (never test): each layer's val loss at its chosen
+    weight decay, recorded during wd selection on the 80/20 train carve. Returns
+    (argmin_layer, per-layer val list), or (None, None) when the wd grid was off (no
+    validation losses exist — the bootstrap then has no validation-selected primary layer)."""
+    sel = diag.get("selection", {})
+    if len(sel) < NUM_LAYERS or any(sel.get(i) is None for i in range(NUM_LAYERS)):
+        return None, None
+    vals = [float(sel[i]["val_loss_by_wd"][sel[i]["chosen_wd"]]) for i in range(NUM_LAYERS)]
+    return int(np.argmin(vals)), vals
+
+
+def save_bootstrap_inputs(tag, w, result, diags, mase_pw):
+    """Write everything the post-hoc series-level cluster bootstrap needs to
+    results/bootstrap/inputs/<tag>__H{H}_K{K}.npz: row-aligned test series ids, per-window
+    quantile loss and in-context MASE for every readout x layer, the native per-window MASE,
+    the reported aggregate curves (so run_bootstrap can verify its per-window means reproduce
+    them), and the validation-selected layer per readout. The filename carries H/K so a run
+    at a different horizon coexists instead of overwriting. The MASE keys are explicitly
+    ``mase_context`` — the in-context seasonal-naive definition behind the reported numbers
+    (compute_mase), NOT the canonical train-series MASE (id_data.test_denominator, unused
+    here). All saved metrics must be finite; a NaN-bearing variant would need its own keys
+    plus masked aggregation in run_bootstrap. Purely additive — no existing output changes."""
+    n_test = int(w["meta"]["n_test"])
+    sid = np.asarray(w["series_test"], np.int64)
+    assert sid.shape == (n_test,), "series ids not aligned with test windows"
+
+    reported_loss = {p: result["poolings"][p]["quantile_loss"] for p in POOLINGS}
+    reported_loss.update({name: pr["quantile_loss"]
+                          for name, pr in result["kslot"]["probes"].items()})
+    arrays = {"series_test": sid,
+              "window_mase_context__native": np.asarray(mase_pw["native"], np.float64)}
+    val_layer, val_loss = {}, {}
+    for name, dg in diags.items():
+        wl = np.stack([dg["test_window_loss"][i] for i in range(NUM_LAYERS)]).astype(np.float64)
+        wm = np.asarray(mase_pw[name], np.float64)
+        assert wl.shape == wm.shape == (NUM_LAYERS, n_test), (
+            f"{tag}/{name}: per-window metrics {wl.shape}/{wm.shape} != ({NUM_LAYERS}, {n_test})")
+        arrays[f"window_loss__{name}"] = wl
+        arrays[f"window_mase_context__{name}"] = wm
+        val_layer[name], val_loss[name] = _val_selected_layer(dg)
+    for k, a in arrays.items():
+        assert np.isfinite(a).all(), f"{tag}: non-finite values in {k} — see finite-value policy"
+
+    H, K = result["kslot"]["H"], result["kslot"]["K"]
+    meta = {"tag": tag, "H": H, "K": K, "output_patch_size": OUTPUT_PATCH_SIZE,
+            "split_mode": w["meta"]["split_mode"],
+            "n_test_windows": n_test, "n_test_series": int(len(np.unique(sid))),
+            "primary_readouts": list(POOLINGS),
+            "controlled_readouts": list(result["kslot"]["probes"]),
+            "mase_definition": f"mase_context: in-context seasonal-naive scale (m={M_SEASON}, "
+                               "over the C-step context, clamped at 1e-8) — the definition of "
+                               "the reported MASE; not the canonical train-series MASE",
+            "seasonal_m": M_SEASON,
+            "n_denominator_clamped": result["mase"]["n_denominator_clamped"],
+            "reported": {"quantile_loss": reported_loss,
+                         "mase_context": result["mase"]["poolings"],
+                         "native_mase_context": result["mase"]["native_mase"]},
+            "val_selected_layer": val_layer,
+            "val_loss_by_layer": val_loss}
+    out = BOOT_DIR / "inputs" / f"{tag}__H{H}_K{K}.npz"
+    np.savez(out, meta=json.dumps(meta), **arrays)
+    print(f"  [saved]      {out}  ({n_test} windows, {meta['n_test_series']} series)")
 
 
 def run_dataset(tag):
@@ -175,7 +251,8 @@ def run_dataset(tag):
         # kept OUTSIDE `result` so the big summary JSON stays lean (histories only feed figures).
         qloss, qdiag = quantile_probe(f_tr, w["Y_train_traj"], f_te, w["Y_test_traj"],
                                       epochs=QUANTILE_EPOCHS, wd_grid=QUANTILE_WD_GRID,
-                                      collect_history=True, collect_test_median=True)
+                                      collect_history=True, collect_test_median=True,
+                                      collect_test_window_loss=True)
         diags[pool] = qdiag
         result["poolings"][pool] = {
             "binned_accuracy": [float(binned[i]) for i in range(NUM_LAYERS)],
@@ -209,18 +286,22 @@ def run_dataset(tag):
     ]:
         loss, dg = probe(tr_f, w["Y_train_traj"], te_f, w["Y_test_traj"],
                          epochs=QUANTILE_EPOCHS, wd_grid=QUANTILE_WD_GRID,
-                         collect_history=True, collect_test_median=True)
+                         collect_history=True, collect_test_median=True,
+                         collect_test_window_loss=True)
         diags[name] = dg
         result["kslot"]["probes"][name] = {"quantile_loss": [float(loss[i]) for i in range(NUM_LAYERS)]}
         c = np.asarray(result["kslot"]["probes"][name]["quantile_loss"])
         print(f"  [{name:>10}] K={K} qloss: argmin L{int(c.argmin())}={c.min():.3f}")
 
     # MASE comparison must run while the raw windows (X_test, Y_test_traj) are still alive
-    result["mase"] = compute_mase(tag, w, diags)
+    result["mase"], mase_pw = compute_mase(tag, w, diags)
     for pool in POOLINGS:
         mc = np.asarray(result["mase"]["poolings"][pool], float)
         print(f"  [{pool:>7}] MASE: probe best L{int(mc.argmin())}={mc.min():.3f} "
               f"| native Chronos-2 = {result['mase']['native_mase']:.3f}")
+
+    # per-window metrics + series ids for the post-hoc cluster bootstrap (run_bootstrap)
+    save_bootstrap_inputs(tag, w, result, diags, mase_pw)
 
     # free the (large) downloaded arrays before the next dataset
     del w
@@ -422,7 +503,7 @@ def make_training_curves(id_diags):
     Answers 'did each layer's probe converge, and where does it start to overfit?'."""
     for tag, pools in id_diags.items():
         for pool, diag in pools.items():
-            if pool not in POOLINGS:                       # skip the K-slot diags (content_K/reg_K/fslot_K)
+            if pool not in POOLINGS and pool != "fslot_K":  # plot content/reg (K=1) + shared fslot_K; skip content_K/reg_K
                 continue
             hist = diag["history"]                        # {layer(int): {"train":[...], "val":[...]}}
             fig, axes = plt.subplots(3, 4, figsize=(16, 10), sharex=True)

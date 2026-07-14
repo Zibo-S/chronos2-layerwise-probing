@@ -134,6 +134,17 @@ def chronos2_quantile_loss(pred, target, q):
     return ql.mean(dim=-1).sum(dim=-1).mean()
 
 
+def chronos2_quantile_loss_per_window(pred, target, q):
+    """Per-window Chronos-2 quantile loss: identical formula and mean(horizon) -> sum(quantiles)
+    reduction as ``chronos2_quantile_loss``, but WITHOUT the final batch mean. Returns (B,);
+    its ``.mean()`` is the reported scalar loss (same op chain), which is what lets the
+    series-level cluster bootstrap resample test windows post hoc without refitting anything."""
+    target = target.unsqueeze(1)                                       # (B, 1, H)
+    qv = q.view(1, -1, 1)                                              # (1, Q, 1)
+    ql = 2.0 * torch.abs((target - pred) * ((target <= pred).to(pred.dtype) - qv))
+    return ql.mean(dim=-1).sum(dim=-1)
+
+
 def _fit_quantile_linear(Xtr, ytr, q, weight_decay, epochs, lr, device,
                          Xval=None, yval=None, history=None):
     """Fit one strictly-linear map (d -> Q*H) with Chronos-2 loss; return the trained module.
@@ -179,7 +190,7 @@ def _fit_quantile_linear(Xtr, ytr, q, weight_decay, epochs, lr, device,
 def quantile_probe(train_feats, train_labels, test_feats, test_labels,
                    quantiles=CHRONOS2_QUANTILES, epochs=300, lr=1e-2,
                    weight_decay=1e-3, wd_grid=None, device=None, collect_history=False,
-                   collect_test_median=False):
+                   collect_test_median=False, collect_test_window_loss=False):
     """Per-layer LINEAR quantile probe, trained + scored with Chronos-2's own quantile loss.
 
     train_labels / test_labels : (n, H) arcsinh future trajectories (id_data.Y_*_traj) -- NOT
@@ -201,7 +212,11 @@ def quantile_probe(train_feats, train_labels, test_feats, test_labels,
         {"test_median": {layer: np.float32 (n_test, H)}}
       = the q=0.5 row of the FINAL (full-train refit) probe's test predictions, still in the
       arcsinh label space -- the driver un-transforms it for the MASE comparison against
-      native Chronos-2. Returns (out, diag) whenever either collect_* flag is True.
+      native Chronos-2. Returns (out, diag) whenever any collect_* flag is True.
+    collect_test_window_loss : if True, diag also carries
+        {"test_window_loss": {layer: np.float64 (n_test,)}}
+      = the per-window (unreduced-over-batch) test loss of the same final refit; its mean
+      equals out[layer]. Consumed by the series-level cluster bootstrap (run_bootstrap).
     """
     device = device or ("cuda" if torch.cuda.is_available() else "cpu")
     Ytr = np.asarray(train_labels, dtype=np.float32)
@@ -223,8 +238,8 @@ def quantile_probe(train_feats, train_labels, test_feats, test_labels,
     tr = torch.as_tensor(tr_np, dtype=torch.long, device=device)
 
     out = {}
-    diag = ({"wd": {}, "selection": {}, "history": {}, "test_median": {}}
-            if (collect_history or collect_test_median) else None)
+    diag = ({"wd": {}, "selection": {}, "history": {}, "test_median": {}, "test_window_loss": {}}
+            if (collect_history or collect_test_median or collect_test_window_loss) else None)
     q_mid = int(np.argmin(np.abs(np.asarray(quantiles, dtype=np.float64) - 0.5)))  # 0.5 row
     for i in range(NUM_LAYERS):
         if wd_grid is None:
@@ -278,6 +293,9 @@ def quantile_probe(train_feats, train_labels, test_feats, test_labels,
             out[i] = float(chronos2_quantile_loss(pred_te, yte, q).item())
             if collect_test_median:
                 diag["test_median"][i] = pred_te[:, q_mid, :].cpu().numpy().astype(np.float32)
+            if collect_test_window_loss:
+                diag["test_window_loss"][i] = chronos2_quantile_loss_per_window(
+                    pred_te, yte, q).cpu().numpy().astype(np.float64)
         print(f"    [quantile] L{i:>2}  wd={wd:g}  train={train_loss:.3f}  test={out[i]:.3f}")
     return (out, diag) if diag is not None else out
 
@@ -352,6 +370,7 @@ def shared_forecast_token_probe(train_feats, train_labels, test_feats, test_labe
                                 quantiles=CHRONOS2_QUANTILES, epochs=300, lr=1e-2,
                                 weight_decay=1e-3, wd_grid=None, device=None,
                                 collect_history=False, collect_test_median=False,
+                                collect_test_window_loss=False,
                                 output_patch_size=OUTPUT_PATCH_SIZE):
     """Chronos-aligned quantile probe. ONE shared linear head reads each forecast-slot hidden
     state (extract_kout_features -> (n, K, 768)) and emits that slot's output patch of Q quantiles
@@ -366,8 +385,8 @@ def shared_forecast_token_probe(train_feats, train_labels, test_feats, test_labe
                                inferred from H — extract_kout_features asserts the loaded
                                model agrees with this constant.
     Returns {layer: test_loss}, LOWER = better — directly comparable to quantile_probe. Same
-    collect_history / collect_test_median contract as quantile_probe (so the driver's MASE
-    machinery works on this probe unchanged)."""
+    collect_history / collect_test_median / collect_test_window_loss contract as quantile_probe
+    (so the driver's MASE + bootstrap machinery works on this probe unchanged)."""
     device = device or ("cuda" if torch.cuda.is_available() else "cpu")
     Ytr = np.asarray(train_labels, dtype=np.float32)
     Yte = np.asarray(test_labels, dtype=np.float32)
@@ -397,8 +416,8 @@ def shared_forecast_token_probe(train_feats, train_labels, test_feats, test_labe
     tr = torch.as_tensor(tr_np, dtype=torch.long, device=device)
 
     out = {}
-    diag = ({"wd": {}, "selection": {}, "history": {}, "test_median": {}}
-            if (collect_history or collect_test_median) else None)
+    diag = ({"wd": {}, "selection": {}, "history": {}, "test_median": {}, "test_window_loss": {}}
+            if (collect_history or collect_test_median or collect_test_window_loss) else None)
     q_mid = int(np.argmin(np.abs(np.asarray(quantiles, dtype=np.float64) - 0.5)))
     for i in range(NUM_LAYERS):
         if wd_grid is None:
@@ -446,6 +465,9 @@ def shared_forecast_token_probe(train_feats, train_labels, test_feats, test_labe
             out[i] = float(chronos2_quantile_loss(pred_te, yte, q).item())
             if collect_test_median:
                 diag["test_median"][i] = pred_te[:, q_mid, :].cpu().numpy().astype(np.float32)
+            if collect_test_window_loss:
+                diag["test_window_loss"][i] = chronos2_quantile_loss_per_window(
+                    pred_te, yte, q).cpu().numpy().astype(np.float64)
         print(f"    [fslot] L{i:>2}  wd={wd:g}  train={train_loss:.3f}  test={out[i]:.3f}")
     return (out, diag) if diag is not None else out
 

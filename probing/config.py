@@ -41,3 +41,8 @@ OUT_DIR.mkdir(exist_ok=True)
 QUANT_DIR = OUT_DIR / "quantile_loss"          # quantile-probe figures + focused JSON
 for _sub in ("content", "reg", "pooling_comparison", "training_curves"):
     (QUANT_DIR / _sub).mkdir(parents=True, exist_ok=True)
+
+# Series-level cluster bootstrap: the GPU run writes per-window test metrics to inputs/;
+# experiments.run_bootstrap (CPU-only, post-hoc) reads them and fills raw/tables/figures.
+BOOT_DIR = OUT_DIR / "bootstrap"
+(BOOT_DIR / "inputs").mkdir(parents=True, exist_ok=True)

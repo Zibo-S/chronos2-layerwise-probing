@@ -1,0 +1,57 @@
+{
+  "n_replicates": 5000,
+  "seed": 0,
+  "ci_percentiles": [
+    2.5,
+    97.5
+  ],
+  "resampling_unit": "series (cluster bootstrap)",
+  "method": "S series drawn with replacement per replicate; all windows of a sampled series included (twice if drawn twice); implemented as multinomial counts, verified equivalent to explicit resampling; ONE counts matrix per dataset shared across all layers, readouts, metrics, and native (paired differences use identical replicates)",
+  "aggregation": "window-weighted mean (matches the reported metrics; series with more test windows contribute more windows)",
+  "metrics": {
+    "quantile_loss": "Chronos-2 pinball loss, mean(H)->sum(Q)->mean(n)",
+    "mase_context": "in-context seasonal-naive MASE (the reported definition; not canonical train-series MASE)"
+  },
+  "layer_selection": "L* frozen from validation loss (wd-selection carve); per-layer deltas are exploratory",
+  "experiments": {
+    "H64_K4": {
+      "readouts": {
+        "primary": [
+          "content",
+          "reg"
+        ],
+        "controlled": [
+          "content_K",
+          "reg_K",
+          "fslot_K"
+        ]
+      },
+      "datasets": {
+        "monash_electricity_hourly": {
+          "n_test_series": 318,
+          "n_test_windows": 1500,
+          "H": 64,
+          "K": 4
+        },
+        "monash_kdd_cup_2018": {
+          "n_test_series": 75,
+          "n_test_windows": 506,
+          "H": 64,
+          "K": 4
+        },
+        "monash_pedestrian_counts": {
+          "n_test_series": 59,
+          "n_test_windows": 1500,
+          "H": 64,
+          "K": 4
+        },
+        "uber_tlc_hourly": {
+          "n_test_series": 260,
+          "n_test_windows": 1500,
+          "H": 64,
+          "K": 4
+        }
+      }
+    }
+  }
+}
