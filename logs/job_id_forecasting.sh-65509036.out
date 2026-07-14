@@ -1,0 +1,394 @@
+Using the latest cached version of the dataset since autogluon/chronos_datasets couldn't be found on the Hugging Face Hub (offline mode is enabled).
+Found the latest cached dataset configuration 'monash_electricity_hourly' at /scratch/eserebri/chronos2/hf_cache/datasets/autogluon___chronos_datasets/monash_electricity_hourly/0.0.0/eeecad0b82a8c237e212ce6f8d1abecb513e2cec (last modified on Thu Jul  9 16:31:28 2026).
+Using the latest cached version of the dataset since autogluon/chronos_datasets couldn't be found on the Hugging Face Hub (offline mode is enabled).
+Found the latest cached dataset configuration 'monash_kdd_cup_2018' at /scratch/eserebri/chronos2/hf_cache/datasets/autogluon___chronos_datasets/monash_kdd_cup_2018/0.0.0/eeecad0b82a8c237e212ce6f8d1abecb513e2cec (last modified on Mon Jul 13 16:26:12 2026).
+Using the latest cached version of the dataset since autogluon/chronos_datasets couldn't be found on the Hugging Face Hub (offline mode is enabled).
+Found the latest cached dataset configuration 'monash_pedestrian_counts' at /scratch/eserebri/chronos2/hf_cache/datasets/autogluon___chronos_datasets/monash_pedestrian_counts/0.0.0/eeecad0b82a8c237e212ce6f8d1abecb513e2cec (last modified on Mon Jul 13 16:26:15 2026).
+Using the latest cached version of the dataset since autogluon/chronos_datasets couldn't be found on the Hugging Face Hub (offline mode is enabled).
+Found the latest cached dataset configuration 'uber_tlc_hourly' at /scratch/eserebri/chronos2/hf_cache/datasets/autogluon___chronos_datasets/uber_tlc_hourly/0.0.0/eeecad0b82a8c237e212ce6f8d1abecb513e2cec (last modified on Mon Jul 13 16:26:16 2026).
+[config] quantile_set=q9  Q=9  quantiles=[0.10000000149011612, 0.20000000298023224, 0.30000001192092896, 0.4000000059604645, 0.5, 0.6000000238418579, 0.699999988079071, 0.800000011920929, 0.8999999761581421]
+[config] pooled probe head Linear(768, Q*H): at H=64 -> output_dim=576, params=442,944
+[config] outputs -> /home/eserebri/repos/chronos2-layerwise-probing/results/quantile_loss_q9  |  summary -> /home/eserebri/repos/chronos2-layerwise-probing/results/id_probing_summary_q9.json
+
+======================================================================
+[monash_electricity_hourly] building windows
+======================================================================
+  split_mode=within_series  n_series=321 (support within=321)
+  windows: train=3000 (of 95894), test=1500 (of 30066), skipped=514
+  label y range: train[-2.075,+6.556] test[-2.300,+3.687]
+  [cache HIT]  IDF_monash_electricity_hourly__train__clean__content.npz
+  [cache HIT]  IDF_monash_electricity_hourly__test__clean__content.npz
+    [quantile] L 0  wd=1e-05  train=2.065  test=2.519
+    [quantile] L 1  wd=1e-05  train=1.870  test=2.428
+    [quantile] L 2  wd=0.1  train=1.731  test=2.313
+    [quantile] L 3  wd=0.1  train=1.713  test=2.349
+    [quantile] L 4  wd=0.1  train=1.676  test=2.378
+    [quantile] L 5  wd=0.1  train=1.684  test=2.426
+    [quantile] L 6  wd=0.1  train=1.684  test=2.471
+    [quantile] L 7  wd=0.1  train=1.702  test=2.538
+    [quantile] L 8  wd=0.1  train=1.723  test=2.565
+    [quantile] L 9  wd=0.1  train=1.686  test=2.507
+    [quantile] L10  wd=0.1  train=1.660  test=2.463
+    [quantile] L11  wd=0.1  train=1.832  test=2.450
+  [content] binned acc: argmax L6=0.414 (chance=0.20) | ridge R^2 range [+0.239,+0.411] | qloss: argmin L2=2.313
+  [cache HIT]  IDF_monash_electricity_hourly__train__clean__reg.npz
+  [cache HIT]  IDF_monash_electricity_hourly__test__clean__reg.npz
+    [quantile] L 0  wd=0.001  train=2.062  test=2.396
+    [quantile] L 1  wd=0.0001  train=1.939  test=2.294
+    [quantile] L 2  wd=0.01  train=1.798  test=2.187
+    [quantile] L 3  wd=1e-05  train=1.688  test=2.126
+    [quantile] L 4  wd=0.1  train=1.661  test=2.117
+    [quantile] L 5  wd=0.1  train=1.641  test=2.140
+    [quantile] L 6  wd=0.1  train=1.648  test=2.168
+    [quantile] L 7  wd=0.1  train=1.638  test=2.213
+    [quantile] L 8  wd=0.1  train=1.634  test=2.250
+    [quantile] L 9  wd=0.1  train=1.645  test=2.292
+    [quantile] L10  wd=0.1  train=1.664  test=2.302
+    [quantile] L11  wd=0.1  train=1.793  test=2.304
+  [    reg] binned acc: argmax L6=0.428 (chance=0.20) | ridge R^2 range [+0.331,+0.462] | qloss: argmin L4=2.117
+  [cache HIT]  IDF_monash_electricity_hourly__train__clean__K4_H64.npz
+  [cache HIT]  IDF_monash_electricity_hourly__test__clean__K4_H64.npz
+    [quantile] L 0  wd=0.1  train=2.086  test=2.528
+    [quantile] L 1  wd=0.1  train=1.896  test=2.436
+    [quantile] L 2  wd=0.1  train=1.758  test=2.354
+    [quantile] L 3  wd=0.1  train=1.739  test=2.387
+    [quantile] L 4  wd=0.1  train=1.727  test=2.447
+    [quantile] L 5  wd=0.1  train=1.726  test=2.490
+    [quantile] L 6  wd=0.1  train=1.730  test=2.547
+    [quantile] L 7  wd=0.1  train=1.759  test=2.621
+    [quantile] L 8  wd=0.1  train=1.785  test=2.652
+    [quantile] L 9  wd=0.1  train=1.759  test=2.637
+    [quantile] L10  wd=0.1  train=1.759  test=2.644
+    [quantile] L11  wd=0.1  train=1.906  test=2.574
+  [ content_K] K=4 qloss: argmin L2=2.354
+    [quantile] L 0  wd=1e-05  train=2.082  test=2.414
+    [quantile] L 1  wd=0.0001  train=1.948  test=2.300
+    [quantile] L 2  wd=0.01  train=1.796  test=2.188
+    [quantile] L 3  wd=0.1  train=1.705  test=2.125
+    [quantile] L 4  wd=0.1  train=1.666  test=2.129
+    [quantile] L 5  wd=0.1  train=1.631  test=2.128
+    [quantile] L 6  wd=0.1  train=1.632  test=2.158
+    [quantile] L 7  wd=0.1  train=1.613  test=2.202
+    [quantile] L 8  wd=0.1  train=1.611  test=2.230
+    [quantile] L 9  wd=0.1  train=1.630  test=2.294
+    [quantile] L10  wd=0.1  train=1.650  test=2.316
+    [quantile] L11  wd=0.1  train=1.806  test=2.343
+  [     reg_K] K=4 qloss: argmin L3=2.125
+    [fslot] L 0  wd=1e-05  train=3.430  test=3.554
+    [fslot] L 1  wd=0.01  train=2.007  test=2.207
+    [fslot] L 2  wd=0.01  train=1.690  test=1.880
+    [fslot] L 3  wd=0.1  train=1.629  test=1.821
+    [fslot] L 4  wd=0.0001  train=1.606  test=1.793
+    [fslot] L 5  wd=0.1  train=1.576  test=1.776
+    [fslot] L 6  wd=0.1  train=1.623  test=1.807
+    [fslot] L 7  wd=1e-05  train=1.587  test=1.785
+    [fslot] L 8  wd=0.01  train=1.580  test=1.759
+    [fslot] L 9  wd=0.1  train=1.595  test=1.758
+    [fslot] L10  wd=1e-05  train=1.610  test=1.756
+    [fslot] L11  wd=0.1  train=1.628  test=1.740
+  [   fslot_K] K=4 qloss: argmin L11=1.740
+  [cache HIT]  IDF_monash_electricity_hourly__test__native_median_H64.npz
+  [content] MASE: probe best L2=1.430 | native Chronos-2 = 0.851
+  [    reg] MASE: probe best L3=1.298 | native Chronos-2 = 0.851
+  [saved]      /home/eserebri/repos/chronos2-layerwise-probing/results/bootstrap/inputs/monash_electricity_hourly__H64_K4__q9.npz  (1500 windows, 318 series)
+
+======================================================================
+[monash_kdd_cup_2018] building windows
+======================================================================
+  split_mode=within_series  n_series=270 (support within=270)
+  windows: train=1432 (of 1432), test=506 (of 506), skipped=39351
+  label y range: train[-1.717,+7.445] test[-1.238,+3.773]
+  [cache HIT]  IDF_monash_kdd_cup_2018__train__clean__content.npz
+  [cache HIT]  IDF_monash_kdd_cup_2018__test__clean__content.npz
+    [quantile] L 0  wd=0.1  train=3.023  test=4.948
+    [quantile] L 1  wd=0.1  train=2.685  test=5.393
+    [quantile] L 2  wd=0.1  train=2.378  test=5.663
+    [quantile] L 3  wd=0.1  train=2.315  test=5.772
+    [quantile] L 4  wd=0.1  train=2.184  test=6.065
+    [quantile] L 5  wd=0.1  train=2.085  test=6.237
+    [quantile] L 6  wd=0.1  train=2.046  test=6.202
+    [quantile] L 7  wd=0.1  train=2.090  test=5.827
+    [quantile] L 8  wd=0.1  train=2.057  test=5.848
+    [quantile] L 9  wd=0.1  train=1.970  test=6.170
+    [quantile] L10  wd=0.1  train=1.908  test=6.202
+    [quantile] L11  wd=0.1  train=2.132  test=5.652
+  [content] binned acc: argmax L11=0.308 (chance=0.20) | ridge R^2 range [-0.624,+0.050] | qloss: argmin L0=4.948
+  [cache HIT]  IDF_monash_kdd_cup_2018__train__clean__reg.npz
+  [cache HIT]  IDF_monash_kdd_cup_2018__test__clean__reg.npz
+    [quantile] L 0  wd=0.1  train=3.476  test=4.642
+    [quantile] L 1  wd=0.0001  train=3.276  test=4.744
+    [quantile] L 2  wd=0.0001  train=3.082  test=4.819
+    [quantile] L 3  wd=0.1  train=2.901  test=4.939
+    [quantile] L 4  wd=0.1  train=2.753  test=5.010
+    [quantile] L 5  wd=0.1  train=2.596  test=5.202
+    [quantile] L 6  wd=0.1  train=2.488  test=5.282
+    [quantile] L 7  wd=0.1  train=2.390  test=5.395
+    [quantile] L 8  wd=0.1  train=2.272  test=5.550
+    [quantile] L 9  wd=0.1  train=2.156  test=5.415
+    [quantile] L10  wd=0.1  train=2.031  test=5.433
+    [quantile] L11  wd=0.1  train=2.166  test=5.534
+  [    reg] binned acc: argmax L9=0.304 (chance=0.20) | ridge R^2 range [-0.148,+0.126] | qloss: argmin L0=4.642
+  [cache HIT]  IDF_monash_kdd_cup_2018__train__clean__K4_H64.npz
+  [cache HIT]  IDF_monash_kdd_cup_2018__test__clean__K4_H64.npz
+    [quantile] L 0  wd=0.1  train=3.028  test=4.972
+    [quantile] L 1  wd=0.1  train=2.692  test=5.401
+    [quantile] L 2  wd=0.1  train=2.400  test=5.690
+    [quantile] L 3  wd=0.1  train=2.334  test=5.823
+    [quantile] L 4  wd=0.1  train=2.203  test=6.095
+    [quantile] L 5  wd=0.1  train=2.099  test=6.316
+    [quantile] L 6  wd=0.1  train=2.056  test=6.244
+    [quantile] L 7  wd=0.1  train=2.084  test=5.724
+    [quantile] L 8  wd=0.1  train=2.027  test=5.798
+    [quantile] L 9  wd=0.1  train=1.867  test=5.814
+    [quantile] L10  wd=0.1  train=1.806  test=5.846
+    [quantile] L11  wd=0.1  train=2.000  test=5.542
+  [ content_K] K=4 qloss: argmin L0=4.972
+    [quantile] L 0  wd=0.001  train=3.469  test=4.664
+    [quantile] L 1  wd=0.001  train=3.297  test=4.731
+    [quantile] L 2  wd=0.001  train=3.099  test=4.831
+    [quantile] L 3  wd=0.1  train=2.915  test=4.942
+    [quantile] L 4  wd=0.1  train=2.743  test=5.023
+    [quantile] L 5  wd=0.1  train=2.602  test=5.235
+    [quantile] L 6  wd=0.1  train=2.477  test=5.356
+    [quantile] L 7  wd=0.1  train=2.359  test=5.408
+    [quantile] L 8  wd=0.1  train=2.219  test=5.627
+    [quantile] L 9  wd=0.1  train=2.039  test=5.294
+    [quantile] L10  wd=0.1  train=1.855  test=5.287
+    [quantile] L11  wd=0.1  train=1.994  test=5.187
+  [     reg_K] K=4 qloss: argmin L0=4.664
+    [fslot] L 0  wd=1e-05  train=3.656  test=4.505
+    [fslot] L 1  wd=1e-05  train=3.439  test=4.435
+    [fslot] L 2  wd=0.1  train=3.228  test=4.571
+    [fslot] L 3  wd=0.1  train=3.051  test=4.736
+    [fslot] L 4  wd=0.1  train=2.962  test=4.793
+    [fslot] L 5  wd=0.1  train=2.780  test=4.980
+    [fslot] L 6  wd=0.1  train=2.660  test=4.776
+    [fslot] L 7  wd=0.1  train=2.554  test=4.721
+    [fslot] L 8  wd=0.1  train=2.344  test=4.461
+    [fslot] L 9  wd=0.1  train=2.135  test=4.293
+    [fslot] L10  wd=0.1  train=2.020  test=4.223
+    [fslot] L11  wd=0.1  train=2.056  test=4.202
+  [   fslot_K] K=4 qloss: argmin L11=4.202
+  [cache HIT]  IDF_monash_kdd_cup_2018__test__native_median_H64.npz
+  [content] MASE: probe best L0=1.024 | native Chronos-2 = 0.828
+  [    reg] MASE: probe best L0=0.965 | native Chronos-2 = 0.828
+  [saved]      /home/eserebri/repos/chronos2-layerwise-probing/results/bootstrap/inputs/monash_kdd_cup_2018__H64_K4__q9.npz  (506 windows, 75 series)
+
+======================================================================
+[monash_pedestrian_counts] building windows
+======================================================================
+  split_mode=within_series  n_series=66 (support within=65)
+  windows: train=3000 (of 36144), test=1500 (of 11683), skipped=0
+  label y range: train[-0.797,+6.939] test[-1.180,+2.421]
+  [cache HIT]  IDF_monash_pedestrian_counts__train__clean__content.npz
+  [cache HIT]  IDF_monash_pedestrian_counts__test__clean__content.npz
+    [quantile] L 0  wd=0.01  train=2.167  test=2.514
+    [quantile] L 1  wd=1e-05  train=1.957  test=2.372
+    [quantile] L 2  wd=0.0001  train=1.792  test=2.275
+    [quantile] L 3  wd=0.1  train=1.744  test=2.268
+    [quantile] L 4  wd=0.1  train=1.704  test=2.260
+    [quantile] L 5  wd=0.1  train=1.703  test=2.271
+    [quantile] L 6  wd=0.1  train=1.690  test=2.316
+    [quantile] L 7  wd=0.1  train=1.680  test=2.370
+    [quantile] L 8  wd=0.1  train=1.702  test=2.403
+    [quantile] L 9  wd=0.1  train=1.652  test=2.367
+    [quantile] L10  wd=0.1  train=1.650  test=2.336
+    [quantile] L11  wd=0.1  train=1.884  test=2.348
+  [content] binned acc: argmax L11=0.461 (chance=0.20) | ridge R^2 range [+0.260,+0.527] | qloss: argmin L4=2.260
+  [cache HIT]  IDF_monash_pedestrian_counts__train__clean__reg.npz
+  [cache HIT]  IDF_monash_pedestrian_counts__test__clean__reg.npz
+    [quantile] L 0  wd=0.0001  train=2.160  test=2.426
+    [quantile] L 1  wd=0.001  train=2.043  test=2.345
+    [quantile] L 2  wd=1e-05  train=1.853  test=2.171
+    [quantile] L 3  wd=1e-05  train=1.721  test=2.086
+    [quantile] L 4  wd=0.1  train=1.632  test=2.024
+    [quantile] L 5  wd=0.1  train=1.617  test=2.035
+    [quantile] L 6  wd=0.1  train=1.608  test=2.052
+    [quantile] L 7  wd=0.1  train=1.590  test=2.078
+    [quantile] L 8  wd=0.1  train=1.586  test=2.098
+    [quantile] L 9  wd=0.1  train=1.590  test=2.117
+    [quantile] L10  wd=0.1  train=1.625  test=2.161
+    [quantile] L11  wd=0.01  train=1.796  test=2.213
+  [    reg] binned acc: argmax L11=0.485 (chance=0.20) | ridge R^2 range [+0.247,+0.560] | qloss: argmin L4=2.024
+  [cache HIT]  IDF_monash_pedestrian_counts__train__clean__K4_H64.npz
+  [cache HIT]  IDF_monash_pedestrian_counts__test__clean__K4_H64.npz
+    [quantile] L 0  wd=0.001  train=2.171  test=2.516
+    [quantile] L 1  wd=0.001  train=1.963  test=2.379
+    [quantile] L 2  wd=0.0001  train=1.821  test=2.301
+    [quantile] L 3  wd=0.1  train=1.792  test=2.305
+    [quantile] L 4  wd=0.1  train=1.741  test=2.309
+    [quantile] L 5  wd=0.1  train=1.746  test=2.327
+    [quantile] L 6  wd=0.1  train=1.740  test=2.380
+    [quantile] L 7  wd=0.1  train=1.726  test=2.435
+    [quantile] L 8  wd=0.1  train=1.743  test=2.478
+    [quantile] L 9  wd=0.1  train=1.716  test=2.457
+    [quantile] L10  wd=0.1  train=1.733  test=2.499
+    [quantile] L11  wd=0.01  train=1.959  test=2.488
+  [ content_K] K=4 qloss: argmin L2=2.301
+    [quantile] L 0  wd=1e-05  train=2.173  test=2.442
+    [quantile] L 1  wd=1e-05  train=2.032  test=2.334
+    [quantile] L 2  wd=0.001  train=1.845  test=2.164
+    [quantile] L 3  wd=0.01  train=1.737  test=2.103
+    [quantile] L 4  wd=0.1  train=1.675  test=2.066
+    [quantile] L 5  wd=0.1  train=1.625  test=2.041
+    [quantile] L 6  wd=0.1  train=1.612  test=2.060
+    [quantile] L 7  wd=0.1  train=1.580  test=2.070
+    [quantile] L 8  wd=0.1  train=1.579  test=2.094
+    [quantile] L 9  wd=0.1  train=1.584  test=2.129
+    [quantile] L10  wd=0.1  train=1.615  test=2.165
+    [quantile] L11  wd=0.001  train=1.825  test=2.241
+  [     reg_K] K=4 qloss: argmin L5=2.041
+    [fslot] L 0  wd=0.01  train=3.259  test=3.387
+    [fslot] L 1  wd=1e-05  train=2.159  test=2.302
+    [fslot] L 2  wd=0.001  train=1.528  test=1.724
+    [fslot] L 3  wd=0.01  train=1.430  test=1.633
+    [fslot] L 4  wd=0.1  train=1.387  test=1.561
+    [fslot] L 5  wd=0.0001  train=1.356  test=1.545
+    [fslot] L 6  wd=0.001  train=1.353  test=1.510
+    [fslot] L 7  wd=1e-05  train=1.326  test=1.494
+    [fslot] L 8  wd=0.1  train=1.315  test=1.451
+    [fslot] L 9  wd=0.1  train=1.379  test=1.505
+    [fslot] L10  wd=0.1  train=1.423  test=1.520
+    [fslot] L11  wd=0.1  train=1.410  test=1.494
+  [   fslot_K] K=4 qloss: argmin L8=1.451
+  [cache HIT]  IDF_monash_pedestrian_counts__test__native_median_H64.npz
+  [content] MASE: probe best L3=1.341 | native Chronos-2 = 0.570
+  [    reg] MASE: probe best L4=1.192 | native Chronos-2 = 0.570
+  [saved]      /home/eserebri/repos/chronos2-layerwise-probing/results/bootstrap/inputs/monash_pedestrian_counts__H64_K4__q9.npz  (1500 windows, 59 series)
+
+======================================================================
+[uber_tlc_hourly] building windows
+======================================================================
+  split_mode=within_series  n_series=262 (support within=262)
+  windows: train=3000 (of 10900), test=1500 (of 2075), skipped=125
+  label y range: train[-0.578,+5.444] test[-0.551,+1.143]
+  [cache HIT]  IDF_uber_tlc_hourly__train__clean__content.npz
+  [cache HIT]  IDF_uber_tlc_hourly__test__clean__content.npz
+    [quantile] L 0  wd=0.001  train=3.621  test=4.223
+    [quantile] L 1  wd=0.1  train=3.422  test=4.116
+    [quantile] L 2  wd=1e-05  train=3.225  test=4.039
+    [quantile] L 3  wd=0.0001  train=3.123  test=3.996
+    [quantile] L 4  wd=0.1  train=3.093  test=3.975
+    [quantile] L 5  wd=0.1  train=3.049  test=3.958
+    [quantile] L 6  wd=0.1  train=3.069  test=4.075
+    [quantile] L 7  wd=1e-05  train=3.022  test=4.090
+    [quantile] L 8  wd=0.0001  train=3.066  test=4.097
+    [quantile] L 9  wd=0.1  train=3.067  test=4.022
+    [quantile] L10  wd=0.1  train=3.077  test=4.128
+    [quantile] L11  wd=0.0001  train=3.392  test=4.350
+  [content] binned acc: argmax L11=0.395 (chance=0.20) | ridge R^2 range [+0.123,+0.492] | qloss: argmin L5=3.958
+  [cache HIT]  IDF_uber_tlc_hourly__train__clean__reg.npz
+  [cache HIT]  IDF_uber_tlc_hourly__test__clean__reg.npz
+    [quantile] L 0  wd=0.01  train=3.971  test=4.309
+    [quantile] L 1  wd=0.001  train=3.843  test=4.215
+    [quantile] L 2  wd=1e-05  train=3.578  test=4.025
+    [quantile] L 3  wd=0.01  train=3.460  test=3.956
+    [quantile] L 4  wd=0.1  train=3.340  test=3.868
+    [quantile] L 5  wd=0.0001  train=3.244  test=3.898
+    [quantile] L 6  wd=0.01  train=3.189  test=3.880
+    [quantile] L 7  wd=0.0001  train=3.135  test=3.911
+    [quantile] L 8  wd=0.1  train=3.122  test=3.930
+    [quantile] L 9  wd=0.1  train=3.097  test=3.880
+    [quantile] L10  wd=0.1  train=3.150  test=3.940
+    [quantile] L11  wd=0.0001  train=3.434  test=4.149
+  [    reg] binned acc: argmax L11=0.440 (chance=0.20) | ridge R^2 range [+0.045,+0.563] | qloss: argmin L4=3.868
+  [cache HIT]  IDF_uber_tlc_hourly__train__clean__K4_H64.npz
+  [cache HIT]  IDF_uber_tlc_hourly__test__clean__K4_H64.npz
+    [quantile] L 0  wd=0.01  train=3.627  test=4.230
+    [quantile] L 1  wd=1e-05  train=3.401  test=4.116
+    [quantile] L 2  wd=0.1  train=3.274  test=4.044
+    [quantile] L 3  wd=0.01  train=3.148  test=3.988
+    [quantile] L 4  wd=0.1  train=3.106  test=3.964
+    [quantile] L 5  wd=0.1  train=3.070  test=3.949
+    [quantile] L 6  wd=0.1  train=3.094  test=4.061
+    [quantile] L 7  wd=0.1  train=3.074  test=4.075
+    [quantile] L 8  wd=0.1  train=3.099  test=4.093
+    [quantile] L 9  wd=0.01  train=3.097  test=4.142
+    [quantile] L10  wd=0.1  train=3.094  test=4.232
+    [quantile] L11  wd=0.0001  train=3.425  test=4.448
+  [ content_K] K=4 qloss: argmin L5=3.949
+    [quantile] L 0  wd=0.01  train=3.992  test=4.303
+    [quantile] L 1  wd=0.01  train=3.865  test=4.219
+    [quantile] L 2  wd=1e-05  train=3.621  test=4.049
+    [quantile] L 3  wd=0.001  train=3.465  test=3.944
+    [quantile] L 4  wd=1e-05  train=3.361  test=3.943
+    [quantile] L 5  wd=1e-05  train=3.265  test=3.897
+    [quantile] L 6  wd=1e-05  train=3.192  test=3.881
+    [quantile] L 7  wd=0.1  train=3.156  test=3.897
+    [quantile] L 8  wd=0.1  train=3.116  test=3.919
+    [quantile] L 9  wd=0.1  train=3.097  test=3.893
+    [quantile] L10  wd=0.001  train=3.102  test=3.945
+    [quantile] L11  wd=0.001  train=3.423  test=4.117
+  [     reg_K] K=4 qloss: argmin L6=3.881
+    [fslot] L 0  wd=0.0001  train=3.922  test=4.099
+    [fslot] L 1  wd=1e-05  train=3.529  test=3.859
+    [fslot] L 2  wd=0.0001  train=3.032  test=3.316
+    [fslot] L 3  wd=1e-05  train=2.942  test=3.241
+    [fslot] L 4  wd=0.0001  train=2.854  test=3.141
+    [fslot] L 5  wd=0.1  train=2.845  test=3.150
+    [fslot] L 6  wd=0.01  train=2.808  test=3.102
+    [fslot] L 7  wd=0.01  train=2.788  test=3.095
+    [fslot] L 8  wd=1e-05  train=2.756  test=3.057
+    [fslot] L 9  wd=0.1  train=2.799  test=3.060
+    [fslot] L10  wd=0.1  train=2.887  test=3.095
+    [fslot] L11  wd=0.01  train=2.941  test=3.081
+  [   fslot_K] K=4 qloss: argmin L8=3.057
+  [cache HIT]  IDF_uber_tlc_hourly__test__native_median_H64.npz
+  [content] MASE: probe best L4=1.022 | native Chronos-2 = 0.658
+  [    reg] MASE: probe best L9=1.035 | native Chronos-2 = 0.658
+  [saved]      /home/eserebri/repos/chronos2-layerwise-probing/results/bootstrap/inputs/uber_tlc_hourly__H64_K4__q9.npz  (1500 windows, 260 series)
+
+  est. new IDF_ cache footprint: ~1.71 GB (3 poolings x 12 layers x n_windows x 768 x 4B)
+  [saved] /home/eserebri/repos/chronos2-layerwise-probing/results/id_probing_summary_q9.json
+  [skip] classification-overlay figures (quantile-independent; owned by the q21 run)
+  [saved] /home/eserebri/repos/chronos2-layerwise-probing/results/quantile_loss_q9/content/quantile_loss_by_layer.png
+  [saved] /home/eserebri/repos/chronos2-layerwise-probing/results/quantile_loss_q9/reg/quantile_loss_by_layer_reg.png
+  [saved] /home/eserebri/repos/chronos2-layerwise-probing/results/quantile_loss_q9/pooling_comparison/content_vs_reg.png
+  [saved] /home/eserebri/repos/chronos2-layerwise-probing/results/quantile_loss_q9/shared_forecast_vs_pooled.png
+  [saved] /home/eserebri/repos/chronos2-layerwise-probing/results/quantile_loss_q9/training_curves/monash_electricity_hourly_content.png
+  [saved] /home/eserebri/repos/chronos2-layerwise-probing/results/quantile_loss_q9/training_curves/monash_electricity_hourly_reg.png
+  [saved] /home/eserebri/repos/chronos2-layerwise-probing/results/quantile_loss_q9/training_curves/monash_electricity_hourly_fslot_K.png
+  [saved] /home/eserebri/repos/chronos2-layerwise-probing/results/quantile_loss_q9/training_curves/monash_kdd_cup_2018_content.png
+  [saved] /home/eserebri/repos/chronos2-layerwise-probing/results/quantile_loss_q9/training_curves/monash_kdd_cup_2018_reg.png
+  [saved] /home/eserebri/repos/chronos2-layerwise-probing/results/quantile_loss_q9/training_curves/monash_kdd_cup_2018_fslot_K.png
+  [saved] /home/eserebri/repos/chronos2-layerwise-probing/results/quantile_loss_q9/training_curves/monash_pedestrian_counts_content.png
+  [saved] /home/eserebri/repos/chronos2-layerwise-probing/results/quantile_loss_q9/training_curves/monash_pedestrian_counts_reg.png
+  [saved] /home/eserebri/repos/chronos2-layerwise-probing/results/quantile_loss_q9/training_curves/monash_pedestrian_counts_fslot_K.png
+  [saved] /home/eserebri/repos/chronos2-layerwise-probing/results/quantile_loss_q9/training_curves/uber_tlc_hourly_content.png
+  [saved] /home/eserebri/repos/chronos2-layerwise-probing/results/quantile_loss_q9/training_curves/uber_tlc_hourly_reg.png
+  [saved] /home/eserebri/repos/chronos2-layerwise-probing/results/quantile_loss_q9/training_curves/uber_tlc_hourly_fslot_K.png
+  [saved] /home/eserebri/repos/chronos2-layerwise-probing/results/quantile_loss_q9/quantile_loss_results.json
+  [saved] /home/eserebri/repos/chronos2-layerwise-probing/results/quantile_loss_q9/probe_results_table__q9.csv  (240 rows)
+  [saved] /home/eserebri/repos/chronos2-layerwise-probing/results/quantile_loss_q9/mase_content_vs_native.png
+  [saved] /home/eserebri/repos/chronos2-layerwise-probing/results/quantile_loss_q9/mase_reg_vs_native.png
+  [saved] /home/eserebri/repos/chronos2-layerwise-probing/results/quantile_loss_q9/shared_forecast_mase.png
+  [saved] /home/eserebri/repos/chronos2-layerwise-probing/results/quantile_loss_q9/mase_results.json
+
+======================================================================
+ID PROBING SUMMARY (no interpretation)
+======================================================================
+                   dataset         split   n_tr   n_te   binned argmax/max (content)   ridge R^2 range (content)
+ monash_electricity_hourly within_series   3000   1500                      L6=0.414             [+0.239,+0.411]
+       monash_kdd_cup_2018 within_series   1432    506                     L11=0.308             [-0.624,+0.050]
+  monash_pedestrian_counts within_series   3000   1500                     L11=0.461             [+0.260,+0.527]
+           uber_tlc_hourly within_series   3000   1500                     L11=0.395             [+0.123,+0.492]
+
+  late-layer retention = binned_acc[L11] / binned_acc[peak]  (content pooling):
+     monash_electricity_hourly:  peak L6=0.414  ->  L11 retains 0.939
+           monash_kdd_cup_2018:  peak L11=0.308  ->  L11 retains 1.000
+      monash_pedestrian_counts:  peak L11=0.461  ->  L11 retains 1.000
+               uber_tlc_hourly:  peak L11=0.395  ->  L11 retains 1.000
+
+  Chronos-2 quantile loss  (content pooling; LOWER=better, tunnel=argmin):
+     monash_electricity_hourly:  best L2=2.313  |  L0=2.519  L11=2.450
+           monash_kdd_cup_2018:  best L0=4.948  |  L0=4.948  L11=5.652
+      monash_pedestrian_counts:  best L4=2.260  |  L0=2.514  L11=2.348
+               uber_tlc_hourly:  best L5=3.958  |  L0=4.223  L11=4.350
+
+  MASE, median forecast  (content pooling; m=24; LOWER=better):
+     monash_electricity_hourly:  probe best L2=1.430  L11=1.539  |  native=0.851  (best/native=1.68)
+           monash_kdd_cup_2018:  probe best L0=1.024  L11=1.131  |  native=0.828  (best/native=1.24)
+      monash_pedestrian_counts:  probe best L3=1.341  L11=1.402  |  native=0.570  (best/native=2.35)
+               uber_tlc_hourly:  probe best L4=1.022  L11=1.187  |  native=0.658  (best/native=1.55)
+
+  binned chance = 0.20
