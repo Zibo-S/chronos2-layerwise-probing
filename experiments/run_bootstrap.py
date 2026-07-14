@@ -204,6 +204,8 @@ def _ci(boot):
 def summarize_dataset(meta, boot):
     """Point estimates (the reported numbers), CIs, and PAIRED Delta-vs-L11 CIs per readout."""
     summ = {"H": meta["H"], "K": meta["K"], "output_patch_size": meta["output_patch_size"],
+            "quantile_set": meta.get("quantile_set", "q21"),
+            "num_quantiles": int(meta["num_quantiles"]) if "num_quantiles" in meta else 21,
             "n_test_series": boot["n_test_series"], "n_test_windows": boot["n_test_windows"],
             "native": {}, "readouts": {}}
     lo, hi = _ci(boot["native_mase_boot"])
@@ -243,7 +245,8 @@ def summarize_dataset(meta, boot):
 # tables
 # --------------------------------------------------------------------------- #
 
-TABLE_FIELDS = ["dataset", "H", "K", "output_patch_size", "readout", "metric", "layer",
+TABLE_FIELDS = ["dataset", "H", "K", "output_patch_size", "quantile_set", "num_quantiles",
+                "readout", "metric", "layer",
                 "point", "ci_lo", "ci_hi",
                 "delta_vs_L11", "delta_ci_lo", "delta_ci_hi", "delta_above_zero",
                 "is_primary_comparison", "val_selected_layer",
@@ -257,6 +260,8 @@ def build_rows(all_summ):
         for tag, ds in datasets.items():
             base = {"dataset": tag, "H": ds["H"], "K": ds["K"],
                     "output_patch_size": ds["output_patch_size"],
+                    "quantile_set": ds["quantile_set"],
+                    "num_quantiles": ds["num_quantiles"],
                     "n_test_series": ds["n_test_series"],
                     "n_test_windows": ds["n_test_windows"],
                     "bootstrap_seed": BOOT_SEED, "n_replicates": BOOT_B_CLUSTER}
@@ -422,11 +427,15 @@ def main():
     for path in inputs:
         print(f"\n{'='*70}\n[{path.stem}] loading + validating inputs\n{'='*70}")
         meta, sid, data, native = load_inputs(path)
-        key = (meta["tag"], meta["H"], meta["K"])
+        # inputs written before the quantile-set ablation carry no quantile_set key = q21
+        qset = meta.get("quantile_set", "q21")
+        key = (meta["tag"], meta["H"], meta["K"], qset)
         if key in seen:
             raise RuntimeError(f"duplicate bootstrap input for {key} ({path.name})")
         seen.add(key)
-        exp_id = f"H{meta['H']}_K{meta['K']}"
+        # q21 keeps the legacy exp_id (existing raw/figure paths unchanged); other quantile
+        # sets get their own exp_id so their outputs coexist with q21's, never overwrite.
+        exp_id = f"H{meta['H']}_K{meta['K']}" + ("" if qset == "q21" else f"_{qset}")
         loaded.setdefault(exp_id, {})[meta["tag"]] = (meta, sid, data, native)
 
     all_summ, config_datasets = {}, {}
@@ -452,7 +461,8 @@ def main():
             "readouts": {"primary": primary, "controlled": controlled},
             "datasets": {tag: {"n_test_series": ds["n_test_series"],
                                "n_test_windows": ds["n_test_windows"],
-                               "H": ds["H"], "K": ds["K"]}
+                               "H": ds["H"], "K": ds["K"],
+                               "quantile_set": ds["quantile_set"]}
                          for tag, ds in datasets.items()}}
 
     rows = build_rows(all_summ)

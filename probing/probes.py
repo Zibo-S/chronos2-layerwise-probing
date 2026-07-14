@@ -117,6 +117,43 @@ CHRONOS2_QUANTILES = np.array(
     [0.01, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5,
      0.55, 0.6, 0.65, 0.7, 0.75, 0.8, 0.85, 0.9, 0.95, 0.99], dtype=np.float32)
 
+# Named quantile configurations for the probe-capacity ablation. The probe head is
+# Linear(d, Q*H), so Q directly scales the readout's parameter count (q1 = ~21x fewer
+# params than q21 at the same d/H). "q21" IS CHRONOS2_QUANTILES — selecting it reproduces
+# the committed numbers exactly (same default code path, seed 0, deterministic refit).
+QUANTILE_SETS = {
+    "q1":  np.array([0.5], dtype=np.float32),
+    "q9":  np.array([0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9], dtype=np.float32),
+    "q21": CHRONOS2_QUANTILES,
+}
+
+
+def validate_quantiles(quantiles):
+    """Validate a quantile vector (non-empty, all strictly inside (0,1), strictly increasing
+    — which also rejects duplicates) and return it as a float32 array."""
+    q = np.asarray(quantiles, dtype=np.float32)
+    assert q.ndim == 1 and len(q) > 0, f"quantiles must be a non-empty 1-D vector, got shape {q.shape}"
+    assert np.all((q > 0.0) & (q < 1.0)), f"quantile levels must lie strictly in (0, 1), got {q.tolist()}"
+    assert np.all(np.diff(q) > 0), f"quantile levels must be strictly increasing, got {q.tolist()}"
+    return q
+
+
+def median_index(quantiles):
+    """Index of the EXACT 0.5 level in `quantiles`, or None when absent. Median-based
+    metrics (MASE) must be skipped when this is None — never substitute a neighbor."""
+    idx = np.flatnonzero(np.isclose(np.asarray(quantiles, dtype=np.float64), 0.5))
+    return int(idx[0]) if len(idx) else None
+
+
+def _check_pred_shape(pred, target, q):
+    """Prediction-layout contract, asserted at every loss evaluation: (B, Q, H) — quantiles
+    on dim -2, horizon on dim -1 (Chronos-2's own layout, 'b q (n p)')."""
+    assert pred.ndim == 3, f"pred must be (B, Q, H), got {tuple(pred.shape)}"
+    assert pred.shape[-2] == q.numel(), (
+        f"pred has {pred.shape[-2]} quantile rows but {q.numel()} quantile levels were given")
+    assert target.ndim == 2 and pred.shape[-1] == target.shape[-1], (
+        f"pred horizon {pred.shape[-1]} != target horizon {tuple(target.shape)}")
+
 
 def chronos2_quantile_loss(pred, target, q):
     """Chronos-2's quantile (pinball) loss, formula + reduction verbatim from
@@ -127,7 +164,13 @@ def chronos2_quantile_loss(pred, target, q):
         q      : (Q,)      quantile levels    (broadcast to (1, Q, 1))
 
     loss = 2*|(y - q̂)(1[y<=q̂] - τ)|, reduced mean(horizon) -> sum(quantiles) -> mean(batch).
+
+    NOTE: sum over quantiles (Chronos-2's convention) makes raw values grow with Q, so
+    losses are NOT comparable across quantile sets — use mean_pinball_loss (= this / (2Q))
+    for cross-set comparisons. This function stays the training objective for every set so
+    the q21 configuration reproduces the committed numbers exactly.
     """
+    _check_pred_shape(pred, target, q)
     target = target.unsqueeze(1)                                       # (B, 1, H)
     qv = q.view(1, -1, 1)                                              # (1, Q, 1)
     ql = 2.0 * torch.abs((target - pred) * ((target <= pred).to(pred.dtype) - qv))
@@ -139,10 +182,25 @@ def chronos2_quantile_loss_per_window(pred, target, q):
     reduction as ``chronos2_quantile_loss``, but WITHOUT the final batch mean. Returns (B,);
     its ``.mean()`` is the reported scalar loss (same op chain), which is what lets the
     series-level cluster bootstrap resample test windows post hoc without refitting anything."""
+    _check_pred_shape(pred, target, q)
     target = target.unsqueeze(1)                                       # (B, 1, H)
     qv = q.view(1, -1, 1)                                              # (1, Q, 1)
     ql = 2.0 * torch.abs((target - pred) * ((target <= pred).to(pred.dtype) - qv))
     return ql.mean(dim=-1).sum(dim=-1)
+
+
+def mean_pinball_loss(pred, target, q):
+    """Plain pinball loss, mean over batch x time steps x quantiles — the metric that IS
+    comparable across quantile sets (q1/q9/q21), unlike Chronos-2's sum-over-quantiles
+    convention. Elementwise max(τe, (τ-1)e) with e = y - q̂ equals half the Chronos-2
+    elementwise term, so this = chronos2_quantile_loss / (2*Q) up to reduction-order
+    rounding. Evaluation only — never the training objective (rescaling the objective
+    would shift the AdamW weight-decay balance and move the committed q21 numbers).
+    At q = [0.5] this equals 0.5 * MAE."""
+    _check_pred_shape(pred, target, q)
+    error = target.unsqueeze(1) - pred                                 # (B, Q, H)
+    qv = q.view(1, -1, 1)                                              # (1, Q, 1)
+    return torch.maximum(qv * error, (qv - 1.0) * error).mean()
 
 
 def _fit_quantile_linear(Xtr, ytr, q, weight_decay, epochs, lr, device,
@@ -217,8 +275,14 @@ def quantile_probe(train_feats, train_labels, test_feats, test_labels,
         {"test_window_loss": {layer: np.float64 (n_test,)}}
       = the per-window (unreduced-over-batch) test loss of the same final refit; its mean
       equals out[layer]. Consumed by the series-level cluster bootstrap (run_bootstrap).
+
+    Whenever a diag is returned it also carries {"test_mean_pinball": {layer: float}} — the
+    quantile-count-normalized test pinball loss (mean over batch/steps/quantiles), the
+    metric comparable ACROSS quantile sets (out[layer] uses Chronos-2's sum-over-quantiles
+    convention and is only comparable within one set).
     """
     device = device or ("cuda" if torch.cuda.is_available() else "cpu")
+    quantiles = validate_quantiles(quantiles)
     Ytr = np.asarray(train_labels, dtype=np.float32)
     Yte = np.asarray(test_labels, dtype=np.float32)
     if Ytr.ndim != 2:
@@ -238,9 +302,15 @@ def quantile_probe(train_feats, train_labels, test_feats, test_labels,
     tr = torch.as_tensor(tr_np, dtype=torch.long, device=device)
 
     out = {}
-    diag = ({"wd": {}, "selection": {}, "history": {}, "test_median": {}, "test_window_loss": {}}
+    diag = ({"wd": {}, "selection": {}, "history": {}, "test_median": {}, "test_window_loss": {},
+             "test_mean_pinball": {}}
             if (collect_history or collect_test_median or collect_test_window_loss) else None)
-    q_mid = int(np.argmin(np.abs(np.asarray(quantiles, dtype=np.float64) - 0.5)))  # 0.5 row
+    q_mid = median_index(quantiles)                       # exact 0.5 row, or None
+    if collect_test_median and q_mid is None:
+        raise ValueError(
+            f"collect_test_median needs the 0.5 level in the quantile set, got "
+            f"{quantiles.tolist()} — median/MASE metrics are unavailable for this set; "
+            "skip them instead of substituting a neighboring quantile")
     for i in range(NUM_LAYERS):
         if wd_grid is None:
             wd = weight_decay
@@ -291,6 +361,8 @@ def quantile_probe(train_feats, train_labels, test_feats, test_labels,
             train_loss = chronos2_quantile_loss(m(Xtr).view(-1, Q, H), ytr, q).item()
             pred_te = m(Xte).view(-1, Q, H)
             out[i] = float(chronos2_quantile_loss(pred_te, yte, q).item())
+            if diag is not None:
+                diag["test_mean_pinball"][i] = float(mean_pinball_loss(pred_te, yte, q).item())
             if collect_test_median:
                 diag["test_median"][i] = pred_te[:, q_mid, :].cpu().numpy().astype(np.float32)
             if collect_test_window_loss:
@@ -388,6 +460,7 @@ def shared_forecast_token_probe(train_feats, train_labels, test_feats, test_labe
     collect_history / collect_test_median / collect_test_window_loss contract as quantile_probe
     (so the driver's MASE + bootstrap machinery works on this probe unchanged)."""
     device = device or ("cuda" if torch.cuda.is_available() else "cpu")
+    quantiles = validate_quantiles(quantiles)
     Ytr = np.asarray(train_labels, dtype=np.float32)
     Yte = np.asarray(test_labels, dtype=np.float32)
     if Ytr.ndim != 2:
@@ -416,9 +489,15 @@ def shared_forecast_token_probe(train_feats, train_labels, test_feats, test_labe
     tr = torch.as_tensor(tr_np, dtype=torch.long, device=device)
 
     out = {}
-    diag = ({"wd": {}, "selection": {}, "history": {}, "test_median": {}, "test_window_loss": {}}
+    diag = ({"wd": {}, "selection": {}, "history": {}, "test_median": {}, "test_window_loss": {},
+             "test_mean_pinball": {}}
             if (collect_history or collect_test_median or collect_test_window_loss) else None)
-    q_mid = int(np.argmin(np.abs(np.asarray(quantiles, dtype=np.float64) - 0.5)))
+    q_mid = median_index(quantiles)                       # exact 0.5 row, or None
+    if collect_test_median and q_mid is None:
+        raise ValueError(
+            f"collect_test_median needs the 0.5 level in the quantile set, got "
+            f"{quantiles.tolist()} — median/MASE metrics are unavailable for this set; "
+            "skip them instead of substituting a neighboring quantile")
     for i in range(NUM_LAYERS):
         if wd_grid is None:
             wd = weight_decay
@@ -463,6 +542,8 @@ def shared_forecast_token_probe(train_feats, train_labels, test_feats, test_labe
             train_loss = chronos2_quantile_loss(_apply_shared_head(m, Xtr, Q, P, H), ytr, q).item()
             pred_te = _apply_shared_head(m, Xte, Q, P, H)
             out[i] = float(chronos2_quantile_loss(pred_te, yte, q).item())
+            if diag is not None:
+                diag["test_mean_pinball"][i] = float(mean_pinball_loss(pred_te, yte, q).item())
             if collect_test_median:
                 diag["test_median"][i] = pred_te[:, q_mid, :].cpu().numpy().astype(np.float32)
             if collect_test_window_loss:

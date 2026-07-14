@@ -9,11 +9,13 @@ Additive only: reads results/perdataset_summary.json for the classification refe
 writes results/id_probing_summary.json + results/id_vs_classification_overlay.png. Does
 not touch the UEA cache or results.
 
-Run:  python -m experiments.run_id_forecasting
+Run:  python -m experiments.run_id_forecasting [--quantile-set {q1,q9,q21}]
 """
 
 from __future__ import annotations
 
+import argparse
+import csv
 import gc
 import json
 import math
@@ -26,12 +28,12 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 
-from probing.config import (NUM_LAYERS, LAST_LAYER, OUT_DIR, QUANT_DIR, CACHE_DIR, BOOT_DIR,
-                            OUTPUT_PATCH_SIZE)
+from probing.config import (NUM_LAYERS, LAST_LAYER, SEED, OUT_DIR, QUANT_DIR, CACHE_DIR,
+                            BOOT_DIR, OUTPUT_PATCH_SIZE)
 from probing.id_data import ID_DATASETS, build_windows
 from probing.extraction import extract_window_features, extract_kout_features
 from probing.probes import (ridge_regression_probe, binned_future_probe, quantile_probe,
-                            shared_forecast_token_probe)
+                            shared_forecast_token_probe, QUANTILE_SETS, median_index)
 
 N_BINS = 5
 # Chronos-2-native quantile probe (forecasting currency). wd_grid=None -> fixed weight_decay
@@ -39,6 +41,32 @@ N_BINS = 5
 QUANTILE_EPOCHS = 300
 QUANTILE_WD_GRID = (1e-5, 1e-4, 1e-3, 1e-2, 1e-1)
 POOLINGS = ("content", "reg")
+# Quantile-set ablation (--quantile-set): does the intermediate-layer advantage survive a
+# much smaller probe head? Output dim = Q*H, so q1/q9/q21 give 64/576/1344 outputs at H=64
+# (49,216 / 442,944 / 1,033,536 params at d=768). q21 is the default and keeps the LEGACY
+# output paths (results/quantile_loss/, id_probing_summary.json, bare bootstrap-input names)
+# so the committed numbers and run protocols are untouched; q1/q9 write to _<set>-suffixed
+# paths so configurations can never overwrite each other. The TRAINING objective is always
+# Chronos-2's quantile loss (sum over quantiles — q21 reproduces the committed numbers
+# exactly); the cross-set-comparable metric is mean_pinball_loss (= loss / 2Q), reported
+# alongside it everywhere. These globals are set by configure_quantile_set() from the CLI.
+QUANTILE_SET = "q21"
+QUANTILES = QUANTILE_SETS[QUANTILE_SET]
+QDIR = QUANT_DIR
+SUMMARY_PATH = OUT_DIR / "id_probing_summary.json"
+
+
+def configure_quantile_set(qset):
+    """Select the active quantile configuration and scope every output path to it."""
+    global QUANTILE_SET, QUANTILES, QDIR, SUMMARY_PATH
+    QUANTILE_SET, QUANTILES = qset, QUANTILE_SETS[qset]
+    if qset == "q21":                     # legacy paths — the committed default stays put
+        QDIR, SUMMARY_PATH = QUANT_DIR, OUT_DIR / "id_probing_summary.json"
+    else:
+        QDIR = OUT_DIR / f"quantile_loss_{qset}"
+        SUMMARY_PATH = OUT_DIR / f"id_probing_summary_{qset}.json"
+    for sub in ("content", "reg", "pooling_comparison", "training_curves"):
+        (QDIR / sub).mkdir(parents=True, exist_ok=True)
 # Chronos-aligned shared forecast-token probe: run the encoder with K = ceil(H / OUTPUT_PATCH_SIZE)
 # forecast slots (Chronos-2's own rule, pipeline.get_num_output_patches) and compare pooled vs
 # shared readouts, all derived from the SAME K-slot pass (a controlled comparison — attention is
@@ -208,6 +236,9 @@ def save_bootstrap_inputs(tag, w, result, diags, mase_pw):
 
     H, K = result["kslot"]["H"], result["kslot"]["K"]
     meta = {"tag": tag, "H": H, "K": K, "output_patch_size": OUTPUT_PATCH_SIZE,
+            "quantile_set": QUANTILE_SET,
+            "quantiles": [float(x) for x in QUANTILES],
+            "num_quantiles": int(len(QUANTILES)),
             "split_mode": w["meta"]["split_mode"],
             "n_test_windows": n_test, "n_test_series": int(len(np.unique(sid))),
             "primary_readouts": list(POOLINGS),
@@ -222,12 +253,17 @@ def save_bootstrap_inputs(tag, w, result, diags, mase_pw):
                          "native_mase_context": result["mase"]["native_mase"]},
             "val_selected_layer": val_layer,
             "val_loss_by_layer": val_loss}
-    out = BOOT_DIR / "inputs" / f"{tag}__H{H}_K{K}.npz"
+    # q21 keeps the legacy bare name (run_bootstrap's existing contract); other sets get a
+    # suffix so a q1/q9 run can never overwrite the q21 inputs (run_bootstrap groups them
+    # under distinct experiment ids).
+    suffix = "" if QUANTILE_SET == "q21" else f"__{QUANTILE_SET}"
+    out = BOOT_DIR / "inputs" / f"{tag}__H{H}_K{K}{suffix}.npz"
     np.savez(out, meta=json.dumps(meta), **arrays)
     print(f"  [saved]      {out}  ({n_test} windows, {meta['n_test_series']} series)")
 
 
 def run_dataset(tag):
+    HAS_MEDIAN = median_index(QUANTILES) is not None      # gates median/MASE-based outputs
     print(f"\n{'='*70}\n[{tag}] building windows\n{'='*70}")
     w = build_windows(tag)
     m = w["meta"]
@@ -250,14 +286,18 @@ def run_dataset(tag):
         # collect_history=True -> also returns per-layer train/val curves + wd-selection diag,
         # kept OUTSIDE `result` so the big summary JSON stays lean (histories only feed figures).
         qloss, qdiag = quantile_probe(f_tr, w["Y_train_traj"], f_te, w["Y_test_traj"],
+                                      quantiles=QUANTILES,
                                       epochs=QUANTILE_EPOCHS, wd_grid=QUANTILE_WD_GRID,
-                                      collect_history=True, collect_test_median=True,
+                                      collect_history=True, collect_test_median=HAS_MEDIAN,
                                       collect_test_window_loss=True)
         diags[pool] = qdiag
         result["poolings"][pool] = {
             "binned_accuracy": [float(binned[i]) for i in range(NUM_LAYERS)],
             "ridge_r2": [float(ridge[i]) for i in range(NUM_LAYERS)],
             "quantile_loss": [float(qloss[i]) for i in range(NUM_LAYERS)],  # Chronos-2 loss, lower=better
+            # quantile-count-normalized (mean over batch/steps/quantiles) — the only loss
+            # comparable ACROSS quantile sets (q1/q9/q21)
+            "mean_pinball_loss": [qdiag["test_mean_pinball"][i] for i in range(NUM_LAYERS)],
         }
         acc = np.array(result["poolings"][pool]["binned_accuracy"])
         r2 = np.array(result["poolings"][pool]["ridge_r2"])
@@ -285,23 +325,34 @@ def run_dataset(tag):
         ("fslot_K",   shared_forecast_token_probe,  fk_tr["fslot"],   fk_te["fslot"]),
     ]:
         loss, dg = probe(tr_f, w["Y_train_traj"], te_f, w["Y_test_traj"],
+                         quantiles=QUANTILES,
                          epochs=QUANTILE_EPOCHS, wd_grid=QUANTILE_WD_GRID,
-                         collect_history=True, collect_test_median=True,
+                         collect_history=True, collect_test_median=HAS_MEDIAN,
                          collect_test_window_loss=True)
         diags[name] = dg
-        result["kslot"]["probes"][name] = {"quantile_loss": [float(loss[i]) for i in range(NUM_LAYERS)]}
+        result["kslot"]["probes"][name] = {
+            "quantile_loss": [float(loss[i]) for i in range(NUM_LAYERS)],
+            "mean_pinball_loss": [dg["test_mean_pinball"][i] for i in range(NUM_LAYERS)],
+        }
         c = np.asarray(result["kslot"]["probes"][name]["quantile_loss"])
         print(f"  [{name:>10}] K={K} qloss: argmin L{int(c.argmin())}={c.min():.3f}")
 
-    # MASE comparison must run while the raw windows (X_test, Y_test_traj) are still alive
-    result["mase"], mase_pw = compute_mase(tag, w, diags)
-    for pool in POOLINGS:
-        mc = np.asarray(result["mase"]["poolings"][pool], float)
-        print(f"  [{pool:>7}] MASE: probe best L{int(mc.argmin())}={mc.min():.3f} "
-              f"| native Chronos-2 = {result['mase']['native_mase']:.3f}")
-
-    # per-window metrics + series ids for the post-hoc cluster bootstrap (run_bootstrap)
-    save_bootstrap_inputs(tag, w, result, diags, mase_pw)
+    # MASE comparison must run while the raw windows (X_test, Y_test_traj) are still alive.
+    # It needs the probes' 0.5-quantile forecast, so it is UNAVAILABLE (recorded as None,
+    # never approximated by a neighboring quantile) if the active set lacks the median —
+    # all three registered sets contain 0.5, so this guard is purely defensive.
+    if HAS_MEDIAN:
+        result["mase"], mase_pw = compute_mase(tag, w, diags)
+        for pool in POOLINGS:
+            mc = np.asarray(result["mase"]["poolings"][pool], float)
+            print(f"  [{pool:>7}] MASE: probe best L{int(mc.argmin())}={mc.min():.3f} "
+                  f"| native Chronos-2 = {result['mase']['native_mase']:.3f}")
+        # per-window metrics + series ids for the post-hoc cluster bootstrap (run_bootstrap)
+        save_bootstrap_inputs(tag, w, result, diags, mase_pw)
+    else:
+        result["mase"] = None
+        print(f"  [skip] MASE + bootstrap inputs: quantile set {QUANTILE_SET} has no 0.5 "
+              "level — median-based metrics unavailable (not substituted)")
 
     # free the (large) downloaded arrays before the next dataset
     del w
@@ -474,11 +525,12 @@ def make_quantile_by_layer(id_results):
         ("reg", "reg", "quantile_loss_by_layer_reg.png", "REG-token pooling")]:
         fig, ax = plt.subplots(figsize=(9, 5.5))
         _plot_by_layer(ax, id_results, [pool])
-        ax.set_title(f"Chronos-2 quantile loss per layer — {title}\n"
+        ax.set_title(f"Chronos-2 quantile loss per layer — {title} "
+                     f"[{QUANTILE_SET}, Q={len(QUANTILES)}]\n"
                      "LOWER = better; ★ = argmin (best) layer — the tunnel 'dip'")
         ax.legend(fontsize=8, loc="best")
         fig.tight_layout()
-        out = QUANT_DIR / sub / fname
+        out = QDIR / sub / fname
         fig.savefig(out, dpi=140, bbox_inches="tight"); plt.close(fig)
         print(f"  [saved] {out}")
 
@@ -488,11 +540,12 @@ def make_pooling_comparison(id_results):
     axes, per-layer quantile loss."""
     fig, ax = plt.subplots(figsize=(9, 5.5))
     _plot_by_layer(ax, id_results, POOLINGS)
-    ax.set_title("Pooling comparison: content (solid) vs REG (dashed)\n"
+    ax.set_title(f"Pooling comparison: content (solid) vs REG (dashed) "
+                 f"[{QUANTILE_SET}, Q={len(QUANTILES)}]\n"
                  "Chronos-2 quantile loss per layer; ★ = argmin")
     ax.legend(fontsize=7, ncol=2, loc="best")
     fig.tight_layout()
-    out = QUANT_DIR / "pooling_comparison" / "content_vs_reg.png"
+    out = QDIR / "pooling_comparison" / "content_vs_reg.png"
     fig.savefig(out, dpi=140, bbox_inches="tight"); plt.close(fig)
     print(f"  [saved] {out}")
 
@@ -524,7 +577,7 @@ def make_training_curves(id_diags):
             for ax in axes[-1]:   ax.set_xlabel("epoch")
             for ax in axes[:, 0]: ax.set_ylabel("quantile loss")
             fig.tight_layout(rect=[0, 0, 1, 0.96])
-            out = QUANT_DIR / "training_curves" / f"{tag}_{pool}.png"
+            out = QDIR / "training_curves" / f"{tag}_{pool}.png"
             fig.savefig(out, dpi=130, bbox_inches="tight"); plt.close(fig)
             print(f"  [saved] {out}")
 
@@ -535,8 +588,15 @@ def write_quantile_json(id_results, id_diags):
     histories are intentionally omitted (they live in the figures, not here)."""
     payload = {"config": {"epochs": QUANTILE_EPOCHS, "wd_grid": QUANTILE_WD_GRID,
                           "poolings": list(POOLINGS),
+                          "quantile_set": QUANTILE_SET,
+                          "quantiles": [float(x) for x in QUANTILES],
+                          "num_quantiles": int(len(QUANTILES)),
+                          "seed": SEED,
                           "note": "lower = better; argmin = tunnel dip. quantile_loss = full-train "
-                                  "refit test loss; wd_selection_val = per-candidate validation "
+                                  "refit test loss (Chronos-2 sum-over-quantiles convention — only "
+                                  "comparable within one quantile set); mean_pinball_loss = the same "
+                                  "predictions scored with mean over batch/steps/quantiles (comparable "
+                                  "across q1/q9/q21); wd_selection_val = per-candidate validation "
                                   "loss from the seed-based 80/20 carve."},
                "datasets": {}}
     for tag, res in id_results.items():
@@ -546,12 +606,13 @@ def write_quantile_json(id_results, id_diags):
             diag = id_diags[tag][pool]
             payload["datasets"][tag][pool] = {
                 "quantile_loss": [float(x) for x in ql],
+                "mean_pinball_loss": [float(x) for x in res["poolings"][pool]["mean_pinball_loss"]],
                 "argmin_layer": int(ql.argmin()), "min_loss": float(ql.min()),
                 "L0": float(ql[0]), "L11": float(ql[LAST_LAYER]),
                 "wd_selected": {str(k): v for k, v in diag["wd"].items()},
                 "wd_selection_val": {str(k): v for k, v in diag["selection"].items()},
             }
-    out = QUANT_DIR / "quantile_loss_results.json"
+    out = QDIR / "quantile_loss_results.json"
     json.dump(payload, open(out, "w"), indent=2)
     print(f"  [saved] {out}")
 
@@ -568,9 +629,10 @@ def make_shared_forecast_comparison(id_results):
     for ax, (tag, res) in zip(axes.ravel(), id_results.items()):
         color = ID_STYLE[tag]["color"]
         H, K = res["kslot"]["H"], res["kslot"]["K"]
-        styles = [("content_K", "-", "o", f"pooled content_K  Linear(768, 21·{H})"),
-                  ("reg_K",     "--", "s", f"pooled REG_K  Linear(768, 21·{H})"),
-                  ("fslot_K",   ":", "D", f"shared forecast-token  Linear(768, 21·{OUTPUT_PATCH_SIZE})")]
+        Q = len(QUANTILES)
+        styles = [("content_K", "-", "o", f"pooled content_K  Linear(768, {Q}·{H})"),
+                  ("reg_K",     "--", "s", f"pooled REG_K  Linear(768, {Q}·{H})"),
+                  ("fslot_K",   ":", "D", f"shared forecast-token  Linear(768, {Q}·{OUTPUT_PATCH_SIZE})")]
         for key, ls, mk, lab in styles:
             c = np.asarray(res["kslot"]["probes"][key]["quantile_loss"], float)
             ax.plot(xs, c, color=color, lw=2.0, ls=ls, marker=mk, ms=4, label=lab)
@@ -584,7 +646,7 @@ def make_shared_forecast_comparison(id_results):
     fig.suptitle("Chronos-alignment (controlled K-slot pass): pooled content / REG vs SHARED forecast-token\n"
                  "same quantile loss; LOWER = better; ★ = argmin", fontsize=13)
     fig.tight_layout(rect=[0, 0, 1, 0.94])
-    out = QUANT_DIR / "shared_forecast_vs_pooled.png"
+    out = QDIR / "shared_forecast_vs_pooled.png"
     fig.savefig(out, dpi=140, bbox_inches="tight"); plt.close(fig)
     print(f"  [saved] {out}")
 
@@ -615,7 +677,7 @@ def make_mase_figures(id_results):
                      f"{pool} pooling\nseasonal-naive scale m={M_SEASON}; LOWER = better; "
                      "★ = best probe layer", fontsize=13)
         fig.tight_layout(rect=[0, 0, 1, 0.94])
-        out = QUANT_DIR / f"mase_{pool}_vs_native.png"
+        out = QDIR / f"mase_{pool}_vs_native.png"
         fig.savefig(out, dpi=140, bbox_inches="tight"); plt.close(fig)
         print(f"  [saved] {out}")
 
@@ -647,7 +709,7 @@ def make_mase_kslot_figure(id_results):
     fig.suptitle("MASE (controlled K-slot pass): pooled content/REG vs SHARED forecast-token vs native\n"
                  f"seasonal-naive m={M_SEASON}; LOWER = better; ★ = best probe layer", fontsize=13)
     fig.tight_layout(rect=[0, 0, 1, 0.94])
-    out = QUANT_DIR / "shared_forecast_mase.png"
+    out = QDIR / "shared_forecast_mase.png"
     fig.savefig(out, dpi=140, bbox_inches="tight"); plt.close(fig)
     print(f"  [saved] {out}")
 
@@ -656,6 +718,7 @@ def write_mase_json(id_results):
     """Focused MASE JSON: per dataset the native Chronos-2 MASE + per-pooling per-layer probe
     MASE, argmin, and the probe-vs-native ratio (<1 = probe beat the native median)."""
     payload = {"config": {"seasonal_m": M_SEASON, "poolings": list(POOLINGS),
+                          "quantile_set": QUANTILE_SET,
                           "note": "MASE of the q=0.5 forecast, un-transformed to raw units "
                                   "(y = mu_ctx + sigma_ctx*sinh(z)); denominator = in-context "
                                   "seasonal-naive scale, identical for probe and native. "
@@ -676,12 +739,46 @@ def write_mase_json(id_results):
                 "best_probe_over_native": float(c[bi] / ms["native_mase"]),
             }
         payload["datasets"][tag] = ent
-    out = QUANT_DIR / "mase_results.json"
+    out = QDIR / "mase_results.json"
     json.dump(payload, open(out, "w"), indent=2)
     print(f"  [saved] {out}")
 
 
+def write_results_table(id_results):
+    """Flat per-row CSV over dataset x representation x layer for the quantile probes.
+    The quantile configuration is a column AND part of the filename, so tables from
+    different sets can never overwrite each other and rows stay self-describing when
+    concatenated. mean_pinball_loss is the cross-set-comparable metric; quantile_loss
+    (Chronos-2 sum-over-quantiles convention) is comparable only within one set."""
+    fields = ["dataset", "representation", "layer", "quantile_set", "num_quantiles",
+              "quantiles", "seed", "mean_pinball_loss", "quantile_loss"]
+    qstr = " ".join(f"{float(x):g}" for x in QUANTILES)
+    rows = []
+    for tag, res in id_results.items():
+        groups = [(pool, res["poolings"][pool]) for pool in POOLINGS]
+        groups += list(res["kslot"]["probes"].items())
+        for rep, ent in groups:
+            for layer in range(NUM_LAYERS):
+                rows.append({"dataset": tag, "representation": rep, "layer": layer,
+                             "quantile_set": QUANTILE_SET, "num_quantiles": len(QUANTILES),
+                             "quantiles": qstr, "seed": SEED,
+                             "mean_pinball_loss": ent["mean_pinball_loss"][layer],
+                             "quantile_loss": ent["quantile_loss"][layer]})
+    out = QDIR / f"probe_results_table__{QUANTILE_SET}.csv"
+    with open(out, "w", newline="") as f:
+        wr = csv.DictWriter(f, fieldnames=fields)
+        wr.writeheader()
+        wr.writerows(rows)
+    print(f"  [saved] {out}  ({len(rows)} rows)")
+
+
 def main():
+    Q = len(QUANTILES)
+    print(f"[config] quantile_set={QUANTILE_SET}  Q={Q}  "
+          f"quantiles={[float(x) for x in QUANTILES]}")
+    print(f"[config] pooled probe head Linear(768, Q*H): at H=64 -> output_dim={Q*64}, "
+          f"params={768*Q*64 + Q*64:,}")
+    print(f"[config] outputs -> {QDIR}  |  summary -> {SUMMARY_PATH}")
     # classification reference curves (content pooling) from the committed UEA summary
     summ = json.load(open(OUT_DIR / "perdataset_summary.json"))["datasets"]
     uea_curves = {name: summ[name]["per_layer_accuracy"]["ID"] for name in UEA_REF}
@@ -723,16 +820,23 @@ def main():
                    "id_datasets": list(ID_DATASETS), "uea_reference": UEA_REF,
                    "binned_chance": 1.0 / N_BINS,
                    "quantile_epochs": QUANTILE_EPOCHS, "quantile_wd_grid": QUANTILE_WD_GRID,
-                   "quantile_note": "Chronos-2-native probe: nn.Linear(768, 21*H) trained + scored "
+                   "quantile_set": QUANTILE_SET,
+                   "quantiles": [float(x) for x in QUANTILES],
+                   "num_quantiles": int(Q),
+                   "seed": SEED,
+                   "quantile_note": f"Chronos-2-native probe: nn.Linear(768, {Q}*H) trained + scored "
                                     "with Chronos-2's quantile loss on arcsinh trajectory labels "
                                     "(AdamW, decay on weights only, bias undecayed); per-layer TEST "
-                                    "loss, LOWER=better (tunnel signature = argmin). Caveat: the wd "
+                                    "loss, LOWER=better (tunnel signature = argmin). quantile_loss "
+                                    "uses the sum-over-quantiles convention (comparable only within "
+                                    "one quantile set); mean_pinball_loss (= loss/2Q) is the "
+                                    "cross-set-comparable companion. Caveat: the wd "
                                     "selection carve is random over heavily overlapping windows "
                                     "(stride 64 << span 576), so val loss is optimistic — same "
                                     "caveat applies to the ridge probe's alpha selection.",
                    "kslot_note": "content_K/reg_K/fslot_K come from ONE model.encode pass with "
                                  "K=ceil(H/output_patch_size) forecast slots (Chronos-2's own rule); "
-                                 "the shared fslot_K probe is one fresh Linear(768, 21*16) applied to "
+                                 f"the shared fslot_K probe is one fresh Linear(768, {Q}*16) applied to "
                                  "every slot, patches concatenated then trimmed to H. Pooled vs shared "
                                  "differ in representation AND readout capacity — a Chronos-alignment/"
                                  "capacity ablation, not a pure representation-location comparison.",
@@ -744,21 +848,33 @@ def main():
         "uea_classification_reference": {name: uea_curves[name] for name in UEA_REF},
         "late_layer_retention": retention,
     }
-    with open(OUT_DIR / "id_probing_summary.json", "w") as f:
+    with open(SUMMARY_PATH, "w") as f:
         json.dump(summary, f, indent=2)
-    print(f"  [saved] {OUT_DIR / 'id_probing_summary.json'}")
+    print(f"  [saved] {SUMMARY_PATH}")
 
-    make_overlay(id_results, uea_curves)
-    make_tsonly(id_results, uea_curves)
-    make_dropoff(id_results, uea_curves)
+    # The classification-overlay figures depend only on the binned/ridge probes, which are
+    # quantile-independent (identical numbers for every set) — only the q21 run regenerates
+    # them, so a q1/q9 run can never touch the committed q21-era figures in results/.
+    if QUANTILE_SET == "q21":
+        make_overlay(id_results, uea_curves)
+        make_tsonly(id_results, uea_curves)
+        make_dropoff(id_results, uea_curves)
+    else:
+        print("  [skip] classification-overlay figures (quantile-independent; owned by the q21 run)")
     make_quantile_by_layer(id_results)
     make_pooling_comparison(id_results)
     make_shared_forecast_comparison(id_results)
     make_training_curves(id_diags)
     write_quantile_json(id_results, id_diags)
-    make_mase_figures(id_results)
-    make_mase_kslot_figure(id_results)
-    write_mase_json(id_results)
+    write_results_table(id_results)
+    has_mase = all(res["mase"] is not None for res in id_results.values())
+    if has_mase:
+        make_mase_figures(id_results)
+        make_mase_kslot_figure(id_results)
+        write_mase_json(id_results)
+    else:
+        print(f"  [skip] MASE figures/JSON: quantile set {QUANTILE_SET} has no 0.5 level "
+              "— recorded as unavailable, not substituted")
 
     # ---- concise report (no interpretation) ----
     print(f"\n{'='*70}\nID PROBING SUMMARY (no interpretation)\n{'='*70}")
@@ -782,15 +898,24 @@ def main():
         print(f"    {tag:>26}:  best L{int(ql.argmin())}={ql.min():.3f}  |  "
               f"L0={ql[0]:.3f}  L11={ql[LAST_LAYER]:.3f}")
     # MASE (content) — probe median forecast vs native Chronos-2 on the same test windows
-    print(f"\n  MASE, median forecast  (content pooling; m={M_SEASON}; LOWER=better):")
-    for tag, r in id_results.items():
-        mc = np.array(r["mase"]["poolings"]["content"])
-        nat = r["mase"]["native_mase"]
-        print(f"    {tag:>26}:  probe best L{int(mc.argmin())}={mc.min():.3f}  "
-              f"L11={mc[LAST_LAYER]:.3f}  |  native={nat:.3f}  "
-              f"(best/native={mc.min()/nat:.2f})")
+    if has_mase:
+        print(f"\n  MASE, median forecast  (content pooling; m={M_SEASON}; LOWER=better):")
+        for tag, r in id_results.items():
+            mc = np.array(r["mase"]["poolings"]["content"])
+            nat = r["mase"]["native_mase"]
+            print(f"    {tag:>26}:  probe best L{int(mc.argmin())}={mc.min():.3f}  "
+                  f"L11={mc[LAST_LAYER]:.3f}  |  native={nat:.3f}  "
+                  f"(best/native={mc.min()/nat:.2f})")
     print(f"\n  binned chance = {1/N_BINS:.2f}")
 
 
 if __name__ == "__main__":
+    ap = argparse.ArgumentParser(
+        description="ID forecasting probes. --quantile-set selects the probe-head quantile "
+                    "configuration (capacity ablation); q21 is the committed default and "
+                    "reproduces the existing numbers/paths exactly.")
+    ap.add_argument("--quantile-set", choices=sorted(QUANTILE_SETS), default="q21",
+                    help="q1: median only (49,216 params at d=768/H=64); q9: deciles "
+                         "(442,944); q21: Chronos-2's native levels (1,033,536; default)")
+    configure_quantile_set(ap.parse_args().quantile_set)
     main()
