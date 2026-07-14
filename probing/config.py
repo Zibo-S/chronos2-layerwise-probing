@@ -22,8 +22,11 @@ NUM_LAYERS = 12                # Chronos-2 encoder blocks
 MIDDLE_BAND = list(range(3, 9))  # a-priori "middle" layers L3..L8 (inclusive)
 LAST_LAYER = NUM_LAYERS - 1    # L11
 # Chronos-2 output patch size (== input_patch_size; verified from amazon/chronos-2 config.json).
-# The number of native forecast slots for a horizon H is K = H / OUTPUT_PATCH_SIZE, so this is
-# what makes the shared forecast-token extractor/probe horizon-aware instead of hardcoding K=4.
+# The number of native forecast slots for a horizon H is K = ceil(H / OUTPUT_PATCH_SIZE) —
+# Chronos-2's own rule (pipeline.get_num_output_patches); predictions for the last partial
+# patch are trimmed to H. This is what makes the shared forecast-token extractor/probe
+# horizon-aware instead of hardcoding K=4. extract_kout_features asserts the loaded model's
+# chronos_config.output_patch_size matches this constant, so the two can never drift apart.
 OUTPUT_PATCH_SIZE = 16
 BOOT_B = 2000                  # bootstrap resamples for confidence intervals
 

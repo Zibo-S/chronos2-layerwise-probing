@@ -420,7 +420,7 @@ def make_training_curves(id_diags):
     Answers 'did each layer's probe converge, and where does it start to overfit?'."""
     for tag, pools in id_diags.items():
         for pool, diag in pools.items():
-            if pool not in POOLINGS:                       # skip the K=4 diags (content_k4/reg_k4/fslot_k4)
+            if pool not in POOLINGS:                       # skip the K-slot diags (content_K/reg_K/fslot_K)
                 continue
             hist = diag["history"]                        # {layer(int): {"train":[...], "val":[...]}}
             fig, axes = plt.subplots(3, 4, figsize=(16, 10), sharex=True)
@@ -537,14 +537,14 @@ def make_mase_figures(id_results):
         print(f"  [saved] {out}")
 
 
-def make_mase_k4_figure(id_results):
-    """MASE under the controlled K-slot pass: pooled content_k4 (solid) / reg_k4 (dashed) vs the
-    SHARED forecast-token probe fslot_k4 (dotted), plus native Chronos-2 (black dashed). One panel
+def make_mase_kslot_figure(id_results):
+    """MASE under the controlled K-slot pass: pooled content_K (solid) / reg_K (dashed) vs the
+    SHARED forecast-token probe fslot_K (dotted), plus native Chronos-2 (black dashed). One panel
     per dataset; ★ = best probe layer; LOWER = better. Companion to make_shared_forecast_comparison
     (that one is quantile loss, this one is MASE of the median forecast). Same interpretation caveat:
-    pooled vs shared differ in representation AND readout capacity (4x fewer params + weight sharing)."""
+    pooled vs shared differ in representation AND readout capacity (~K× fewer params + weight sharing)."""
     xs = np.arange(NUM_LAYERS)
-    keys = [("content_k4", "-", "o"), ("reg_k4", "--", "s"), ("fslot_k4", ":", "D")]
+    keys = [("content_K", "-", "o"), ("reg_K", "--", "s"), ("fslot_K", ":", "D")]
     fig, axes = plt.subplots(2, 2, figsize=(13, 9), sharex=True)
     for ax, (tag, res) in zip(axes.ravel(), id_results.items()):
         color = ID_STYLE[tag]["color"]; ms = res["mase"]
@@ -556,7 +556,8 @@ def make_mase_k4_figure(id_results):
                     markeredgewidth=0.5, zorder=5)
         ax.axhline(ms["native_mase"], color="k", ls="--", lw=1.3,
                    label=f"native Chronos-2 = {ms['native_mase']:.3f}")
-        ax.set_title(ID_STYLE[tag]["label"], fontsize=11)
+        ax.set_title(f"{ID_STYLE[tag]['label']}  (H={res['kslot']['H']}, K={res['kslot']['K']})",
+                     fontsize=11)
         ax.set_xticks(xs); ax.grid(alpha=0.3); ax.legend(fontsize=7, loc="best")
     for ax in axes[-1]:   ax.set_xlabel("encoder layer")
     for ax in axes[:, 0]: ax.set_ylabel("test MASE")
@@ -571,7 +572,7 @@ def make_mase_k4_figure(id_results):
 def write_mase_json(id_results):
     """Focused MASE JSON: per dataset the native Chronos-2 MASE + per-pooling per-layer probe
     MASE, argmin, and the probe-vs-native ratio (<1 = probe beat the native median)."""
-    payload = {"config": {"seasonal_m": M_SEASON, "H": 64, "poolings": list(POOLINGS),
+    payload = {"config": {"seasonal_m": M_SEASON, "poolings": list(POOLINGS),
                           "note": "MASE of the q=0.5 forecast, un-transformed to raw units "
                                   "(y = mu_ctx + sigma_ctx*sinh(z)); denominator = in-context "
                                   "seasonal-naive scale, identical for probe and native. "
@@ -580,6 +581,7 @@ def write_mase_json(id_results):
     for tag, res in id_results.items():
         ms = res["mase"]
         ent = {"native_mase": ms["native_mase"], "seasonal_m": ms["seasonal_m"],
+               "H": res["kslot"]["H"], "K": res["kslot"]["K"],
                "n_denominator_clamped": ms["n_denominator_clamped"], "poolings": {}}
         for pool, curve in ms["poolings"].items():
             c = np.asarray(curve, float)
@@ -645,6 +647,12 @@ def main():
                                     "selection carve is random over heavily overlapping windows "
                                     "(stride 64 << span 576), so val loss is optimistic — same "
                                     "caveat applies to the ridge probe's alpha selection.",
+                   "kslot_note": "content_K/reg_K/fslot_K come from ONE model.encode pass with "
+                                 "K=ceil(H/output_patch_size) forecast slots (Chronos-2's own rule); "
+                                 "the shared fslot_K probe is one fresh Linear(768, 21*16) applied to "
+                                 "every slot, patches concatenated then trimmed to H. Pooled vs shared "
+                                 "differ in representation AND readout capacity — a Chronos-alignment/"
+                                 "capacity ablation, not a pure representation-location comparison.",
                    "dataset_note": "All four ID datasets are long-series hourly (electricity, "
                                    "kdd_cup_2018, pedestrian_counts, uber_tlc_hourly) and use the "
                                    "within_series temporal split; the earlier solar_1h label "
@@ -666,7 +674,7 @@ def main():
     make_training_curves(id_diags)
     write_quantile_json(id_results, id_diags)
     make_mase_figures(id_results)
-    make_mase_k4_figure(id_results)
+    make_mase_kslot_figure(id_results)
     write_mase_json(id_results)
 
     # ---- concise report (no interpretation) ----
