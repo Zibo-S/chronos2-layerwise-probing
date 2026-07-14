@@ -32,13 +32,15 @@ See README > "Adding a new probe".
 
 from __future__ import annotations
 
+import math
+
 import numpy as np
 import torch
 from sklearn.linear_model import LogisticRegression, Ridge
 from sklearn.metrics import r2_score
 from sklearn.preprocessing import StandardScaler
 
-from probing.config import NUM_LAYERS, SEED
+from probing.config import NUM_LAYERS, SEED, OUTPUT_PATCH_SIZE
 
 
 # ===================== ID forecasting probes (Phase 0, linear) ==================== #
@@ -283,17 +285,21 @@ def quantile_probe(train_feats, train_labels, test_feats, test_labels,
 # ---- Chronos-ALIGNED shared forecast-token probe -------------------------------------- #
 # One shared Linear(768, Q*output_patch_size) reads EACH native forecast-slot hidden state
 # (extract_kout_features -> (n, K, 768)); the K predicted output patches are laid end-to-end
-# along the horizon. Structurally mirrors Chronos-2's own head (shared weights across forecast
-# tokens); strictly LINEAR with FRESHLY-INITIALIZED weights (native head is a nonlinear
-# ResidualBlock — this is a lower-capacity analogue, NOT the pretrained head). 4x fewer params.
+# along the horizon and trimmed to H (K = ceil(H/P), the native slot count). Structurally
+# mirrors Chronos-2's own head (shared weights across forecast tokens); strictly LINEAR with
+# FRESHLY-INITIALIZED weights (native head is a nonlinear ResidualBlock — this is a
+# lower-capacity analogue, NOT the pretrained head). K× fewer params than the pooled probe.
 
-def _apply_shared_head(lin, X, Q, P):
-    """Apply one shared Linear(d, Q*P) to every forecast slot of X (n, K, d), then lay the K
-    predicted patches end-to-end -> (n, Q, K*P). Mirrors 'b n (q p) -> b q (n p)' (concatenate,
-    not add)."""
+def _apply_shared_head(lin, X, Q, P, H):
+    """Apply one shared Linear(d, Q*P) to every forecast slot of X (n, K, d), lay the K
+    predicted patches end-to-end -> (n, Q, K*P), then trim to the requested horizon ->
+    (n, Q, H). The patch layout mirrors the native 'b n (q p) -> b q (n p)' rearrange
+    (concatenate, not add); the trim mirrors native inference for H not a multiple of P
+    (the pipeline predicts K=ceil(H/P) whole patches and drops the tail; equivalently the
+    native loss zero-pads + masks the target, model.py _compute_loss)."""
     n, K, _ = X.shape
     out = lin(X).view(n, K, Q, P)                            # (n, K, Q, P)
-    return out.permute(0, 2, 1, 3).reshape(n, Q, K * P)      # (n, Q, H)
+    return out.permute(0, 2, 1, 3).reshape(n, Q, K * P)[:, :, :H]
 
 
 def _fit_slot_scaler(X):                                     # X: (n, K, d)
@@ -309,8 +315,9 @@ def _slot_transform(sc, X):
 def _fit_shared_forecast_linear(Xtr, ytr, q, P, weight_decay, epochs, lr, device,
                                 Xval=None, yval=None, history=None):
     """Fit the shared-slot linear head with Chronos-2's quantile loss. Same optimizer convention
-    as _fit_quantile_linear (AdamW, decay on weight only; re-seeded each call)."""
-    Q = len(q)
+    as _fit_quantile_linear (AdamW, decay on weight only; re-seeded each call). The head predicts
+    K whole P-step patches; loss is computed on the first H = ytr.shape[1] steps (trimmed)."""
+    Q, H = len(q), ytr.shape[1]
     torch.manual_seed(SEED)
     lin = torch.nn.Linear(Xtr.shape[-1], Q * P).to(device)
     opt = torch.optim.AdamW(
@@ -318,21 +325,21 @@ def _fit_shared_forecast_linear(Xtr, ytr, q, P, weight_decay, epochs, lr, device
          {"params": [lin.bias],   "weight_decay": 0.0}], lr=lr)
     lin.train()
     for _ in range(epochs):
-        loss = chronos2_quantile_loss(_apply_shared_head(lin, Xtr, Q, P), ytr, q)
+        loss = chronos2_quantile_loss(_apply_shared_head(lin, Xtr, Q, P, H), ytr, q)
         if history is not None:
             history["train"].append(loss.item())
             if Xval is not None:
                 with torch.no_grad():
                     history["val"].append(
-                        chronos2_quantile_loss(_apply_shared_head(lin, Xval, Q, P), yval, q).item())
+                        chronos2_quantile_loss(_apply_shared_head(lin, Xval, Q, P, H), yval, q).item())
         opt.zero_grad(set_to_none=True)
         loss.backward()
         opt.step()
     if history is not None:
         with torch.no_grad():
-            history["train"].append(chronos2_quantile_loss(_apply_shared_head(lin, Xtr, Q, P), ytr, q).item())
+            history["train"].append(chronos2_quantile_loss(_apply_shared_head(lin, Xtr, Q, P, H), ytr, q).item())
             if Xval is not None:
-                history["val"].append(chronos2_quantile_loss(_apply_shared_head(lin, Xval, Q, P), yval, q).item())
+                history["val"].append(chronos2_quantile_loss(_apply_shared_head(lin, Xval, Q, P, H), yval, q).item())
     lin.eval()
     return lin
 
@@ -340,13 +347,20 @@ def _fit_shared_forecast_linear(Xtr, ytr, q, P, weight_decay, epochs, lr, device
 def shared_forecast_token_probe(train_feats, train_labels, test_feats, test_labels,
                                 quantiles=CHRONOS2_QUANTILES, epochs=300, lr=1e-2,
                                 weight_decay=1e-3, wd_grid=None, device=None,
-                                collect_history=False, collect_test_median=False):
+                                collect_history=False, collect_test_median=False,
+                                output_patch_size=OUTPUT_PATCH_SIZE):
     """Chronos-aligned quantile probe. ONE shared linear head reads each forecast-slot hidden
     state (extract_kout_features -> (n, K, 768)) and emits that slot's output patch of Q quantiles
-    x output_patch_size steps; the K patches concatenate along the horizon.
+    x output_patch_size steps; the K patches concatenate along the horizon and are trimmed to H.
 
-    train_feats/test_feats   : {layer: (n, K, 768)} forecast-slot states (3-D, NOT pooled).
-    train_labels/test_labels : (n, H) arcsinh trajectories, H = K * output_patch_size.
+    train_feats/test_feats   : {layer: (n, K, 768)} forecast-slot states (3-D, NOT pooled),
+                               with K = ceil(H / output_patch_size) (the native slot count).
+    train_labels/test_labels : (n, H) arcsinh trajectories; H need NOT be a multiple of
+                               output_patch_size — the head predicts K whole patches and the
+                               prediction is trimmed to H (native inference does the same).
+    output_patch_size        : the MODEL's output patch size (a Chronos-2 config fact), NOT
+                               inferred from H — extract_kout_features asserts the loaded
+                               model agrees with this constant.
     Returns {layer: test_loss}, LOWER = better — directly comparable to quantile_probe. Same
     collect_history / collect_test_median contract as quantile_probe (so the driver's MASE
     machinery works on this probe unchanged)."""
@@ -361,9 +375,11 @@ def shared_forecast_token_probe(train_feats, train_labels, test_feats, test_labe
                          "— use extract_kout_features, not extract_window_features")
     K = f0.shape[1]
     Q, H = len(quantiles), Ytr.shape[1]
-    if H % K != 0:
-        raise ValueError(f"H={H} not divisible by K={K} forecast slots")
-    P = H // K                                              # output_patch_size (=16 for H=64, K=4)
+    P = int(output_patch_size)
+    if K != math.ceil(H / P):
+        raise ValueError(
+            f"features carry K={K} forecast slots, but horizon H={H} with output_patch_size={P} "
+            f"needs K=ceil(H/P)={math.ceil(H / P)} — re-extract with the matching horizon")
 
     q = torch.as_tensor(quantiles, dtype=torch.float32, device=device)
     ytr = torch.as_tensor(Ytr, device=device)
@@ -395,7 +411,7 @@ def shared_forecast_token_probe(train_feats, train_labels, test_feats, test_labe
             for cand in wd_grid:
                 m = _fit_shared_forecast_linear(Xtr_s, ytr[tr], q, P, cand, epochs, lr, device)
                 with torch.no_grad():
-                    v = chronos2_quantile_loss(_apply_shared_head(m, Xva_s, Q, P), ytr[va], q).item()
+                    v = chronos2_quantile_loss(_apply_shared_head(m, Xva_s, Q, P, H), ytr[va], q).item()
                 sel[cand] = v
                 if v < best_val:
                     best_val, best_wd = v, cand
@@ -421,8 +437,8 @@ def shared_forecast_token_probe(train_feats, train_labels, test_feats, test_labe
         Xte = torch.as_tensor(_slot_transform(sc, test_feats[i]), dtype=torch.float32, device=device)
         m = _fit_shared_forecast_linear(Xtr, ytr, q, P, wd, epochs, lr, device)
         with torch.no_grad():
-            train_loss = chronos2_quantile_loss(_apply_shared_head(m, Xtr, Q, P), ytr, q).item()
-            pred_te = _apply_shared_head(m, Xte, Q, P)
+            train_loss = chronos2_quantile_loss(_apply_shared_head(m, Xtr, Q, P, H), ytr, q).item()
+            pred_te = _apply_shared_head(m, Xte, Q, P, H)
             out[i] = float(chronos2_quantile_loss(pred_te, yte, q).item())
             if collect_test_median:
                 diag["test_median"][i] = pred_te[:, q_mid, :].cpu().numpy().astype(np.float32)

@@ -178,13 +178,17 @@ def extract_window_features(tag, split, contexts, y, pooling="content", batch_si
 # ----------------------------------------------------------------------- #
 # K-output-patch extraction. extract_window_features goes through pipeline.embed(),
 # which hardcodes num_output_patches=1 (a single forecast slot). This runs the encoder
-# with K forecast tokens — Chronos-2's native config for H = K*output_patch_size — via a
-# direct model.encode(..., num_output_patches=K) call, and returns content/REG/forecast-slot
-# states (plus the post-final-norm state) from that ONE pass. Cached under a ``K<K>`` tag.
+# with K = ceil(horizon / output_patch_size) forecast tokens — Chronos-2's own rule for a
+# horizon-H forecast (pipeline.get_num_output_patches) — via a direct
+# model.encode(..., num_output_patches=K) call, and returns content/REG/forecast-slot
+# states (plus the post-final-norm state) from that ONE pass. Cached under a
+# ``K<K>_H<horizon>`` tag so different horizons never collide.
 # ----------------------------------------------------------------------- #
 
-def extract_kout_features(tag, split, contexts, y, num_output_patches=4, batch_size=128):
-    """content / REG / forecast-slot states from ONE num_output_patches=K forward pass.
+def extract_kout_features(tag, split, contexts, y, horizon, batch_size=128):
+    """content / REG / forecast-slot states from ONE num_output_patches=K forward pass,
+    with K = ceil(horizon / OUTPUT_PATCH_SIZE) derived here (NOT passed in) so extraction
+    and the shared probe can never disagree on the slot count.
 
     Because the encoder's self-attention is NON-causal, the context/REG states under K forecast
     tokens differ from the K=1 cache; we therefore re-derive content_K and reg_K from THIS pass
@@ -199,8 +203,8 @@ def extract_kout_features(tag, split, contexts, y, num_output_patches=4, batch_s
       feats = {"content": {L:(n,768)}, "reg": {L:(n,768)}, "fslot": {L:(n,K,768)}}  L in 0..11
       final = {"content": (n,768),     "reg": (n,768),     "fslot": (n,K,768)}       post-final-norm
     """
-    K = num_output_patches
-    cache_path = _cache_path(f"IDF_{tag}", split, None, f"K{K}")
+    K = math.ceil(horizon / OUTPUT_PATCH_SIZE)   # native rule: pipeline.get_num_output_patches
+    cache_path = _cache_path(f"IDF_{tag}", split, None, f"K{K}_H{horizon}")
     types = ("content", "reg", "fslot")
     if cache_path.exists():
         d = np.load(cache_path, allow_pickle=True)
@@ -223,8 +227,8 @@ def extract_kout_features(tag, split, contexts, y, num_output_patches=4, batch_s
     model.eval()                                           # no_grad does NOT disable dropout; eval does
     device = next(model.parameters()).device
     patch_size = model.chronos_config.input_patch_size
-    # K forecast slots must match the model's actual output patch size (the caller derives
-    # K = H / OUTPUT_PATCH_SIZE from that same constant). Fail loudly if a swapped-in model differs.
+    # K was derived above as ceil(horizon / OUTPUT_PATCH_SIZE) from the config constant; fail
+    # loudly if a swapped-in model's actual output patch size differs from that constant.
     assert model.chronos_config.output_patch_size == OUTPUT_PATCH_SIZE, (
         f"model output_patch_size {model.chronos_config.output_patch_size} != config "
         f"OUTPUT_PATCH_SIZE {OUTPUT_PATCH_SIZE}; K was derived from the constant — update config")

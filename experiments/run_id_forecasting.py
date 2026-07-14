@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import gc
 import json
+import math
 import warnings
 
 warnings.filterwarnings("ignore")  # quiet Ridge ill-conditioning + HF/aeon deprecation noise
@@ -37,11 +38,12 @@ N_BINS = 5
 QUANTILE_EPOCHS = 300
 QUANTILE_WD_GRID = (1e-5, 1e-4, 1e-3, 1e-2, 1e-1)
 POOLINGS = ("content", "reg")
-# Chronos-aligned shared forecast-token probe: run the encoder with K = H / OUTPUT_PATCH_SIZE
-# forecast slots (Chronos-2's native config for horizon H) and compare pooled vs shared readouts,
-# all derived from the SAME K-slot pass (a controlled comparison — attention is non-causal, so K
-# changes the context/REG states too). K is derived per-dataset from the actual label horizon in
-# run_dataset, NOT hardcoded (H=64, output_patch_size=16 -> K=4 for the current datasets).
+# Chronos-aligned shared forecast-token probe: run the encoder with K = ceil(H / OUTPUT_PATCH_SIZE)
+# forecast slots (Chronos-2's own rule, pipeline.get_num_output_patches) and compare pooled vs
+# shared readouts, all derived from the SAME K-slot pass (a controlled comparison — attention is
+# non-causal, so K changes the context/REG states too). K is derived per-dataset from the actual
+# label horizon, NOT hardcoded (H=64, output_patch_size=16 -> K=4 for the current datasets); for
+# H not a multiple of 16 the shared probe predicts K whole patches and trims to H (native-style).
 # UEA classification reference = the 6 non-saturated datasets used for Phase 0 conclusions.
 UEA_REF = ["UWaveGestureLibrary", "EthanolConcentration", "SelfRegulationSCP1",
            "Handwriting", "LSST", "SelfRegulationSCP2"]
@@ -188,33 +190,28 @@ def run_dataset(tag):
               f"| qloss: argmin L{int(ql.argmin())}={ql.min():.3f}")
 
     # ---- K CONTROLLED comparison: content / REG / shared-forecast, all from ONE K-slot pass ----
-    # content_k4 & reg_k4 use the pooled quantile_probe; fslot_k4 uses the shared forecast-token
+    # content_K & reg_K use the pooled quantile_probe; fslot_K uses the shared forecast-token
     # probe. Same encoder config for all three, so pooled-vs-shared is apples-to-apples. `_final_*`
     # (post-final-norm state) is extracted+cached now for the later frozen-native-head experiment.
-    # K = one forecast slot per output patch, derived from the ACTUAL label horizon (not hardcoded).
+    # K = ceil(H / output_patch_size), Chronos-2's own rule, derived from the ACTUAL label horizon;
+    # for H not a multiple of 16 the shared probe predicts K whole patches and trims to H.
     H = w["Y_train_traj"].shape[1]
-    if H % OUTPUT_PATCH_SIZE != 0:
-        raise ValueError(
-            f"horizon H={H} is not a multiple of output_patch_size={OUTPUT_PATCH_SIZE}; the shared "
-            "forecast-token probe predicts whole output patches, so a non-multiple horizon would "
-            "need native-style horizon padding + loss masking (not implemented). Use H in "
-            f"{{{OUTPUT_PATCH_SIZE}, {2*OUTPUT_PATCH_SIZE}, {3*OUTPUT_PATCH_SIZE}, ...}}.")
-    K4 = H // OUTPUT_PATCH_SIZE          # e.g. H=64 -> 4, H=48 -> 3, H=16 -> 1
-    fk_tr, _final_tr, _ = extract_kout_features(tag, "train", w["X_train"], w["y_train"], num_output_patches=K4)
-    fk_te, _final_te, _ = extract_kout_features(tag, "test",  w["X_test"],  w["y_test"],  num_output_patches=K4)
-    result["k4"] = {}
+    K = math.ceil(H / OUTPUT_PATCH_SIZE)   # e.g. H=64 -> 4, H=48 -> 3, H=16 -> 1, H=80 -> 5
+    fk_tr, _final_tr, _ = extract_kout_features(tag, "train", w["X_train"], w["y_train"], horizon=H)
+    fk_te, _final_te, _ = extract_kout_features(tag, "test",  w["X_test"],  w["y_test"],  horizon=H)
+    result["kslot"] = {"K": K, "H": H, "probes": {}}
     for name, probe, tr_f, te_f in [
-        ("content_k4", quantile_probe,               fk_tr["content"], fk_te["content"]),
-        ("reg_k4",     quantile_probe,               fk_tr["reg"],     fk_te["reg"]),
-        ("fslot_k4",   shared_forecast_token_probe,  fk_tr["fslot"],   fk_te["fslot"]),
+        ("content_K", quantile_probe,               fk_tr["content"], fk_te["content"]),
+        ("reg_K",     quantile_probe,               fk_tr["reg"],     fk_te["reg"]),
+        ("fslot_K",   shared_forecast_token_probe,  fk_tr["fslot"],   fk_te["fslot"]),
     ]:
         loss, dg = probe(tr_f, w["Y_train_traj"], te_f, w["Y_test_traj"],
                          epochs=QUANTILE_EPOCHS, wd_grid=QUANTILE_WD_GRID,
                          collect_history=True, collect_test_median=True)
         diags[name] = dg
-        result["k4"][name] = {"quantile_loss": [float(loss[i]) for i in range(NUM_LAYERS)]}
-        c = np.asarray(result["k4"][name]["quantile_loss"])
-        print(f"  [{name:>10}] K4 qloss: argmin L{int(c.argmin())}={c.min():.3f}")
+        result["kslot"]["probes"][name] = {"quantile_loss": [float(loss[i]) for i in range(NUM_LAYERS)]}
+        c = np.asarray(result["kslot"]["probes"][name]["quantile_loss"])
+        print(f"  [{name:>10}] K={K} qloss: argmin L{int(c.argmin())}={c.min():.3f}")
 
     # MASE comparison must run while the raw windows (X_test, Y_test_traj) are still alive
     result["mase"] = compute_mase(tag, w, diags)
@@ -477,30 +474,31 @@ def write_quantile_json(id_results, id_diags):
 
 
 def make_shared_forecast_comparison(id_results):
-    """Chronos-alignment under a CONTROLLED K=4 pass: pooled content_k4 (solid) vs pooled reg_k4
-    (dashed) vs the SHARED forecast-token probe fslot_k4 (dotted) — per-layer Chronos-2 quantile
+    """Chronos-alignment under a CONTROLLED K-slot pass: pooled content_K (solid) vs pooled reg_K
+    (dashed) vs the SHARED forecast-token probe fslot_K (dotted) — per-layer Chronos-2 quantile
     loss, one panel per dataset. Same units + same encoder config; ★ = each curve's argmin.
     Caveat (state in writeup): pooled vs shared differ in BOTH representation AND readout (shared
-    has 4x fewer params + enforced patch-wise weight sharing), so a lower fslot_k4 curve is not
+    has ~K× fewer params + enforced patch-wise weight sharing), so a lower fslot_K curve is not
     purely 'info more decodable here' — the decoding constraint differs too."""
     xs = np.arange(NUM_LAYERS)
-    styles = [("content_k4", "-", "o", "pooled content_k4  Linear(768, 21·64)"),
-              ("reg_k4",     "--", "s", "pooled REG_k4  Linear(768, 21·64)"),
-              ("fslot_k4",   ":", "D", "shared forecast-token  Linear(768, 21·16)")]
     fig, axes = plt.subplots(2, 2, figsize=(13, 9), sharex=True)
     for ax, (tag, res) in zip(axes.ravel(), id_results.items()):
         color = ID_STYLE[tag]["color"]
+        H, K = res["kslot"]["H"], res["kslot"]["K"]
+        styles = [("content_K", "-", "o", f"pooled content_K  Linear(768, 21·{H})"),
+                  ("reg_K",     "--", "s", f"pooled REG_K  Linear(768, 21·{H})"),
+                  ("fslot_K",   ":", "D", f"shared forecast-token  Linear(768, 21·{OUTPUT_PATCH_SIZE})")]
         for key, ls, mk, lab in styles:
-            c = np.asarray(res["k4"][key]["quantile_loss"], float)
+            c = np.asarray(res["kslot"]["probes"][key]["quantile_loss"], float)
             ax.plot(xs, c, color=color, lw=2.0, ls=ls, marker=mk, ms=4, label=lab)
             bi = int(c.argmin())
             ax.plot(bi, c[bi], marker="*", ms=12, color=color, markeredgecolor="k",
                     markeredgewidth=0.5, zorder=5)
-        ax.set_title(ID_STYLE[tag]["label"], fontsize=11)
+        ax.set_title(f"{ID_STYLE[tag]['label']}  (H={H}, K={K})", fontsize=11)
         ax.set_xticks(xs); ax.grid(alpha=0.3); ax.legend(fontsize=7, loc="best")
     for ax in axes[-1]:   ax.set_xlabel("encoder layer")
     for ax in axes[:, 0]: ax.set_ylabel("Chronos-2 quantile loss (test)")
-    fig.suptitle("Chronos-alignment (controlled K=4): pooled content / REG vs SHARED forecast-token\n"
+    fig.suptitle("Chronos-alignment (controlled K-slot pass): pooled content / REG vs SHARED forecast-token\n"
                  "same quantile loss; LOWER = better; ★ = argmin", fontsize=13)
     fig.tight_layout(rect=[0, 0, 1, 0.94])
     out = QUANT_DIR / "shared_forecast_vs_pooled.png"
