@@ -199,6 +199,8 @@ def run_dataset(tag):
     K = math.ceil(H / OUTPUT_PATCH_SIZE)   # e.g. H=64 -> 4, H=48 -> 3, H=16 -> 1, H=80 -> 5
     fk_tr, _final_tr, _ = extract_kout_features(tag, "train", w["X_train"], w["y_train"], horizon=H)
     fk_te, _final_te, _ = extract_kout_features(tag, "test",  w["X_test"],  w["y_test"],  horizon=H)
+    assert fk_tr["fslot"][0].shape[1] == K == fk_te["fslot"][0].shape[1], (
+        f"extracted forecast-slot count {fk_tr['fslot'][0].shape[1]} != driver-derived K={K}")
     result["kslot"] = {"K": K, "H": H, "probes": {}}
     for name, probe, tr_f, te_f in [
         ("content_K", quantile_probe,               fk_tr["content"], fk_te["content"]),

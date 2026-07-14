@@ -215,6 +215,9 @@ def extract_kout_features(tag, split, contexts, y, horizon, batch_size=128):
                 f"windows — delete features_cache/{cache_path.name} and re-extract")
         feats = {t: {i: d[f"{t}_L{i}"] for i in range(NUM_LAYERS)} for t in types}
         final = {t: d[f"{t}_final"] for t in types}
+        assert feats["fslot"][0].shape[1] == K, (
+            f"cache {cache_path.name} carries {feats['fslot'][0].shape[1]} forecast slots but the "
+            f"filename/horizon implies K={K} — file renamed or corrupted; delete and re-extract")
         print(f"  [cache HIT]  {cache_path.name}")
         return feats, final, y_cached
 
@@ -232,6 +235,8 @@ def extract_kout_features(tag, split, contexts, y, horizon, batch_size=128):
     assert model.chronos_config.output_patch_size == OUTPUT_PATCH_SIZE, (
         f"model output_patch_size {model.chronos_config.output_patch_size} != config "
         f"OUTPUT_PATCH_SIZE {OUTPUT_PATCH_SIZE}; K was derived from the constant — update config")
+    assert K == math.ceil(horizon / model.chronos_config.output_patch_size), (
+        f"K={K} != ceil({horizon}/{model.chronos_config.output_patch_size}) — K derivation drifted")
     num_special = int(model.chronos_config.use_reg_token)  # 1 REG token for chronos-2
     ncp = math.ceil(C / patch_size)
     reg_idx = ncp                                          # [context(ncp) | REG | K forecast slots]

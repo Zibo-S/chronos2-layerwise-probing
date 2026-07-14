@@ -299,7 +299,11 @@ def _apply_shared_head(lin, X, Q, P, H):
     native loss zero-pads + masks the target, model.py _compute_loss)."""
     n, K, _ = X.shape
     out = lin(X).view(n, K, Q, P)                            # (n, K, Q, P)
-    return out.permute(0, 2, 1, 3).reshape(n, Q, K * P)[:, :, :H]
+    out = out.permute(0, 2, 1, 3).reshape(n, Q, K * P)[:, :, :H]
+    assert out.shape[-1] == H, (
+        f"prediction horizon {out.shape[-1]} != requested H={H} — K*P={K*P} slots cover "
+        f"less than H, so K was derived from a different horizon than the labels")
+    return out
 
 
 def _fit_slot_scaler(X):                                     # X: (n, K, d)
