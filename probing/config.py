@@ -21,6 +21,10 @@ SEED = 0                       # global seed (numpy + torch + sklearn random_sta
 NUM_LAYERS = 12                # Chronos-2 encoder blocks
 MIDDLE_BAND = list(range(3, 9))  # a-priori "middle" layers L3..L8 (inclusive)
 LAST_LAYER = NUM_LAYERS - 1    # L11
+# Chronos-2 output patch size (== input_patch_size; verified from amazon/chronos-2 config.json).
+# The number of native forecast slots for a horizon H is K = H / OUTPUT_PATCH_SIZE, so this is
+# what makes the shared forecast-token extractor/probe horizon-aware instead of hardcoding K=4.
+OUTPUT_PATCH_SIZE = 16
 BOOT_B = 2000                  # bootstrap resamples for confidence intervals
 
 # ---- filesystem (anchored to repo root = parent of this package) ----
@@ -30,3 +34,7 @@ OUT_DIR = REPO_ROOT / "results"            # figures + summary JSON land here
 
 CACHE_DIR.mkdir(exist_ok=True)
 OUT_DIR.mkdir(exist_ok=True)
+
+QUANT_DIR = OUT_DIR / "quantile_loss"          # quantile-probe figures + focused JSON
+for _sub in ("content", "reg", "pooling_comparison", "training_curves"):
+    (QUANT_DIR / _sub).mkdir(parents=True, exist_ok=True)

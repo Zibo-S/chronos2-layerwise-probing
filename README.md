@@ -51,6 +51,28 @@ device (`probing/extraction.py:get_pipeline`). First run downloads `amazon/chron
 the Hugging Face Hub. `numpy` is pinned `<2` for numba/aeon compatibility — keep the
 numpy/numba/llvmlite pins together.
 
+## For collaborators (macOS)
+
+> The rest of this README still describes the earlier **classification** phase and is
+> mid-rewrite. For the current **forecasting** pipeline, use the commands in this section.
+
+The forecasting probes run on a MacBook, subject to three constraints:
+
+- **Apple Silicon only** — PyTorch ships arm64-only macOS wheels, so `torch==2.12.1` will not
+  install on an Intel Mac.
+- **Python 3.11 or 3.12** (not 3.13) — the pinned `numpy==1.26.4` has no 3.13 wheel.
+- **First run needs internet and is slow** — with an empty `features_cache/`, the first run
+  downloads `amazon/chronos-2` plus three datasets (~660 MB) and extracts features on MPS/CPU
+  (minutes; there is no GPU). Everything is cached afterwards, so reruns are fast.
+
+```bash
+python3.11 -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+python -m experiments.run_id_forecasting      # or:  make forecasting
+```
+
+Outputs land in `results/` (`id_probing_summary.json` and `id_vs_classification_*.png`).
+
 ## How to run
 
 Entry points via the `Makefile` (run from the repo root; `make help` lists all):
