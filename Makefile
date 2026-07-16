@@ -3,7 +3,7 @@
 # environment recipe in README before activating).
 PYTHON ?= python
 
-.PHONY: help setup forecasting clean-results
+.PHONY: help setup forecasting bootstrap uea clean-results
 
 help:  ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
@@ -13,8 +13,14 @@ setup:  ## Create venv and install dependencies (laptop; on Narval use module + 
 	$(PYTHON) -m venv .venv
 	. .venv/bin/activate && pip install -U pip && pip install -r requirements.txt
 
-forecasting:  ## Run the ID forecasting probes -> results/id_probing_summary.json + figures
+forecasting:  ## Run the ID forecasting probes -> results/$$ID_DATASET_SET/ (default extended_v1)
 	$(PYTHON) -m experiments.run_id_forecasting
 
-clean-results:  ## Remove regenerated ID forecasting outputs (git can restore them)
-	rm -f results/id_*.png results/id_probing_summary.json
+bootstrap:  ## Post-hoc series-level cluster bootstrap (CPU) -> results/$$ID_DATASET_SET/bootstrap/
+	$(PYTHON) -m experiments.run_bootstrap
+
+uea:  ## UEA classification baseline (maintained baseline) -> results/uea/
+	$(PYTHON) -m experiments.run_perdataset
+
+clean-results:  ## Remove regenerated ID forecasting outputs for the active set (git can restore them)
+	rm -rf results/$${ID_DATASET_SET:-extended_v1}/

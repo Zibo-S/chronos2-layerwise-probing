@@ -15,10 +15,20 @@
 torch==2.12.1                 # frozen encoder (CUDA on Narval A100 / MPS / CPU)
 chronos-forecasting==2.3.1    # amazon/chronos-2 pipeline (pulls transformers, accelerate, tokenizers)
 
-# --- forecasting datasets (autogluon/chronos_datasets: m4_hourly, monash_electricity_hourly, solar_1h) ---
+# --- forecasting datasets (autogluon/chronos_datasets; see probing.id_data.ID_DATASET_SPECS) ---
 datasets==5.0.0               # pulls pyarrow off-cluster; on Narval pyarrow is the `arrow` module
+
+# --- UEA classification baseline (aeon loads the UEA archives; numba stack is order-sensitive:
+#     numpy stays <2 because numba 0.60, an aeon dependency, requires it) ---
+aeon==1.4.0
+numba==0.60.0
+llvmlite==0.43.0
 
 # --- probes + numerics + figures ---
 numpy==1.26.4                 # <2 for Compute Canada wheel-stack compatibility
 scikit-learn==1.7.1           # linear probes: Ridge / LogisticRegression / StandardScaler
 matplotlib==3.10.8            # result figures
+
+# --- notebook tooling (only needed to (re)build/run the notebook in notebooks/) ---
+nbformat==5.10.4
+nbclient==0.10.4

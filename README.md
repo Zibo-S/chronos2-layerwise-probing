@@ -46,10 +46,13 @@ python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt          # or:  make setup
 ```
 
-Python 3.11 recommended. Runs on Apple Silicon (MPS) or CPU; the model auto-selects the
-device (`probing/extraction.py:get_pipeline`). First run downloads `amazon/chronos-2` from
-the Hugging Face Hub. `numpy` is pinned `<2` for numba/aeon compatibility — keep the
-numpy/numba/llvmlite pins together.
+Python 3.11 recommended (3.11 or 3.12; the pinned `numpy==1.26.4` has no 3.13 wheel).
+Runs on CUDA, Apple Silicon (MPS), or CPU; the model auto-selects the device
+(`probing/extraction.py:get_pipeline`). First run downloads `amazon/chronos-2` from the
+Hugging Face Hub and the probing datasets from `autogluon/chronos_datasets` — both are
+public, no HF login/token needed. `numpy` is pinned `<2` for Compute Canada wheel-stack
+compatibility, and `aeon`/`numba`/`llvmlite` are pinned together for the same reason (the
+UEA classification baseline loads its datasets through `aeon`).
 
 ## For collaborators (macOS)
 
@@ -62,8 +65,8 @@ The forecasting probes run on a MacBook, subject to three constraints:
   install on an Intel Mac.
 - **Python 3.11 or 3.12** (not 3.13) — the pinned `numpy==1.26.4` has no 3.13 wheel.
 - **First run needs internet and is slow** — with an empty `features_cache/`, the first run
-  downloads `amazon/chronos-2` plus three datasets (~660 MB) and extracts features on MPS/CPU
-  (minutes; there is no GPU). Everything is cached afterwards, so reruns are fast.
+  downloads `amazon/chronos-2` plus the selected dataset set's series and extracts features
+  on MPS/CPU (minutes; there is no GPU). Everything is cached afterwards, so reruns are fast.
 
 ```bash
 python3.11 -m venv .venv && source .venv/bin/activate
@@ -71,64 +74,95 @@ pip install -r requirements.txt
 python -m experiments.run_id_forecasting      # or:  make forecasting
 ```
 
-Outputs land in `results/` (`id_probing_summary.json` and `id_vs_classification_*.png`).
+Outputs land in `results/<dataset-set>/` (default `results/extended_v1/`) — see
+"Dataset sets" below for selecting the set and the full output layout.
 
 ## How to run
 
-Entry points via the `Makefile` (run from the repo root; `make help` lists all):
+Three runnable pipelines ship in `experiments/` (run from the repo root, venv active):
 
 ```bash
-make smoke        # fast: confirm results reproduce the committed numbers (no model needed)
-make perdataset   # MAIN experiment -> results/perdataset_summary.json + 5 grid figures
-make pipeline     # Phase B-D demo (Epilepsy ID, synthetic shift, cross-domain transfer)
-make improve      # SCP1-primary run with bootstrap confidence intervals
-make harden       # five hardening tests -> results/probe_harden_artifacts.json
-make verify       # read-only: check UEA dataset shapes via aeon (no model)
-make audit        # read-only: re-derive the conclusions from the summary JSON
+# 1) ID forecasting probes (extracts features on first run; MPS/CUDA/CPU)
+python -m experiments.run_id_forecasting                     # default set: extended_v1
+python -m experiments.run_id_forecasting --dataset-set phase0_trio
+ID_DATASET_SET=phase0_trio python -m experiments.run_id_forecasting   # env form
+
+# 2) series-level cluster bootstrap (CPU-only, post-hoc; reads step 1's per-window outputs)
+python -m experiments.run_bootstrap                          # same ID_DATASET_SET rules
+ID_DATASET_SET=phase0_trio python -m experiments.run_bootstrap
+
+# 3) UEA classification baseline (maintained baseline, not under active development)
+python -m experiments.run_perdataset                         # -> results/uea/
 ```
 
-Equivalently, run the underlying command directly, e.g. `python -m experiments.run_perdataset`
-(each `Makefile` target lists its command). On macOS, `make` needs a working Xcode Command
-Line Tools install; if `make` errors, use the `python -m ...` / `python tools/...` commands.
+`make forecasting` / `make bootstrap` / `make uea` are aliases. `make help` lists all targets.
 
-### Data flow
+### Dataset sets
 
+The named sets live in `probing/id_data.py` (`ID_DATASET_SPECS`); the *active* set is
+`probing.config.DATASET_SET` — precedence **CLI `--dataset-set` > env `ID_DATASET_SET` >
+default `extended_v1`** (the CLI writes through `config.set_dataset_set`, which re-derives
+the output dirs). The same value selects the dataset roster **and** the output directory,
+so a run can never write one set's numbers into the other set's folder. Both
+`run_id_forecasting` and `run_bootstrap` accept `--dataset-set`.
+
+| Set | Datasets | Split | Notes |
+| --- | --- | --- | --- |
+| `phase0_trio` | m4_hourly, monash_electricity_hourly, solar_1h | m4 falls back to cross-series | original Phase 0 run; solar_1h has a documented label pathology (`paper/phase0_fixes.md`) |
+| `extended_v1` (default) | monash_electricity_hourly, monash_kdd_cup_2018, monash_pedestrian_counts, uber_tlc_hourly | all within-series | current set; fixes the solar/m4 caveats |
+
+### Where outputs land
+
+`results/` is fully namespaced — one directory per experiment line:
+
+```text
+results/uea/                                    UEA classification baseline (step 3)
+  perdataset_summary.json                         per-dataset per-layer accuracies — the
+                                                  reference run_id_forecasting overlays against
+  fig_*.png, probe_harden_artifacts.json          committed baseline figures/artifacts
+results/<set>/                                  ID forecasting (steps 1-2), <set> per run:
+  id_probing_summary.json                         headline per-layer numbers
+  id_vs_classification_*.png                      overlays vs the UEA reference
+  quantile_loss/                                  quantile-probe figures + focused JSONs
+  bootstrap/inputs/                               per-window test metrics (written by step 1)
+  bootstrap/{raw,tables,figures}/                 bootstrap CIs (written by step 2)
 ```
-aeon UEA dataset ──► extract_features() ──► features_cache/*.npz ──► fit_layerwise_probes()
-  (load_classification)  [Chronos-2 frozen,      (per layer / pooling /   (StandardScaler + LogReg
-                          12 forward hooks,        corruption)              per layer, train-only)
-                          content pooling]                                       │
-                                                            probes[name](...) ◄──┘
-                                                                   │
-                                       score → bootstrap CIs → late_drop / amplification
-                                                                   │
-                                              results/ (summary JSON + figures)
-```
 
-### Expected outputs (land in `results/`)
+`results/phase0_trio/` holds the frozen original Phase 0 run; `results/extended_v1/`
+holds the current set's runs. `run_id_forecasting` needs
+`results/uea/perdataset_summary.json` to exist — it is committed, and regenerable with
+`python -m experiments.run_perdataset`.
 
-| Command | Writes |
-|---|---|
-| `make perdataset` | `perdataset_summary.json`, `fig_grid_id_tunnel.png`, `fig_grid_idood_{gauss,timewarp,drift,all}.png` |
-| `make harden` | `probe_harden_artifacts.json`, `fig_{pooling_ablation,dataset_forest,multisplit_stability,shift_amplification,scp1_timewarp_idood}.png` |
-| `make pipeline` | `fig_id_epilepsy.png`, `fig_ood_*_epilepsy.png`, `fig_transfer_profiles.png` |
-| `make improve` | `fig_scp1_*.png`, `fig_transfer_raw.png`, `fig_handwriting_*.png` |
+### UEA classification baseline (maintained baseline, not under active development)
+
+The UEA classification line is kept as a **maintained baseline** in the same tree:
+`experiments/run_perdataset.py` (driver) on top of `extract_features()` +
+`fit_layerwise_probes()` in `probing/extraction.py`, `linear_probe` /
+`score_layerwise_correctness` in `probing/probes.py`, and the shift-type taxonomy in
+`probing/shifts.py`. It writes everything under `results/uea/`. Its dataset loading uses
+`aeon` (pinned in `requirements.txt` together with `numba`/`llvmlite`). The auxiliary
+one-off scripts of the original classification phase (`run_pipeline`, `run_harden`,
+`run_improve`, `tools/`, `tests/`) are retired and not part of the maintained surface.
 
 ## Repository layout
 
-```
+```text
 probing/            Reusable core (import this)
-  config.py           constants + repo-root-anchored paths (SEED, NUM_LAYERS, MIDDLE_BAND, ...)
-  extraction.py       get_pipeline, extract_features (hooks + caching), fit_layerwise_probes
-  probes.py           PROBES registry + linear_probe reference  ◄── ADD NEW PROBES HERE
+  config.py           constants + paths; ID_DATASET_SET selector + results/<set>/ namespacing
+  extraction.py       get_pipeline; extract_features (UEA); extract_window_features and
+                      extract_kout_features (ID forecasting, K native forecast slots);
+                      fit_layerwise_probes
+  id_data.py          ID_DATASET_SPECS (phase0_trio / extended_v1) + windowing, labels,
+                      trajectories, MASE denominators
+  probes.py           PROBES registry  ◄── ADD NEW PROBES HERE
+  shifts.py           shift-type taxonomy (gauss / timewarp / drift tagging)
   stats.py            bootstrap_ci, paired_diff_ci
-experiments/        Runnable drivers (run_pipeline / run_improve / run_harden / run_perdataset)
-tools/              Read-only validation (verify_dataset_facts.py, audit_local.py)
-tests/              test_smoke.py — behavior-preservation check
+experiments/        Runnable drivers: run_id_forecasting.py, run_bootstrap.py,
+                    run_perdataset.py (UEA baseline)
 notebooks/          chronos2_probing.ipynb (consolidated, executed notebook)
-paper/              writeups, slides, draft.tex
-archive/            one-off / historical scripts (extract_check.py, notebook build tooling)
-results/            figures + summary JSON (regenerable)
+paper/              writeups (phase0_fixes.md, perdataset_writeup.md, ...)
+data/               uea_domain_audit.md, chronos2_seen_manifest.md
+results/            results/{uea, phase0_trio, extended_v1}/ (see "Where outputs land")
 features_cache/     extracted features (~13 GB, gitignored — see below)
 ```
 
@@ -140,9 +174,27 @@ features_cache/     extracted features (~13 GB, gitignored — see below)
 The cache is **~13 GB and gitignored** — it is not in the repo. Options:
 
 - **Transfer it** out-of-band (it's the fastest path; the experiments then need no GPU).
-- **Regenerate it:** `make regen-cache` rebuilds everything from scratch (slow; downloads
-  `amazon/chronos-2` and runs the encoder over all datasets). The experiment scripts also
-  extract any missing entry on demand, so you can just run an experiment and let it fill in.
+- **Let it regenerate on demand:** every experiment extracts any missing entry when it runs,
+  so a fresh clone just runs slower the first time. Cache key layouts:
+  `<dataset>__<split>__<corruption>__<pooling>.npz` (UEA),
+  `IDF_<tag>__<split>__clean__<pooling>.npz` (ID windows), and
+  `IDF_<tag>__<split>__clean__K<K>_H<horizon>.npz` (K-forecast-slot states). The ID caches
+  carry the window labels and **fail loudly** if the windowing changed since they were
+  written — delete the named `features_cache/IDF_<tag>__*` files and re-run.
+
+## Probe registry (what's in `PROBES` and what each is for)
+
+| Name | Task | Labels it needs | Score |
+| --- | --- | --- | --- |
+| `linear` | UEA classification (reference) | 1-D class labels | accuracy (higher = better) |
+| `ridge_regression` | ID forecasting | 1-D scalar `y` (normalized future mean) | R² |
+| `binned_future` | ID forecasting — primary tunnel readout | 1-D scalar `y`, binned into 5 quantile bins | accuracy |
+| `quantile` | ID forecasting, Chronos-2-native | **2-D** `(n, H)` arcsinh trajectories (`Y_*_traj`) | Chronos-2 quantile loss (**lower** = better) |
+| `shared_forecast` | ID forecasting, Chronos-aligned shared head | `(n, H)` trajectories **and** `(n, K, 768)` forecast-slot features from `extract_kout_features` | Chronos-2 quantile loss (**lower** = better) |
+
+Contract exceptions: `quantile` raises on 1-D labels (pass the trajectories, not `y`);
+`shared_forecast` additionally needs the 3-D K-slot features — a driver looping `PROBES`
+generically must special-case which label/feature arrays it hands those two.
 
 ## Adding a new probe (for collaborators)
 

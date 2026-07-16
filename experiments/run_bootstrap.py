@@ -36,6 +36,7 @@ Run:  python -m experiments.run_bootstrap
 
 from __future__ import annotations
 
+import argparse
 import csv
 import json
 import math
@@ -45,6 +46,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 
+from probing import config
 from probing.config import NUM_LAYERS, LAST_LAYER, SEED, BOOT_DIR
 from probing.stats import cluster_bootstrap_counts, cluster_bootstrap_apply
 
@@ -57,12 +59,19 @@ _ARRAY_PREFIX = {"quantile_loss": "window_loss", "mase_context": "window_mase_co
 _YLABEL = {"quantile_loss": "Chronos-2 quantile loss (test)",
            "mase_context": "test MASE (in-context seasonal-naive scale)"}
 
-RAW_DIR = BOOT_DIR / "raw"
-TAB_DIR = BOOT_DIR / "tables"
-FIG_DIRS = {"primary": BOOT_DIR / "figures" / "primary",
-            "controlled": BOOT_DIR / "figures" / "controlled_k_slots"}
-for _d in (RAW_DIR, TAB_DIR, *FIG_DIRS.values()):
-    _d.mkdir(parents=True, exist_ok=True)
+def _derive_dirs() -> None:
+    """Derive the output dirs from the ACTIVE BOOT_DIR — re-run after a --dataset-set
+    override so this script targets the same results/<set>/ namespace as the driver run."""
+    global RAW_DIR, TAB_DIR, FIG_DIRS
+    RAW_DIR = BOOT_DIR / "raw"
+    TAB_DIR = BOOT_DIR / "tables"
+    FIG_DIRS = {"primary": BOOT_DIR / "figures" / "primary",
+                "controlled": BOOT_DIR / "figures" / "controlled_k_slots"}
+    for _d in (RAW_DIR, TAB_DIR, *FIG_DIRS.values()):
+        _d.mkdir(parents=True, exist_ok=True)
+
+
+_derive_dirs()
 
 # same per-dataset colors as the driver figures (entity-stable; fallback for unknown tags)
 try:
@@ -409,7 +418,25 @@ def make_delta_figures(exp_id, datasets, group, readouts):
 # main
 # --------------------------------------------------------------------------- #
 
+def _parse_args(argv=None):
+    ap = argparse.ArgumentParser(
+        description="Series-level cluster bootstrap over one dataset set's driver outputs "
+                    "(reads/writes results/<set>/bootstrap/).")
+    ap.add_argument("--dataset-set", default=None, metavar="NAME",
+                    help="dataset set to process (see probing.id_data.ID_DATASET_SPECS); "
+                         "precedence: CLI > env ID_DATASET_SET > default. Use the same "
+                         "value the driver run used.")
+    return ap.parse_args(argv)
+
+
 def main():
+    args = _parse_args()
+    if args.dataset_set:
+        config.set_dataset_set(args.dataset_set)
+        global BOOT_DIR
+        BOOT_DIR = config.BOOT_DIR         # import-time snapshot -> re-derived value
+        _derive_dirs()
+
     inputs = sorted((BOOT_DIR / "inputs").glob("*.npz"))
     if not inputs:
         raise SystemExit(

@@ -16,32 +16,49 @@ per-dataset descriptions at timeseriesclassification.com).
 
 | Dataset | What each "series" actually is (UEA description) | Independent axis | Modality bucket | Genuine TS? |
 |---|---|---|---|---|
-| **UWaveGestureLibrary** | X/Y/Z **accelerometer** readings of 8 hand gestures (Wii-remote) | time | motion / inertial sensor | **yes (kept)** |
+| **UWaveGestureLibrary** | X/Y/Z **accelerometer** of 8 hand gestures (Wii-remote) — a motion **dynamics** signal evolving over time | time (temporal dynamics) | motion / inertial sensor | **yes (kept)** |
 | EthanolConcentration | raw **spectra** of water-and-ethanol solutions in 44 whisky bottles; classify alcohol concentration | **wavelength** | spectroscopy | no |
 | SelfRegulationSCP1 | **EEG** slow cortical potentials, healthy subject | time | bio-signal (EEG) | no |
 | SelfRegulationSCP2 | **EEG** slow cortical potentials, ALS patient | time | bio-signal (EEG) | no |
-| Handwriting | smart-watch **accelerometer** while writing the 26 letters | time | handwriting / pen-trajectory | no |
+| Handwriting | smart-watch accelerometer while writing the 26 letters — a **2-D spatial trajectory** (letter shape) unrolled into a sequence | spatial path over time | handwriting / pen-trajectory | no |
 | LSST | simulated astronomical **light curves** (photometric flux, 6 passbands) | time | astronomical photometry | no |
 
 **Retained as genuine time-series (full color in the TS-restricted overlay): UWaveGestureLibrary.**
 **Excluded as other-modality-re-encoded-as-sequence (greyed): EthanolConcentration, SelfRegulationSCP1,
 SelfRegulationSCP2, Handwriting, LSST.**
 
-### Classification criterion and the two borderline calls
-The bucket is decided by *"is this the kind of continuously-sampled temporal process a
-forecasting model targets?"*, not merely *"is the x-axis time?"*.
+### Classification criterion: the generative process, not the sensor
+
+The bucket is decided by the **generative process** the signal encodes — *"is this a temporal-
+dynamics process (a quantity evolving over time, the kind a forecaster models)?"* — **not** by
+what sensor recorded it and **not** merely by *"is the x-axis time?"*. Two datasets recorded with
+the same sensor can fall in different buckets if one encodes temporal dynamics and the other
+encodes a static form sampled over time.
 
 - **EthanolConcentration is the hardest exclusion**: its independent axis is *wavelength*, so it
   is not a time series at all — it is a spectrum. Clear exclusion.
 - **EEG (SCP1/SCP2)** and **LSST light curves** are sampled over time, but they are specialized
   bio-signal and astronomical-photometry modalities, not forecasting-domain signals; per the
   advisor's modality list they are excluded (EEG → bio-signal bucket).
-- **UWaveGestureLibrary vs Handwriting** are *both* accelerometer/IMU motion signals. We follow
-  the advisor's explicit modality list, which names **handwriting/pen-trajectory** as an excluded
-  modality, and retain **UWaveGestureLibrary** as the one remaining generic motion/inertial-sensor
-  dataset. This pairing is genuinely borderline: even UWave is gesture motion-capture rather than a
-  forecasting-domain signal, so the "genuine-TS" UEA subset here is small and itself only
-  loosely in-domain for a forecasting TSFM.
+- **UWaveGestureLibrary (kept) vs Handwriting (excluded)** — both happen to use an accelerometer,
+  so the *sensor* is the same, but the **generative process differs**, which is what the criterion
+  keys on:
+  - **UWaveGestureLibrary** is a **temporal-dynamics** signal: a gesture is a motion *evolving over
+    time*, and the discriminative information is in how the acceleration changes from step to step —
+    the same character (autocorrelated dynamics with a forecastable next step) that sensor streams in
+    forecasting corpora have. → genuine TS, **retained**.
+  - **Handwriting** is a **2-D spatial trajectory** (the pen/hand traces the *shape* of a letter)
+    that has merely been *unrolled into a sequence*. The task is **shape recognition**: the
+    discriminative content is the spatial form of the character, and the temporal ordering is
+    incidental to tracing that shape rather than a dynamics-to-forecast. → other modality,
+    **excluded**. This matches the advisor's comment that **handwriting does not fall in the general
+    forecasting domain**.
+
+  So the split is principled (dynamics vs. spatial shape), not an arbitrary preference between two
+  accelerometer datasets. Caveat retained for honesty: even UWave is gesture motion-capture rather
+  than an energy/weather/traffic forecasting signal, so the genuine-TS UEA subset is small and only
+  loosely in-domain for a forecasting TSFM — reinforcing that the true ID reference is the
+  forecasting probe, not any UEA subset.
 
 ## How this constrains the Phase 0 conclusions
 

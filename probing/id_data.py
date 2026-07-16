@@ -33,17 +33,44 @@ import numpy as np
 
 from probing.config import SEED
 
-# Chronos-2-seen ID datasets (long hourly series -> all support the within_series temporal
-# split), with the HF config + target column name. All four verified against
-# autogluon/chronos_datasets: target column == "target", min sampled series length >> 2*(C+H).
-ID_DATASETS = {
-    "monash_electricity_hourly": {"hf_config": "monash_electricity_hourly", "target": "target"},  # Energy
-    "monash_kdd_cup_2018":       {"hf_config": "monash_kdd_cup_2018",       "target": "target"},  # Nature / air quality
-    "monash_pedestrian_counts":  {"hf_config": "monash_pedestrian_counts",  "target": "target"},  # Transport / foot traffic
-    "uber_tlc_hourly":           {"hf_config": "uber_tlc_hourly",           "target": "target"},  # Transport / ride demand
+# Chronos-2-seen ID dataset sets (HF config + target column per tag). The active set is
+# selected by probing.config.DATASET_SET (env ID_DATASET_SET, or the --dataset-set CLI
+# override via config.set_dataset_set), the same value that namespaces the results
+# directories — so the dataset list a run uses and the directory its outputs land in can
+# never disagree. ID_DATASETS is resolved DYNAMICALLY (module __getattr__) so an override
+# applied after this module was imported is still honored.
+ID_DATASET_SPECS = {
+    # the original Phase 0 run, tags/targets exactly as published (m4_hourly is the
+    # cross_series fallback case; solar_1h carries the documented label pathology).
+    "phase0_trio": {
+        "m4_hourly":                 {"hf_config": "m4_hourly",                 "target": "target"},
+        "monash_electricity_hourly": {"hf_config": "monash_electricity_hourly", "target": "target"},
+        "solar_1h":                  {"hf_config": "solar_1h",                  "target": "power_mw"},
+    },
+    # four long hourly series -> all support the within_series temporal split. All four
+    # verified against autogluon/chronos_datasets: target column == "target", min sampled
+    # series length >> 2*(C+H).
+    "extended_v1": {
+        "monash_electricity_hourly": {"hf_config": "monash_electricity_hourly", "target": "target"},  # Energy
+        "monash_kdd_cup_2018":       {"hf_config": "monash_kdd_cup_2018",       "target": "target"},  # Nature / air quality
+        "monash_pedestrian_counts":  {"hf_config": "monash_pedestrian_counts",  "target": "target"},  # Transport / foot traffic
+        "uber_tlc_hourly":           {"hf_config": "uber_tlc_hourly",           "target": "target"},  # Transport / ride demand
+    },
 }
-
 _HF_REPO = "autogluon/chronos_datasets"
+
+
+def _active_specs() -> dict:
+    """The active set's specs, re-read from probing.config on every call so a CLI override
+    (config.set_dataset_set) is honored even after this module was imported."""
+    from probing import config
+    return ID_DATASET_SPECS[config.DATASET_SET]
+
+
+def __getattr__(name):  # PEP 562: `id_data.ID_DATASETS` / from-imports stay dynamic
+    if name == "ID_DATASETS":
+        return _active_specs()
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 # --------------------------------------------------------------------------- #
@@ -53,7 +80,7 @@ def load_seen_series(tag: str) -> list[np.ndarray]:
     """Download an ID dataset and return its target series as a list of 1-D float64 arrays."""
     from datasets import load_dataset
 
-    spec = ID_DATASETS[tag]
+    spec = _active_specs()[tag]
     ds = load_dataset(_HF_REPO, spec["hf_config"], split="train")
     col = spec["target"]
     return [np.asarray(r[col], dtype=np.float64) for r in ds]
@@ -221,7 +248,7 @@ def build_windows(
 
     meta = {
         "tag": tag,
-        "hf_config": ID_DATASETS[tag]["hf_config"],
+        "hf_config": _active_specs()[tag]["hf_config"],
         "split_mode": split_mode,
         "n_series": len(series),
         "n_series_supporting_within": n_series_ok,

@@ -41,9 +41,27 @@ retention (content pooling; binned chance = 0.20):
 | monash_electricity_hourly | within-series | L6 / 0.413 | 0.939 |
 | solar_1h | within-series | L4 / 0.289 | 0.839 |
 
-## Interpretation — [Zibo to write after inspecting the overlay]
-
-<!-- Intentionally left blank. Do not fill in automatically. -->
+**Interpretation.** With a genuine in-distribution condition in place (forecasting
+probes on Chronos-2-seen data, Table 6 of arXiv:2510.15821), two findings emerge.
+**(1) The mid-layer peak is robust and task-general:** binned future-mean accuracy
+peaks at intermediate layers (L7/L6) on both clean ID datasets, mirroring the
+mid-layer peaks of the classification probes — the "intermediate layers are most
+linearly decodable" observation survives the move to the model's native task, so it
+is not an artifact of task mismatch. **(2) Tunnel-style selective compression does
+not appear:** late-layer retention (score at L11 / peak) is ~0.93 for ID curves
+versus 0.81–1.00 across transfer curves, with the only TS-appropriate transfer
+dataset (UWave) at 0.89 — i.e., no ID-vs-transfer divergence. Late-layer decay in
+Chronos-2's encoder is mild and task-insensitive rather than selectively destroying
+transferable structure. This is consistent with our earlier OOD null (Part 2) and
+with the decodability-vs-transfer dissociation emphasized in "Deeper is Not Always
+Better" (arXiv:2606.21906): mid-layer decodability is real, but it does not license
+tunnel-style claims about transfer. **Consequence for the plan:** Track A's corrected
+replication yields a bounded negative on the tunnel signature plus a robust mid-layer
+peak; mechanism-level evidence for *why* middle layers matter must come from Track
+B's shift-type localization. Caveats: solar_1h excluded (context-normalization label
+pathology on strongly diurnal data); m4_hourly uses a cross-series split (shape
+comparable, absolute level not); retention comparisons rest on 5-bin accuracy with
+n_test ≈ 0.7–1.5k, so the ~4pp ID-vs-UWave difference should not be over-read.
 
 ### Known limitation — the context-normalized label on strongly periodic series
 `solar_1h` produces strongly **negative ridge R²** (the regression does worse than predicting

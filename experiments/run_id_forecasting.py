@@ -5,15 +5,16 @@ features (content + REG pooling), runs the two linear ID probes (binned-future a
 the primary tunnel-signature readout — and ridge R^2, secondary), and overlays the ID
 curves against the existing UEA classification curves.
 
-Additive only: reads results/perdataset_summary.json for the classification reference,
-writes results/id_probing_summary.json + results/id_vs_classification_overlay.png. Does
-not touch the UEA cache or results.
+Additive only: reads results/uea/perdataset_summary.json for the classification reference,
+writes id_probing_summary.json + id_vs_classification_*.png under results/<DATASET_SET>/.
+Does not touch the UEA cache or results.
 
 Run:  python -m experiments.run_id_forecasting
 """
 
 from __future__ import annotations
 
+import argparse
 import gc
 import json
 import math
@@ -26,7 +27,8 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 
-from probing.config import (NUM_LAYERS, LAST_LAYER, OUT_DIR, QUANT_DIR, CACHE_DIR, BOOT_DIR,
+from probing import config, id_data
+from probing.config import (NUM_LAYERS, LAST_LAYER, QUANT_DIR, CACHE_DIR, BOOT_DIR,
                             OUTPUT_PATCH_SIZE)
 from probing.id_data import ID_DATASETS, build_windows
 from probing.extraction import extract_window_features, extract_kout_features
@@ -45,6 +47,13 @@ POOLINGS = ("content", "reg")
 # non-causal, so K changes the context/REG states too). K is derived per-dataset from the actual
 # label horizon, NOT hardcoded (H=64, output_patch_size=16 -> K=4 for the current datasets); for
 # H not a multiple of 16 the shared probe predicts K whole patches and trims to H (native-style).
+
+# All ID-forecasting outputs are namespaced under results/<DATASET_SET>/ (probing.config) so
+# phase0_trio and extended_v1 runs can never overwrite each other. QUANT_DIR and BOOT_DIR
+# already live under ID_OUT_DIR; the overlay figures + summary JSON below use it directly.
+# (Kept outside the conflicted import block above — resolve that separately.)
+from probing.config import ID_OUT_DIR, DATASET_SET, UEA_OUT_DIR
+
 # UEA classification reference = the 6 non-saturated datasets used for Phase 0 conclusions.
 UEA_REF = ["UWaveGestureLibrary", "EthanolConcentration", "SelfRegulationSCP1",
            "Handwriting", "LSST", "SelfRegulationSCP2"]
@@ -61,14 +70,32 @@ UEA_EXCLUDED_MODALITY = {
     "LSST": "astronomical light curves",
 }
 
-# per-ID-dataset plot styling. All four are long-series hourly datasets on the within_series
-# temporal split, so none is demoted (the old solar_1h label pathology and m4_hourly
-# cross-series caveat are gone with those datasets). Colors avoid steelblue (the UEA overlay).
+# per-ID-dataset plot styling, covering every tag across ALL dataset sets (only the active
+# set's tags are plotted in a given run). Colors avoid steelblue (the UEA overlay) and are
+# unique across sets, so a tag in both sets (electricity) keeps one color everywhere.
+# solar_1h stays DEMOTED (thin/low-alpha: context-normalized label pathology on strongly
+# diurnal series — paper/phase0_fixes.md); m4_hourly is labeled cross-series.
 ID_STYLE = {
+    # extended_v1
     "monash_electricity_hourly": {"color": "#d62728", "demoted": False, "label": "electricity (energy)"},
     "monash_kdd_cup_2018":       {"color": "#ff7f0e", "demoted": False, "label": "kdd_cup_2018 (air quality)"},
     "monash_pedestrian_counts":  {"color": "#2ca02c", "demoted": False, "label": "pedestrian_counts (transport)"},
     "uber_tlc_hourly":           {"color": "#9467bd", "demoted": False, "label": "uber_tlc_hourly (transport)"},
+    # phase0_trio extras
+    "m4_hourly":                 {"color": "#e377c2", "demoted": False, "label": "m4_hourly (cross-series)"},
+    "solar_1h":                  {"color": "#8c564b", "demoted": True,  "label": "solar_1h (label pathology)"},
+}
+
+# summary-JSON dataset caveats, per set (the active one is written into the run's config).
+DATASET_NOTES = {
+    "extended_v1": "All four ID datasets are long-series hourly (electricity, kdd_cup_2018, "
+                   "pedestrian_counts, uber_tlc_hourly) and use the within_series temporal "
+                   "split; the solar_1h label pathology and m4_hourly cross-series caveat "
+                   "do not apply to this set.",
+    "phase0_trio": "Original Phase 0 trio. solar_1h ridge R^2 is pathological (context-"
+                   "normalized future-mean label on strongly diurnal series; demoted in the "
+                   "overlay) and m4_hourly uses a cross-series split (comparable in shape, "
+                   "not absolute level). See paper/phase0_fixes.md.",
 }
 
 
@@ -373,7 +400,7 @@ def make_overlay(id_results, uea_curves):
     fig.suptitle("Phase 0: in-distribution forecasting probes vs UEA transfer classification",
                  fontsize=13, y=1.02)
     fig.tight_layout()
-    out = OUT_DIR / "id_vs_classification_overlay.png"
+    out = ID_OUT_DIR / "id_vs_classification_overlay.png"
     fig.savefig(out, dpi=140, bbox_inches="tight")
     plt.close(fig)
     print(f"\n  [saved] {out}")
@@ -415,7 +442,7 @@ def make_tsonly(id_results, uea_curves):
     fig.suptitle("Phase 0 (TS-restricted): conclusions drawn only from genuine-TS UEA datasets",
                  fontsize=13, y=1.02)
     fig.tight_layout()
-    out = OUT_DIR / "id_vs_classification_overlay_tsonly.png"
+    out = ID_OUT_DIR / "id_vs_classification_overlay_tsonly.png"
     fig.savefig(out, dpi=140, bbox_inches="tight")
     plt.close(fig)
     print(f"  [saved] {out}")
@@ -438,7 +465,7 @@ def make_dropoff(id_results, uea_curves):
     ax.set_xlabel("encoder layer"); ax.set_ylabel("relative drop from peak"); ax.set_xticks(xs)
     ax.grid(alpha=0.3); ax.legend(fontsize=7, ncol=2, loc="lower left")
     fig.tight_layout()
-    out = OUT_DIR / "id_vs_classification_dropoff.png"
+    out = ID_OUT_DIR / "id_vs_classification_dropoff.png"
     fig.savefig(out, dpi=140, bbox_inches="tight")
     plt.close(fig)
     print(f"  [saved] {out}")
@@ -681,9 +708,30 @@ def write_mase_json(id_results):
     print(f"  [saved] {out}")
 
 
+def _parse_args(argv=None):
+    ap = argparse.ArgumentParser(
+        description="ID forecasting probes over one named dataset set; all outputs land "
+                    "under results/<set>/.")
+    ap.add_argument("--dataset-set", default=None, metavar="NAME",
+                    help="dataset set to run (see probing.id_data.ID_DATASET_SPECS); "
+                         "precedence: CLI > env ID_DATASET_SET > default. Without the "
+                         f"flag this run uses {DATASET_SET!r}.")
+    return ap.parse_args(argv)
+
+
 def main():
+    args = _parse_args()
+    if args.dataset_set:
+        config.set_dataset_set(args.dataset_set)
+        # module-level names above are import-time snapshots — re-bind them to the
+        # re-derived config values so every downstream write lands in the right namespace.
+        global DATASET_SET, ID_OUT_DIR, QUANT_DIR, BOOT_DIR, ID_DATASETS
+        DATASET_SET, ID_OUT_DIR = config.DATASET_SET, config.ID_OUT_DIR
+        QUANT_DIR, BOOT_DIR = config.QUANT_DIR, config.BOOT_DIR
+        ID_DATASETS = id_data.ID_DATASETS
+
     # classification reference curves (content pooling) from the committed UEA summary
-    summ = json.load(open(OUT_DIR / "perdataset_summary.json"))["datasets"]
+    summ = json.load(open(UEA_OUT_DIR / "perdataset_summary.json"))["datasets"]
     uea_curves = {name: summ[name]["per_layer_accuracy"]["ID"] for name in UEA_REF}
 
     id_results, id_diags = {}, {}
@@ -698,7 +746,13 @@ def main():
 
     # ---- late-layer retention = score[L11] / score[peak] (the quantity the tunnel
     #      comparison needs — how much each curve keeps after its own peak) ----
-    retention = {"id": {}, "uea_classification": {}}
+    retention = {
+        "_basis": "retention_L11 = score[L11] / score[peak]. ID = binned-future accuracy "
+                  "(content/reg pooling); UEA = classification accuracy (content pooling). "
+                  "The ID-vs-transfer comparison should use the genuine-TS UEA subset "
+                  "(ts_appropriate=true).",
+        "id": {}, "uea_classification": {},
+    }
     for tag, res in id_results.items():
         retention["id"][tag] = {}
         for pool in POOLINGS:
@@ -715,11 +769,17 @@ def main():
             retention["id"][tag][pool] = ent
     for name, acc in uea_curves.items():
         pk, peak, ret = _peak_retention(acc)
-        retention["uea_classification"][name] = {"peak_layer": pk, "peak_value": peak,
-                                                 "retention_L11": ret}
+        retention["uea_classification"][name] = {
+            "peak_layer": pk, "peak_value": peak, "retention_L11": ret,
+            "basis": "classification_accuracy_content",
+            "ts_appropriate": name in UEA_TS_APPROPRIATE,
+            "modality": "genuine sensor time-series" if name in UEA_TS_APPROPRIATE
+                        else UEA_EXCLUDED_MODALITY[name],
+        }
 
     summary = {
-        "config": {"C": 512, "H": 64, "n_bins": N_BINS, "poolings": list(POOLINGS),
+        "config": {"dataset_set": DATASET_SET,
+                   "C": 512, "H": 64, "n_bins": N_BINS, "poolings": list(POOLINGS),
                    "id_datasets": list(ID_DATASETS), "uea_reference": UEA_REF,
                    "binned_chance": 1.0 / N_BINS,
                    "quantile_epochs": QUANTILE_EPOCHS, "quantile_wd_grid": QUANTILE_WD_GRID,
@@ -736,17 +796,14 @@ def main():
                                  "every slot, patches concatenated then trimmed to H. Pooled vs shared "
                                  "differ in representation AND readout capacity — a Chronos-alignment/"
                                  "capacity ablation, not a pure representation-location comparison.",
-                   "dataset_note": "All four ID datasets are long-series hourly (electricity, "
-                                   "kdd_cup_2018, pedestrian_counts, uber_tlc_hourly) and use the "
-                                   "within_series temporal split; the earlier solar_1h label "
-                                   "pathology and m4_hourly cross-series caveat no longer apply."},
+                   "dataset_note": DATASET_NOTES[DATASET_SET]},
         "id_datasets": id_results,
         "uea_classification_reference": {name: uea_curves[name] for name in UEA_REF},
         "late_layer_retention": retention,
     }
-    with open(OUT_DIR / "id_probing_summary.json", "w") as f:
+    with open(ID_OUT_DIR / "id_probing_summary.json", "w") as f:
         json.dump(summary, f, indent=2)
-    print(f"  [saved] {OUT_DIR / 'id_probing_summary.json'}")
+    print(f"  [saved] {ID_OUT_DIR / 'id_probing_summary.json'}")
 
     make_overlay(id_results, uea_curves)
     make_tsonly(id_results, uea_curves)
@@ -770,11 +827,22 @@ def main():
         print(f"{tag:>26} {m['split_mode']:>13} {m['n_train']:>6} {m['n_test']:>6}  "
               f"{'L'+str(int(acc.argmax()))+'='+format(acc.max(),'.3f'):>28}  "
               f"{'['+format(r2.min(),'+.3f')+','+format(r2.max(),'+.3f')+']':>26}")
-    # late-layer retention table (binned accuracy, content) — the tunnel-relevant number
-    print(f"\n  late-layer retention = binned_acc[L11] / binned_acc[peak]  (content pooling):")
+    # late-layer retention table = score[L11] / score[peak] — the tunnel-relevant number
+    print(f"\n  late-layer retention = score[L11] / score[peak]  (content pooling):")
+    print(f"    -- ID forecasting (binned-future accuracy) --")
     for tag, r in id_results.items():
         pk, peak, ret = _peak_retention(r["poolings"]["content"]["binned_accuracy"])
-        print(f"    {tag:>26}:  peak L{pk}={peak:.3f}  ->  L11 retains {ret:.3f}")
+        print(f"    {tag:>28}:  peak L{pk}={peak:.3f}  ->  L11 retains {ret:.3f}")
+    print(f"    -- UEA classification accuracy (genuine-TS subset) --")
+    for name in UEA_REF:
+        if name in UEA_TS_APPROPRIATE:
+            pk, peak, ret = _peak_retention(uea_curves[name])
+            print(f"    {name:>28}:  peak L{pk}={peak:.3f}  ->  L11 retains {ret:.3f}  [TS]")
+    print(f"    -- UEA classification accuracy (excluded modalities) --")
+    for name in UEA_REF:
+        if name not in UEA_TS_APPROPRIATE:
+            pk, peak, ret = _peak_retention(uea_curves[name])
+            print(f"    {name:>28}:  peak L{pk}={peak:.3f}  ->  L11 retains {ret:.3f}  (excl.)")
     # Chronos-2 quantile loss (content) — the forecasting-native tunnel readout (LOWER=better)
     print(f"\n  Chronos-2 quantile loss  (content pooling; LOWER=better, tunnel=argmin):")
     for tag, r in id_results.items():
