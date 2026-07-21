@@ -574,6 +574,12 @@ def make_dropoff(id_results, uea_curves):
     print(f"  [saved] {out}")
 
 
+def _embed_xticks(ax, xs):
+    """Layer x-axis ticks: Embed (L0 = pre-block-1 embedding), then 1..12 (encoder-block outputs)."""
+    ax.set_xticks(xs)
+    ax.set_xticklabels(["Embed"] + [str(i) for i in range(1, NUM_LAYERS)])
+
+
 def _plot_by_layer(ax, id_results, pools):
     """Shared per-layer quantile-loss plotter (content solid / REG dashed, demoted thin/low-alpha, ★ at
     each curve's argmin). LOWER = better, so the tunnel signature is a dip."""
@@ -592,8 +598,8 @@ def _plot_by_layer(ax, id_results, pools):
             bi = int(loss.argmin())                       # best (lowest-loss) layer
             ax.plot(bi, loss[bi], marker="*", ms=13, color=st["color"], alpha=alpha,
                     markeredgecolor="k", markeredgewidth=0.5, zorder=5)
-    ax.set_xlabel("encoder layer"); ax.set_ylabel("Chronos-2 quantile loss (test)")
-    ax.set_xticks(xs); ax.grid(alpha=0.3)
+    ax.set_xlabel("representation"); ax.set_ylabel("Chronos-2 quantile loss (test)")
+    _embed_xticks(ax, xs); ax.grid(alpha=0.3)
 
 
 def make_quantile_by_layer(id_results):
@@ -719,8 +725,8 @@ def make_shared_forecast_comparison(id_results):
             ax.plot(bi, c[bi], marker="*", ms=12, color=color, markeredgecolor="k",
                     markeredgewidth=0.5, zorder=5)
         ax.set_title(f"{ID_STYLE[tag]['label']}  (H={H}, K={K})", fontsize=11)
-        ax.set_xticks(xs); ax.grid(alpha=0.3); ax.legend(fontsize=7, loc="best")
-    for ax in axes[-1]:   ax.set_xlabel("encoder layer")
+        _embed_xticks(ax, xs); ax.grid(alpha=0.3); ax.legend(fontsize=7, loc="best")
+    for ax in axes[-1]:   ax.set_xlabel("representation")
     for ax in axes[:, 0]: ax.set_ylabel("Chronos-2 quantile loss (test)")
     fig.suptitle("Chronos-alignment (controlled K-slot pass): pooled content / REG vs SHARED forecast-token\n"
                  "same quantile loss; LOWER = better; ★ = argmin", fontsize=13)
@@ -749,8 +755,8 @@ def make_mase_figures(id_results):
             ax.plot(bi, curve[bi], marker="*", ms=14, color=st["color"],
                     markeredgecolor="k", markeredgewidth=0.5, zorder=5)
             ax.set_title(st["label"], fontsize=11)
-            ax.set_xticks(xs); ax.grid(alpha=0.3); ax.legend(fontsize=8, loc="best")
-        for ax in axes[-1]:   ax.set_xlabel("encoder layer")
+            _embed_xticks(ax, xs); ax.grid(alpha=0.3); ax.legend(fontsize=8, loc="best")
+        for ax in axes[-1]:   ax.set_xlabel("representation")
         for ax in axes[:, 0]: ax.set_ylabel("test MASE")
         fig.suptitle(f"MASE: per-layer linear probe (median forecast) vs native Chronos-2 — "
                      f"{pool} pooling\nseasonal-naive scale m={M_SEASON}; LOWER = better; "
@@ -782,8 +788,8 @@ def make_mase_kslot_figure(id_results):
                    label=f"native Chronos-2 = {ms['native_mase']:.3f}")
         ax.set_title(f"{ID_STYLE[tag]['label']}  (H={res['kslot']['H']}, K={res['kslot']['K']})",
                      fontsize=11)
-        ax.set_xticks(xs); ax.grid(alpha=0.3); ax.legend(fontsize=7, loc="best")
-    for ax in axes[-1]:   ax.set_xlabel("encoder layer")
+        _embed_xticks(ax, xs); ax.grid(alpha=0.3); ax.legend(fontsize=7, loc="best")
+    for ax in axes[-1]:   ax.set_xlabel("representation")
     for ax in axes[:, 0]: ax.set_ylabel("test MASE")
     fig.suptitle("MASE (controlled K-slot pass): pooled content/REG vs SHARED forecast-token vs native\n"
                  f"seasonal-naive m={M_SEASON}; LOWER = better; ★ = best probe layer", fontsize=13)
