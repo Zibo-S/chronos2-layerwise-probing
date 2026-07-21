@@ -459,6 +459,56 @@ def make_overlay(id_results, uea_curves):
     print(f"\n  [saved] {out}")
 
 
+def make_binned_accuracy_plot(id_results, out_dir=None):
+    """Standalone binned-future-mean-accuracy figure: the forecasting-only half of make_overlay's
+    Panel A, decoupled from the UEA classification overlay. Depends ONLY on the forecasting results
+    (id_results) — it never loads, requires, or validates results/uea/, so it is produced even when
+    the UEA reference is missing or still 12-layer. Each curve is normalized to its own max (exactly
+    as Panel A does). Layers: Embed (L0 = pre-block-1 embedding), then 1..12 (encoder-block outputs)."""
+    out_dir = ID_OUT_DIR if out_dir is None else out_dir
+    xs = np.arange(NUM_LAYERS)
+    fig, ax = plt.subplots(figsize=(7.5, 5.5))
+    for tag, res in id_results.items():
+        _id_line(ax, tag, res["poolings"]["content"]["binned_accuracy"], "content", _norm_to_max)
+        _id_line(ax, tag, res["poolings"]["reg"]["binned_accuracy"], "reg", _norm_to_max)
+    ax.set_title("SECONDARY: normalized accuracy for future-mean bins (ID)\n"
+                 "(each curve normalized to its own max)")
+    ax.set_xlabel("representation"); ax.set_ylabel("accuracy / own maximum")
+    ax.set_xticks(xs); ax.set_xticklabels(["Embed"] + [str(i) for i in range(1, NUM_LAYERS)])
+    ax.grid(alpha=0.3); ax.legend(fontsize=7, ncol=2, loc="lower center")
+    fig.tight_layout()
+    out = out_dir / "id_binned_accuracy_by_layer.png"
+    fig.savefig(out, dpi=140, bbox_inches="tight")
+    plt.close(fig)
+    print(f"  [saved] {out}")
+    return out
+
+
+def make_ridge_r2_plot(id_results, out_dir=None):
+    """Standalone ridge-R² figure: the former Panel B of make_overlay, decoupled from the UEA
+    classification overlay. Depends ONLY on the forecasting ridge results (id_results) — it never
+    loads, requires, or validates results/uea/, so it is produced even when the UEA reference is
+    missing or still 12-layer. Layers are labelled Embed (L0 = pre-block-1 embedding), then 1..12
+    (encoder-block outputs)."""
+    out_dir = ID_OUT_DIR if out_dir is None else out_dir
+    xs = np.arange(NUM_LAYERS)
+    fig, ax = plt.subplots(figsize=(7.5, 5.5))
+    ax.axhline(0.0, color="gray", ls=":", lw=1)
+    for tag, res in id_results.items():
+        _id_line(ax, tag, res["poolings"]["content"]["ridge_r2"], "content", lambda a: np.asarray(a, float))
+        _id_line(ax, tag, res["poolings"]["reg"]["ridge_r2"], "reg", lambda a: np.asarray(a, float))
+    ax.set_title("SECONDARY: ridge R² of normalized future mean (ID)\n(raw R², not normalized)")
+    ax.set_xlabel("representation"); ax.set_ylabel("test R²")
+    ax.set_xticks(xs); ax.set_xticklabels(["Embed"] + [str(i) for i in range(1, NUM_LAYERS)])
+    ax.grid(alpha=0.3); ax.legend(fontsize=7, loc="best")
+    fig.tight_layout()
+    out = out_dir / "id_ridge_r2_by_layer.png"
+    fig.savefig(out, dpi=140, bbox_inches="tight")
+    plt.close(fig)
+    print(f"  [saved] {out}")
+    return out
+
+
 def make_tsonly(id_results, uea_curves):
     """Same as the primary overlay, but UEA classification curves from non-TS modalities are
     greyed out (excluded per the domain-restriction fix); genuine sensor-TS ones stay colored.
@@ -839,6 +889,14 @@ def main():
     # classification reference curves (content pooling) from the committed UEA summary
     summ = json.load(open(UEA_OUT_DIR / "perdataset_summary.json"))["datasets"]
     uea_curves = {name: summ[name]["per_layer_accuracy"]["ID"] for name in UEA_REF}
+    # The UEA baseline is a secondary overlay. If it predates the L0 renumbering (its curves are
+    # not NUM_LAYERS long) it can't share this run's layer axis, so skip it with a warning rather
+    # than crash the forecasting run — regenerate run_perdataset later to bring the overlay back.
+    if not all(len(c) == NUM_LAYERS for c in uea_curves.values()):
+        n_ref = len(next(iter(uea_curves.values()), []))
+        print(f"  [skip] UEA overlay/retention: reference is {n_ref}-layer, not {NUM_LAYERS} "
+              f"(predates the L0 renumbering); regenerate run_perdataset to include it")
+        uea_curves = {}
 
     id_results, id_diags = {}, {}
     for tag in ID_DATASETS:
@@ -911,22 +969,31 @@ def main():
                                  "capacity ablation, not a pure representation-location comparison.",
                    "dataset_note": DATASET_NOTES[DATASET_SET]},
         "id_datasets": id_results,
-        "uea_classification_reference": {name: uea_curves[name] for name in UEA_REF},
+        "uea_classification_reference": {name: uea_curves[name] for name in uea_curves},
         "late_layer_retention": retention,
     }
     with open(SUMMARY_PATH, "w") as f:
         json.dump(summary, f, indent=2)
     print(f"  [saved] {SUMMARY_PATH}")
 
+    # Standalone ID-only figures: forecasting-only, decoupled from the UEA overlay (Panels A & B
+    # of make_overlay). No UEA dependency, so they regenerate even when the UEA reference is
+    # stale/missing. q21 owns them (both are quantile-independent) — same rule as the overlays.
+    if QUANTILE_SET == "q21":
+        make_binned_accuracy_plot(id_results)
+        make_ridge_r2_plot(id_results)
+
     # The classification-overlay figures depend only on the binned/ridge probes, which are
     # quantile-independent (identical numbers for every set) — only the q21 run regenerates
     # them, so a q1/q9 run can never touch the committed q21-era figures in results/.
-    if QUANTILE_SET == "q21":
+    if QUANTILE_SET == "q21" and uea_curves:
         make_overlay(id_results, uea_curves)
         make_tsonly(id_results, uea_curves)
         make_dropoff(id_results, uea_curves)
-    else:
+    elif QUANTILE_SET != "q21":
         print("  [skip] classification-overlay figures (quantile-independent; owned by the q21 run)")
+    else:
+        print("  [skip] classification-overlay figures (no matching UEA reference this run)")
     make_quantile_by_layer(id_results)
     make_pooling_comparison(id_results)
     make_shared_forecast_comparison(id_results)
@@ -959,12 +1026,12 @@ def main():
         pk, peak, ret = _peak_retention(r["poolings"]["content"]["binned_accuracy"])
         print(f"    {tag:>28}:  peak L{pk}={peak:.3f}  ->  L{LAST_LAYER} retains {ret:.3f}")
     print(f"    -- UEA classification accuracy (genuine-TS subset) --")
-    for name in UEA_REF:
+    for name in uea_curves:
         if name in UEA_TS_APPROPRIATE:
             pk, peak, ret = _peak_retention(uea_curves[name])
             print(f"    {name:>28}:  peak L{pk}={peak:.3f}  ->  L{LAST_LAYER} retains {ret:.3f}  [TS]")
     print(f"    -- UEA classification accuracy (excluded modalities) --")
-    for name in UEA_REF:
+    for name in uea_curves:
         if name not in UEA_TS_APPROPRIATE:
             pk, peak, ret = _peak_retention(uea_curves[name])
             print(f"    {name:>28}:  peak L{pk}={peak:.3f}  ->  L{LAST_LAYER} retains {ret:.3f}  (excl.)")
