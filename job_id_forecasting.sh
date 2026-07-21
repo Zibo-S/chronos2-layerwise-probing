@@ -11,4 +11,4 @@ source .venv/bin/activate
 export HF_HOME=$SCRATCH/chronos2/hf_cache
 export HF_HUB_OFFLINE=1              # compute nodes have no internet; everything is pre-cached
 
-python -m experiments.run_id_forecasting
+python -m experiments.run_id_forecasting "$@"
