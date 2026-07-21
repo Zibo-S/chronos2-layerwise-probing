@@ -2,7 +2,8 @@
 Per-dataset, per-layer ID-vs-OOD picture + tunnel-shape recheck.
 
 Reuses the validated extraction and probe-fit logic from probe_pipeline.py:
-  - forward hooks on the 12 encoder.block modules, pooling=content (drop last 2 positions),
+  - a forward pre-hook capturing the embedded input as L0 + forward hooks on the 12 encoder.block
+    modules as L1..L12, pooling=content (drop last 2 positions),
     per-channel-through-encoder then concatenate, Chronos-2 frozen / float32 / mps / no_grad
   - StandardScaler fit on CLEAN TRAIN only + LogisticRegression(max_iter=2000, random_state=0)
 
@@ -46,8 +47,8 @@ SHIFTS = [
 ]
 SHIFT_NAMES = [s[0] for s in SHIFTS]
 
-MIDDLE_BAND = list(range(3, 9))   # layers 3..8 inclusive
-LAST_LAYER = NUM_LAYERS - 1       # 11
+MIDDLE_BAND = list(range(4, 10))  # a-priori "middle" layers (same blocks as before, +1 shifted)
+LAST_LAYER = NUM_LAYERS - 1       # 12 (L0 embedding + L1..L12 block outputs)
 BOOT_B = 2000
 
 # panel colors
@@ -93,7 +94,7 @@ def accs_with_ci(correct, rng):
 
 
 def amplification_band_ci(correct_id, correct_ood, rng, B=BOOT_B):
-    """(band-L11)_OOD - (band-L11)_ID, same resampled indices across all four vectors."""
+    """(band-last)_OOD - (band-last)_ID, same resampled indices across all four vectors."""
     n = correct_id[LAST_LAYER].size
     idx = rng.integers(0, n, size=(B, n))
     bid, bood = band_correct(correct_id), band_correct(correct_ood)
@@ -304,7 +305,7 @@ def main():
         r = results.get(ds)
         if r is not None:
             n_ge = int((np.asarray(r["id_accs"]) >= 0.95).sum())
-            print(f"  {ds:<22} saturated={'YES' if r['saturated'] else 'no '}  ({n_ge}/12 layers >= 0.95)")
+            print(f"  {ds:<22} saturated={'YES' if r['saturated'] else 'no '}  ({n_ge}/{NUM_LAYERS} layers >= 0.95)")
 
     out = {
         "config": {

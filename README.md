@@ -1,9 +1,9 @@
 # Layer-wise Probing of Chronos-2
 
 At which depth inside a **frozen [Chronos-2](https://huggingface.co/amazon/chronos-2)**
-time-series foundation model is the forecast most *linearly decodable*? We hook all 12
-encoder blocks, freeze everything, and train tiny linear probes on each layer's hidden
-states to predict the future trajectory — trained and scored with **Chronos-2's own
+time-series foundation model is the forecast most *linearly decodable*? We hook the input
+embedding (L0) and all 12 encoder blocks (L1–L12), freeze everything, and train tiny linear
+probes on each layer's hidden states to predict the future trajectory — trained and scored with **Chronos-2's own
 quantile (pinball) loss**, and benchmarked against the native Chronos-2 forecast on the
 same windows. The model is never trained or fine-tuned; only the probes are fit.
 
@@ -17,6 +17,10 @@ below. **UEA classification probing (completed, maintained as a baseline)**, sum
 in [its section](#uea-classification-baseline-maintained-baseline-not-under-active-development).
 
 ## Headline findings
+
+> **Note (pending regeneration):** the layer numbers in this section predate the L0-inclusive
+> renumbering (L0 = input embedding, L1..L12 = block outputs; see *Method*). They will be
+> updated once the experiments are re-run under the new scheme.
 
 Setting: 4 long hourly datasets, context C=512 / horizon H=64, per-layer linear probes,
 validation-selected probe layer **L\*** (chosen without touching test), compared against
@@ -68,8 +72,11 @@ a statement about the readout structure, not a controlled representation compari
 
 **Model.** `amazon/chronos-2`: encoder-only probabilistic forecaster — input patches of
 16 steps → 768-d tokens, a REG token, 12 encoder blocks, 21-quantile output head,
-arcsinh instance normalization. Frozen throughout; features extracted with forward hooks
-on all 12 blocks (`probing/extraction.py`).
+arcsinh instance normalization. Frozen throughout. Features are extracted with a forward
+pre-hook on the first block — capturing the embedded token sequence entering block 1 (content
+patches + special tokens, pre-attention) as **L0** — plus forward hooks on all 12 blocks giving
+**L1..L12** (`probing/extraction.py`). The native output head consumes L12 (the last block's
+final-layer-norm output).
 
 **Data** (`probing/id_data.py`). Four hourly datasets from
 [`autogluon/chronos_datasets`](https://huggingface.co/datasets/autogluon/chronos_datasets).
@@ -245,7 +252,7 @@ Key figures:
 (the main per-layer curves),
 [`results/extended_v1/quantile_loss/shared_forecast_mase.png`](results/extended_v1/quantile_loss/shared_forecast_mase.png)
 (shared-slot probe vs native MASE),
-[`results/extended_v1/bootstrap/figures/primary/H64_K4/quantile_loss_delta_vs_L11__content.png`](results/extended_v1/bootstrap/figures/primary/H64_K4/quantile_loss_delta_vs_L11__content.png)
+[`results/extended_v1/bootstrap/figures/primary/H64_K4/quantile_loss_delta_vs_last__content.png`](results/extended_v1/bootstrap/figures/primary/H64_K4/quantile_loss_delta_vs_last__content.png)
 (the headline Δ with CIs).
 
 `results/phase0_trio/` holds the frozen original Phase 0 run; `results/extended_v1/`

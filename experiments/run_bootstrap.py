@@ -10,7 +10,7 @@ the ratio of weighted sums, i.e. the window-weighted mean under duplication); an
 explicit-expansion self-check verifies the equivalence on real data every run.
 
 ONE counts matrix per dataset is shared across every layer, readout, metric, and the native
-Chronos-2 benchmark, so all paired differences (Delta_l = metric[L11] - metric[l], positive =
+Chronos-2 benchmark, so all paired differences (Delta_l = metric[last] - metric[l], positive =
 layer l better) use the same replicates on both sides — a paired bootstrap, never two
 independent bootstraps subtracted.
 
@@ -211,7 +211,7 @@ def _ci(boot):
 
 
 def summarize_dataset(meta, boot):
-    """Point estimates (the reported numbers), CIs, and PAIRED Delta-vs-L11 CIs per readout."""
+    """Point estimates (the reported numbers), CIs, and PAIRED Delta-vs-last CIs per readout."""
     summ = {"H": meta["H"], "K": meta["K"], "output_patch_size": meta["output_patch_size"],
             "quantile_set": meta.get("quantile_set", "q21"),
             "num_quantiles": int(meta["num_quantiles"]) if "num_quantiles" in meta else 21,
@@ -232,17 +232,17 @@ def summarize_dataset(meta, boot):
             rs[metric] = {
                 "point": point.tolist(),
                 "ci_lo": lo.tolist(), "ci_hi": hi.tolist(),
-                "delta_vs_L11": (point[LAST_LAYER] - point).tolist(),
+                "delta_vs_last": (point[LAST_LAYER] - point).tolist(),
                 "delta_ci_lo": dlo.tolist(), "delta_ci_hi": dhi.tolist(),
                 "delta_above_zero": (dlo > 0).tolist(),
             }
-        # PRIMARY comparison: the frozen validation-selected layer vs L11 (both metrics).
-        # Everything else in delta_vs_L11 is exploratory (per-layer, not selection-corrected).
+        # PRIMARY comparison: the frozen validation-selected layer vs the last layer (both metrics).
+        # Everything else in delta_vs_last is exploratory (per-layer, not selection-corrected).
         Ls = rs["val_selected_layer"]
         if Ls is not None:
             rs["primary_comparison"] = {
                 "layer": Ls,
-                **{metric: {"delta": rs[metric]["delta_vs_L11"][Ls],
+                **{metric: {"delta": rs[metric]["delta_vs_last"][Ls],
                             "ci": [rs[metric]["delta_ci_lo"][Ls], rs[metric]["delta_ci_hi"][Ls]],
                             "supported": bool(rs[metric]["delta_ci_lo"][Ls] > 0)}
                    for metric in METRICS}}
@@ -257,7 +257,7 @@ def summarize_dataset(meta, boot):
 TABLE_FIELDS = ["dataset", "H", "K", "output_patch_size", "quantile_set", "num_quantiles",
                 "readout", "metric", "layer",
                 "point", "ci_lo", "ci_hi",
-                "delta_vs_L11", "delta_ci_lo", "delta_ci_hi", "delta_above_zero",
+                "delta_vs_last", "delta_ci_lo", "delta_ci_hi", "delta_above_zero",
                 "is_primary_comparison", "val_selected_layer",
                 "n_test_series", "n_test_windows", "bootstrap_seed", "n_replicates"]
 
@@ -282,7 +282,7 @@ def build_rows(all_summ):
                         rows.append({**base, "readout": r, "metric": metric, "layer": layer,
                                      "point": m["point"][layer],
                                      "ci_lo": m["ci_lo"][layer], "ci_hi": m["ci_hi"][layer],
-                                     "delta_vs_L11": m["delta_vs_L11"][layer],
+                                     "delta_vs_last": m["delta_vs_last"][layer],
                                      "delta_ci_lo": m["delta_ci_lo"][layer],
                                      "delta_ci_hi": m["delta_ci_hi"][layer],
                                      "delta_above_zero": m["delta_above_zero"][layer],
@@ -292,7 +292,7 @@ def build_rows(all_summ):
                          "point": ds["native"]["mase_context_point"],
                          "ci_lo": ds["native"]["mase_context_ci"][0],
                          "ci_hi": ds["native"]["mase_context_ci"][1],
-                         "delta_vs_L11": "", "delta_ci_lo": "", "delta_ci_hi": "",
+                         "delta_vs_last": "", "delta_ci_lo": "", "delta_ci_hi": "",
                          "delta_above_zero": "", "is_primary_comparison": "",
                          "val_selected_layer": ""})
     return rows
@@ -373,8 +373,8 @@ def make_by_layer_figures(exp_id, datasets, group, readouts):
 
 
 def make_delta_figures(exp_id, datasets, group, readouts):
-    """Paired Delta_l = metric[L11] - metric[l] with 95% paired-bootstrap CIs. Positive =
-    layer l better than L11. Filled markers = CI entirely above zero; ★ = the frozen
+    """Paired Delta_l = metric[last] - metric[l] with 95% paired-bootstrap CIs. Positive =
+    layer l better than the last layer. Filled markers = CI entirely above zero; ★ = the frozen
     validation-selected primary layer (all other layers are exploratory)."""
     xs = np.arange(NUM_LAYERS)
     fig_dir = FIG_DIRS[group] / exp_id
@@ -386,7 +386,7 @@ def make_delta_figures(exp_id, datasets, group, readouts):
                 color, label = _style(tag, j)
                 rs = ds["readouts"][r]
                 m = rs[metric]
-                d = np.asarray(m["delta_vs_L11"])
+                d = np.asarray(m["delta_vs_last"])
                 dlo, dhi = np.asarray(m["delta_ci_lo"]), np.asarray(m["delta_ci_hi"])
                 ax.axhline(0.0, color="gray", ls=":", lw=1)
                 ax.errorbar(xs, d, yerr=[d - dlo, dhi - d], fmt="none", ecolor=color,
@@ -406,14 +406,14 @@ def make_delta_figures(exp_id, datasets, group, readouts):
                 ax.set_xticks(xs)
                 ax.grid(alpha=0.3)
                 ax.legend(fontsize=7, loc="best")
-                ax.set_ylabel(f"Δ {metric}  (L11 − layer)")
+                ax.set_ylabel(f"Δ {metric}  (last − layer)")
                 ax.set_xlabel("encoder layer")
-            fig.suptitle(f"paired Δ vs L11 — {r}  [{group} experiment, {exp_id}]\n"
-                         "positive = layer beats L11; same resampled series on both sides "
+            fig.suptitle(f"paired Δ vs last — {r}  [{group} experiment, {exp_id}]\n"
+                         "positive = layer beats the last layer; same resampled series on both sides "
                          f"(paired, B={BOOT_B_CLUSTER}); non-★ layers are exploratory",
                          fontsize=12)
             fig.tight_layout(rect=[0, 0, 1, 0.94])
-            out = fig_dir / f"{metric}_delta_vs_L11__{r}.png"
+            out = fig_dir / f"{metric}_delta_vs_last__{r}.png"
             fig.savefig(out, dpi=140, bbox_inches="tight")
             plt.close(fig)
             print(f"  [saved] {out}")
@@ -519,7 +519,7 @@ def main():
     print(f"  [saved] {BOOT_DIR / 'bootstrap_summary.json'}")
 
     # concise report: the PRIMARY (validation-selected) comparisons only
-    print(f"\n{'='*70}\nPRIMARY comparisons (frozen val-selected L* vs L11; positive Δ = L* "
+    print(f"\n{'='*70}\nPRIMARY comparisons (frozen val-selected L* vs last; positive Δ = L* "
           f"better)\n{'='*70}")
     for exp_id, datasets in all_summ.items():
         for tag, ds in datasets.items():
@@ -533,7 +533,7 @@ def main():
                 for metric in METRICS:
                     e = pc[metric]
                     flag = "SUPPORTED" if e["supported"] else "crosses 0"
-                    print(f"    {r:>10} L{pc['layer']:<2} vs L11  Δ={e['delta']:+.4f}  "
+                    print(f"    {r:>10} L{pc['layer']:<2} vs last  Δ={e['delta']:+.4f}  "
                           f"CI[{e['ci'][0]:+.4f}, {e['ci'][1]:+.4f}]  {flag}  ({metric})")
 
 

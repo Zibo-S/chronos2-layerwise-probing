@@ -403,7 +403,7 @@ def _rel_dropoff(a):
 
 
 def _peak_retention(a):
-    """Return (peak_layer, peak_value, late_retention = score[L11] / peak)."""
+    """Return (peak_layer, peak_value, late_retention = score[last] / peak)."""
     a = np.asarray(a, float)
     pk = int(a.argmax())
     peak = float(a[pk])
@@ -637,7 +637,7 @@ def write_quantile_json(id_results, id_diags):
                 "quantile_loss": [float(x) for x in ql],
                 "mean_pinball_loss": [float(x) for x in res["poolings"][pool]["mean_pinball_loss"]],
                 "argmin_layer": int(ql.argmin()), "min_loss": float(ql.min()),
-                "L0": float(ql[0]), "L11": float(ql[LAST_LAYER]),
+                "L0": float(ql[0]), "last": float(ql[LAST_LAYER]),
                 "wd_selected": {str(k): v for k, v in diag["wd"].items()},
                 "wd_selection_val": {str(k): v for k, v in diag["selection"].items()},
             }
@@ -764,7 +764,7 @@ def write_mase_json(id_results):
             ent["poolings"][pool] = {
                 "probe_mase": [float(x) for x in c],
                 "argmin_layer": bi, "min_mase": float(c[bi]),
-                "L11_mase": float(c[LAST_LAYER]),
+                "last_mase": float(c[LAST_LAYER]),
                 "best_probe_over_native": float(c[bi] / ms["native_mase"]),
             }
         payload["datasets"][tag] = ent
@@ -848,12 +848,12 @@ def main():
     total_bytes = sum(_bytes_per_split(r["meta"]["n_train"]) + _bytes_per_split(r["meta"]["n_test"])
                       for r in id_results.values())
     print(f"\n  est. new IDF_ cache footprint: ~{total_bytes/1e9:.2f} GB "
-          f"(3 poolings x 12 layers x n_windows x 768 x 4B)")
+          f"(3 poolings x {NUM_LAYERS} layers x n_windows x 768 x 4B)")
 
-    # ---- late-layer retention = score[L11] / score[peak] (the quantity the tunnel
+    # ---- late-layer retention = score[last] / score[peak] (the quantity the tunnel
     #      comparison needs — how much each curve keeps after its own peak) ----
     retention = {
-        "_basis": "retention_L11 = score[L11] / score[peak]. ID = binned-future accuracy "
+        "_basis": "retention_last = score[last] / score[peak]. ID = binned-future accuracy "
                   "(content/reg pooling); UEA = classification accuracy (content pooling). "
                   "The ID-vs-transfer comparison should use the genuine-TS UEA subset "
                   "(ts_appropriate=true).",
@@ -865,18 +865,18 @@ def main():
             ent = {}
             for metric in ("binned_accuracy", "ridge_r2"):
                 pk, peak, ret = _peak_retention(res["poolings"][pool][metric])
-                ent[metric] = {"peak_layer": pk, "peak_value": peak, "retention_L11": ret}
+                ent[metric] = {"peak_layer": pk, "peak_value": peak, "retention_last": ret}
             # quantile loss is LOWER=better, so the tunnel-relevant number is the excess
-            # of the last layer over the best layer: loss[L11]/loss[argmin] >= 1.
+            # of the last layer over the best layer: loss[last]/loss[argmin] >= 1.
             ql = np.asarray(res["poolings"][pool]["quantile_loss"], float)
             bi = int(ql.argmin())
             ent["quantile_loss"] = {"best_layer": bi, "best_value": float(ql[bi]),
-                                    "excess_L11": float(ql[LAST_LAYER] / ql[bi])}
+                                    "excess_last": float(ql[LAST_LAYER] / ql[bi])}
             retention["id"][tag][pool] = ent
     for name, acc in uea_curves.items():
         pk, peak, ret = _peak_retention(acc)
         retention["uea_classification"][name] = {
-            "peak_layer": pk, "peak_value": peak, "retention_L11": ret,
+            "peak_layer": pk, "peak_value": peak, "retention_last": ret,
             "basis": "classification_accuracy_content",
             "ts_appropriate": name in UEA_TS_APPROPRIATE,
             "modality": "genuine sensor time-series" if name in UEA_TS_APPROPRIATE
@@ -952,28 +952,28 @@ def main():
         print(f"{tag:>26} {m['split_mode']:>13} {m['n_train']:>6} {m['n_test']:>6}  "
               f"{'L'+str(int(acc.argmax()))+'='+format(acc.max(),'.3f'):>28}  "
               f"{'['+format(r2.min(),'+.3f')+','+format(r2.max(),'+.3f')+']':>26}")
-    # late-layer retention table = score[L11] / score[peak] — the tunnel-relevant number
-    print(f"\n  late-layer retention = score[L11] / score[peak]  (content pooling):")
+    # late-layer retention table = score[last] / score[peak] — the tunnel-relevant number
+    print(f"\n  late-layer retention = score[last] / score[peak]  (content pooling):")
     print(f"    -- ID forecasting (binned-future accuracy) --")
     for tag, r in id_results.items():
         pk, peak, ret = _peak_retention(r["poolings"]["content"]["binned_accuracy"])
-        print(f"    {tag:>28}:  peak L{pk}={peak:.3f}  ->  L11 retains {ret:.3f}")
+        print(f"    {tag:>28}:  peak L{pk}={peak:.3f}  ->  L{LAST_LAYER} retains {ret:.3f}")
     print(f"    -- UEA classification accuracy (genuine-TS subset) --")
     for name in UEA_REF:
         if name in UEA_TS_APPROPRIATE:
             pk, peak, ret = _peak_retention(uea_curves[name])
-            print(f"    {name:>28}:  peak L{pk}={peak:.3f}  ->  L11 retains {ret:.3f}  [TS]")
+            print(f"    {name:>28}:  peak L{pk}={peak:.3f}  ->  L{LAST_LAYER} retains {ret:.3f}  [TS]")
     print(f"    -- UEA classification accuracy (excluded modalities) --")
     for name in UEA_REF:
         if name not in UEA_TS_APPROPRIATE:
             pk, peak, ret = _peak_retention(uea_curves[name])
-            print(f"    {name:>28}:  peak L{pk}={peak:.3f}  ->  L11 retains {ret:.3f}  (excl.)")
+            print(f"    {name:>28}:  peak L{pk}={peak:.3f}  ->  L{LAST_LAYER} retains {ret:.3f}  (excl.)")
     # Chronos-2 quantile loss (content) — the forecasting-native tunnel readout (LOWER=better)
     print(f"\n  Chronos-2 quantile loss  (content pooling; LOWER=better, tunnel=argmin):")
     for tag, r in id_results.items():
         ql = np.array(r["poolings"]["content"]["quantile_loss"])
         print(f"    {tag:>26}:  best L{int(ql.argmin())}={ql.min():.3f}  |  "
-              f"L0={ql[0]:.3f}  L11={ql[LAST_LAYER]:.3f}")
+              f"L0={ql[0]:.3f}  L{LAST_LAYER}={ql[LAST_LAYER]:.3f}")
     # MASE (content) — probe median forecast vs native Chronos-2 on the same test windows
     if has_mase:
         print(f"\n  MASE, median forecast  (content pooling; m={M_SEASON}; LOWER=better):")
@@ -981,7 +981,7 @@ def main():
             mc = np.array(r["mase"]["poolings"]["content"])
             nat = r["mase"]["native_mase"]
             print(f"    {tag:>26}:  probe best L{int(mc.argmin())}={mc.min():.3f}  "
-                  f"L11={mc[LAST_LAYER]:.3f}  |  native={nat:.3f}  "
+                  f"L{LAST_LAYER}={mc[LAST_LAYER]:.3f}  |  native={nat:.3f}  "
                   f"(best/native={mc.min()/nat:.2f})")
     print(f"\n  binned chance = {1/N_BINS:.2f}")
 

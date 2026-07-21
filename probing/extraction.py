@@ -87,6 +87,11 @@ def _all_pool_caches_exist(dataset, split, corruption):
 def _load_cache(path):
     d = np.load(path, allow_pickle=True)
     features = {int(k.split("_")[1]): d[k] for k in d.files if k.startswith("layer_")}
+    if set(features) != set(range(NUM_LAYERS)):
+        raise RuntimeError(
+            f"{path.name}: cache has layers {sorted(features)} but NUM_LAYERS={NUM_LAYERS} "
+            f"expects 0..{NUM_LAYERS - 1} — the layer set changed (e.g. the L0 embedding was "
+            f"added); delete this features_cache/ entry and re-extract")
     y = d["y"]
     return features, y
 
@@ -208,14 +213,25 @@ def extract_features(dataset_name, split, corruption=None, batch_size=64, poolin
                 captured[layer_idx].append(hs.detach().to("cpu"))
             return hook
 
-        hooks = [blk.register_forward_hook(make_hook(i))
-                 for i, blk in enumerate(pipeline.model.encoder.block)]
+        def embed_pre_hook(_m, args):
+            # args[0] = the embedded token sequence ENTERING block 1 (content patches +
+            # special tokens), i.e. the pre-transformer state = L0. Same (n, P, 768) layout.
+            captured[0].append(args[0].detach().to("cpu"))
+
+        model = pipeline.model
+        was_training = model.training
+        model.eval()                       # deterministic extraction (disables dropout, etc.)
+        pre = model.encoder.block[0].register_forward_pre_hook(embed_pre_hook)
+        hooks = [blk.register_forward_hook(make_hook(i + 1))     # block i output -> L(i+1)
+                 for i, blk in enumerate(model.encoder.block)]
         try:
             with torch.no_grad():
                 _ = pipeline.embed(inputs, batch_size=batch_size)
         finally:
+            pre.remove()
             for h in hooks:
                 h.remove()
+            model.train(was_training)      # restore prior train/eval mode
 
         for i in range(NUM_LAYERS):
             full = torch.cat(captured[i], dim=0)  # (n, P, 768)
@@ -315,14 +331,25 @@ def extract_window_features(tag, split, contexts, y, pooling="content", batch_si
                 captured[layer_idx].append(hs.detach().to("cpu"))
             return hook
 
-        hooks = [blk.register_forward_hook(make_hook(i))
-                 for i, blk in enumerate(pipeline.model.encoder.block)]
+        def embed_pre_hook(_m, args):
+            # args[0] = the embedded token sequence ENTERING block 1 (content patches +
+            # special tokens), i.e. the pre-transformer state = L0. Same (b, P, 768) layout.
+            captured[0].append(args[0].detach().to("cpu"))
+
+        model = pipeline.model
+        was_training = model.training
+        model.eval()                       # deterministic extraction (disables dropout, etc.)
+        pre = model.encoder.block[0].register_forward_pre_hook(embed_pre_hook)
+        hooks = [blk.register_forward_hook(make_hook(i + 1))     # block i output -> L(i+1)
+                 for i, blk in enumerate(model.encoder.block)]
         try:
             with torch.no_grad():
                 _ = pipeline.embed(inputs, batch_size=len(inputs))
         finally:
+            pre.remove()
             for h in hooks:
                 h.remove()
+            model.train(was_training)      # restore prior train/eval mode
 
         for i in range(NUM_LAYERS):
             full = torch.cat(captured[i], dim=0)          # (b, P, 768)
@@ -366,11 +393,11 @@ def extract_kout_features(tag, split, contexts, y, horizon, batch_size=128):
 
     Also returns the post-final-layer-norm representation ('final') = the actual tensor the native
     output head consumes (encoder.final_layer_norm output, model.py:190). NOTE: this is ONLY the
-    real final output (= L11 run through the final norm). The L0..L11 block-hook states are
-    PRE-final-norm and are NOT native-head-compatible for L0..L10.
+    real final output (= the last block L12 run through the final norm). The L0..L12 block-hook
+    states are PRE-final-norm and are NOT native-head-compatible except for L12 fed through it.
 
     Returns (feats, final, y):
-      feats = {"content": {L:(n,768)}, "reg": {L:(n,768)}, "fslot": {L:(n,K,768)}}  L in 0..11
+      feats = {"content": {L:(n,768)}, "reg": {L:(n,768)}, "fslot": {L:(n,K,768)}}  L in 0..12 (L0=embed, L1..L12=blocks)
       final = {"content": (n,768),     "reg": (n,768),     "fslot": (n,K,768)}       post-final-norm
     """
     K = math.ceil(horizon / OUTPUT_PATCH_SIZE)   # native rule: pipeline.get_num_output_patches
@@ -383,6 +410,13 @@ def extract_kout_features(tag, split, contexts, y, horizon, batch_size=128):
             raise RuntimeError(
                 f"stale K{K} cache {cache_path.name}: cached labels do not match the current "
                 f"windows — delete features_cache/{cache_path.name} and re-extract")
+        present = {int(k.split("_L")[1]) for k in d.files
+                   if k.startswith("content_L") and k.split("_L")[1].isdigit()}
+        if present != set(range(NUM_LAYERS)):
+            raise RuntimeError(
+                f"{cache_path.name}: cache has layers {sorted(present)} but NUM_LAYERS="
+                f"{NUM_LAYERS} expects 0..{NUM_LAYERS - 1} — layer set changed (L0 embedding "
+                f"added); delete features_cache/{cache_path.name} and re-extract")
         feats = {t: {i: d[f"{t}_L{i}"] for i in range(NUM_LAYERS)} for t in types}
         final = {t: d[f"{t}_final"] for t in types}
         assert feats["fslot"][0].shape[1] == K, (
@@ -397,8 +431,7 @@ def extract_kout_features(tag, split, contexts, y, horizon, batch_size=128):
 
     pipeline, cfg = get_pipeline()
     model = pipeline.model
-    model.eval()                                           # no_grad does NOT disable dropout; eval does
-    device = next(model.parameters()).device
+    device = next(model.parameters()).device               # eval()/restore handled per-batch below
     patch_size = model.chronos_config.input_patch_size
     # K was derived above as ceil(horizon / OUTPUT_PATCH_SIZE) from the config constant; fail
     # loudly if a swapped-in model's actual output patch size differs from that constant.
@@ -433,14 +466,24 @@ def extract_kout_features(tag, split, contexts, y, horizon, batch_size=128):
                 captured[layer_idx].append(hs.detach().to("cpu"))
             return hook
 
-        hooks = [blk.register_forward_hook(make_hook(i)) for i, blk in enumerate(model.encoder.block)]
+        def embed_pre_hook(_m, args):
+            # args[0] = the embedded token sequence ENTERING block 1 (content + REG + K forecast
+            # slots), i.e. the pre-transformer state = L0. Same (b, P, 768) layout.
+            captured[0].append(args[0].detach().to("cpu"))
+
+        was_training = model.training
+        model.eval()                       # deterministic extraction (disables dropout, etc.)
+        pre = model.encoder.block[0].register_forward_pre_hook(embed_pre_hook)
+        hooks = [blk.register_forward_hook(make_hook(i + 1)) for i, blk in enumerate(model.encoder.block)]
         try:
             with torch.no_grad():
                 # model.encode returns a 4-tuple; enc_out = Chronos2EncoderOutput, enc_out[0] = hidden states
                 enc_out, *_ = model.encode(context=ctx, num_output_patches=K)  # group_ids=None -> independent
         finally:
+            pre.remove()
             for h in hooks:
                 h.remove()
+            model.train(was_training)      # restore prior train/eval mode
 
         final_hs = enc_out[0].detach().cpu()               # (b, P, 768) POST final_layer_norm = native-head input
         if b0 == 0:
