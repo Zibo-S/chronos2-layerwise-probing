@@ -401,6 +401,126 @@ def quantile_probe(train_feats, train_labels, test_feats, test_labels,
     return (out, diag) if diag is not None else out
 
 
+# ---- Frozen fit/predict split of the pooled quantile probe (cross-dataset transfer) ---- #
+# quantile_probe() trains AND scores in ONE call and returns only per-layer test losses — it
+# never hands back the trained (scaler, weights, wd), so a probe can't be re-applied to a
+# DIFFERENT dataset. fit_quantile_probe + predict_quantile_probe split that call into a
+# training half returning the FROZEN per-layer probe and an evaluation half that scores
+# arbitrary features. The training half mirrors quantile_probe's path EXACTLY (same SEED 80/20
+# carve, same wd grid + selection, same StandardScaler + Linear refit on FULL train), so
+# predict_quantile_probe(fit_quantile_probe(tr), te) reproduces quantile_probe(tr, te) on the
+# same device (asserted in tests/test_ood_transfer.py). quantile_probe stays UNCHANGED; the
+# committed numbers are untouched. Used by the strict cross-dataset OOD transfer driver
+# (experiments/run_ood_transfer.py): fit once on a SOURCE, freeze, evaluate on every TARGET.
+
+def fit_quantile_probe(train_feats, train_labels, quantiles=CHRONOS2_QUANTILES,
+                       epochs=300, lr=1e-2, weight_decay=1e-3, wd_grid=None, device=None):
+    """Train the per-layer linear quantile probe and RETURN the frozen fitted probe (not scores).
+
+    train_labels : (n, H) arcsinh trajectory labels (id_data.Y_train_traj) — NOT the scalar y.
+    Returns {layer: {"scaler": StandardScaler (fit on FULL train), "linear": nn.Linear(d, Q*H)
+                     in eval mode on `device`, "wd": float, "selection": {...}|None,
+                     "in_features": int, "out_features": int, "device": str}}.
+    The training path is identical to quantile_probe's up to the omitted test scoring — the
+    collect_history carve-fit that quantile_probe optionally runs between selection and the
+    final refit does NOT affect that refit (each _fit_quantile_linear re-seeds torch), so a
+    probe fit here and scored with predict_quantile_probe reproduces quantile_probe's losses.
+    """
+    device = device or ("cuda" if torch.cuda.is_available() else "cpu")
+    quantiles = validate_quantiles(quantiles)
+    Ytr = np.asarray(train_labels, dtype=np.float32)
+    if Ytr.ndim != 2:
+        raise ValueError(f"fit_quantile_probe needs (n, H) trajectory labels, got shape {Ytr.shape} "
+                         "-- pass Y_train_traj, not the scalar y")
+    q = torch.as_tensor(quantiles, dtype=torch.float32, device=device)
+    Q, H = len(quantiles), Ytr.shape[1]
+    ytr = torch.as_tensor(Ytr, device=device)
+
+    rng = np.random.default_rng(SEED)                     # SAME seed-based 80/20 carve as quantile_probe
+    perm = rng.permutation(Ytr.shape[0])
+    n_val = max(1, int(0.2 * Ytr.shape[0]))
+    va_np, tr_np = perm[:n_val], perm[n_val:]
+    tr = torch.as_tensor(tr_np, dtype=torch.long, device=device)
+    va = torch.as_tensor(va_np, dtype=torch.long, device=device)
+
+    fitted = {}
+    for i in range(NUM_LAYERS):
+        if wd_grid is None:
+            wd, selection = weight_decay, None
+        else:
+            # selection: scaler AND probe fit on the 80% carve ONLY (mirrors quantile_probe)
+            sc_sel = StandardScaler().fit(train_feats[i][tr_np])
+            Xtr_s = torch.as_tensor(sc_sel.transform(train_feats[i][tr_np]),
+                                    dtype=torch.float32, device=device)
+            Xva_s = torch.as_tensor(sc_sel.transform(train_feats[i][va_np]),
+                                    dtype=torch.float32, device=device)
+            best_wd, best_val, sel = wd_grid[0], float("inf"), {}
+            for cand in wd_grid:
+                m = _fit_quantile_linear(Xtr_s, ytr[tr], q, cand, epochs, lr, device)
+                with torch.no_grad():
+                    v = chronos2_quantile_loss(m(Xva_s).view(-1, Q, H), ytr[va], q).item()
+                sel[cand] = v
+                if v < best_val:
+                    best_val, best_wd = v, cand
+            wd = best_wd
+            selection = {"val_loss_by_wd": {float(k): float(v) for k, v in sel.items()},
+                         "chosen_wd": float(best_wd)}
+
+        # final: scaler + probe refit on FULL train with the selected wd (same as quantile_probe)
+        sc = StandardScaler().fit(train_feats[i])
+        Xtr = torch.as_tensor(sc.transform(train_feats[i]), dtype=torch.float32, device=device)
+        m = _fit_quantile_linear(Xtr, ytr, q, wd, epochs, lr, device)   # returned in eval() mode
+        fitted[i] = {"scaler": sc, "linear": m, "wd": float(wd), "selection": selection,
+                     "in_features": int(m.in_features), "out_features": int(m.out_features),
+                     "device": str(device)}
+        print(f"    [fit] L{i:>2}  wd={wd:g}  out_dim={m.out_features}")
+    return fitted
+
+
+def predict_quantile_probe(fitted, feats, labels, quantiles=CHRONOS2_QUANTILES, device=None,
+                           collect_test_median=False, collect_test_window_loss=False):
+    """Apply a FROZEN fitted probe (from fit_quantile_probe) to `feats`/`labels`; NEVER trains.
+
+    feats  : {layer: (n, d)} hidden states from ANY dataset (a target under transfer).
+    labels : (n, H) arcsinh trajectory labels for those windows (the target futures).
+    Returns {layer: loss} (Chronos-2 quantile loss, lower=better). When any collect_* flag is
+    set returns (out, diag) with the SAME diag keys quantile_probe uses — test_mean_pinball
+    always, test_median / test_window_loss on request — so the driver's MASE + cluster-bootstrap
+    machinery works on a transferred probe unchanged. Deterministic and side-effect-free: the
+    fitted weights are not mutated, so one frozen probe can be reused across many targets."""
+    quantiles = validate_quantiles(quantiles)
+    Yte = np.asarray(labels, dtype=np.float32)
+    if Yte.ndim != 2:
+        raise ValueError(f"predict_quantile_probe needs (n, H) trajectory labels, got {Yte.shape}")
+    Q, H = len(quantiles), Yte.shape[1]
+    q_mid = median_index(quantiles)
+    if collect_test_median and q_mid is None:
+        raise ValueError(
+            f"collect_test_median needs the 0.5 level in the quantile set, got {quantiles.tolist()} "
+            "— median/MASE metrics are unavailable for this set; skip them, don't substitute")
+    out = {}
+    diag = ({"test_mean_pinball": {}, "test_median": {}, "test_window_loss": {}}
+            if (collect_test_median or collect_test_window_loss) else None)
+    for i in range(NUM_LAYERS):
+        dev = device or fitted[i]["device"]
+        m = fitted[i]["linear"].to(dev)
+        sc = fitted[i]["scaler"]
+        q_t = torch.as_tensor(quantiles, dtype=torch.float32, device=dev)
+        yte = torch.as_tensor(Yte, device=dev)
+        Xte = torch.as_tensor(sc.transform(feats[i]), dtype=torch.float32, device=dev)
+        with torch.no_grad():
+            pred = m(Xte).view(-1, Q, H)
+            out[i] = float(chronos2_quantile_loss(pred, yte, q_t).item())
+            if diag is not None:
+                diag["test_mean_pinball"][i] = float(mean_pinball_loss(pred, yte, q_t).item())
+            if collect_test_median:
+                diag["test_median"][i] = pred[:, q_mid, :].cpu().numpy().astype(np.float32)
+            if collect_test_window_loss:
+                diag["test_window_loss"][i] = chronos2_quantile_loss_per_window(
+                    pred, yte, q_t).cpu().numpy().astype(np.float64)
+    return (out, diag) if diag is not None else out
+
+
 # ---- Chronos-ALIGNED shared forecast-token probe -------------------------------------- #
 # One shared Linear(768, Q*output_patch_size) reads EACH native forecast-slot hidden state
 # (extract_kout_features -> (n, K, 768)); the K predicted output patches are laid end-to-end
