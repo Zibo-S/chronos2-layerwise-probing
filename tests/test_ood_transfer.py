@@ -118,11 +118,38 @@ def test_is_ood_definition():
                 assert not (src != tgt), "diagonal must be in-dataset (is_ood False)"
 
 
-# 7. End-to-end smoke over REAL cached features (gated: needs the content caches; opt-in + fast).
+# 7 (paired Δ-vs-last bootstrap). Last-layer Δ is identically 0; a clearly-better earlier layer
+# has a positive Δ whose 95% CI excludes zero.
+def test_paired_delta_bootstrap():
+    from experiments.run_ood_transfer import _paired_delta_bootstrap
+    rng = np.random.default_rng(0)
+    S, per = 30, 5                                   # 30 test series x 5 windows each
+    sid = np.repeat(np.arange(S), per)
+    n = S * per
+    wl = np.empty((NUM_LAYERS, n))
+    for L in range(NUM_LAYERS):
+        base = 0.5 if L == 0 else 1.0                # layer 0 clearly beats every other layer
+        wl[L] = base + rng.normal(scale=0.02, size=n)
+    r = _paired_delta_bootstrap(wl, sid)
+    assert r["delta_vs_last"].shape == (NUM_LAYERS,)
+    assert r["delta_above_zero"].dtype == bool and len(r["delta_above_zero"]) == NUM_LAYERS
+    # last vs itself: Δ is identically 0, CI brackets 0, and it is not flagged "above zero"
+    assert abs(r["delta_vs_last"][LAST_LAYER]) < 1e-12
+    assert r["delta_ci_lo"][LAST_LAYER] <= 0.0 <= r["delta_ci_hi"][LAST_LAYER]
+    assert not r["delta_above_zero"][LAST_LAYER]
+    # a clearly-better early layer: positive Δ (~0.5) with CI entirely above zero
+    assert r["delta_vs_last"][0] > 0.3 and r["delta_above_zero"][0]
+    assert r["delta_ci_lo"][0] > 0.0
+
+
+# 8. End-to-end smoke over REAL cached features (gated: needs the content caches; opt-in + fast).
 def test_smoke_real_cache():
     if os.environ.get("RUN_OOD_SMOKE") != "1":
         print("  [skip] test_smoke_real_cache (set RUN_OOD_SMOKE=1 to run over cached features)")
         return
+    import pathlib
+    import shutil
+    import tempfile
     import experiments.run_ood_transfer as R
     from probing.config import CACHE_DIR
     src = "monash_electricity_hourly"
@@ -132,16 +159,27 @@ def test_smoke_real_cache():
     if not all(p.exists() for p in need):
         print("  [skip] test_smoke_real_cache (content caches missing)")
         return
-    R.QUANTILE_EPOCHS, R.WD_GRID = 3, (1e-3,)            # keep the smoke fast
-    payload = R.run_source(src, targets, "q9", QUANTILE_SETS["q9"], SEED, "cpu")
-    assert len(payload["summaries"]) == 2
-    diag_cell = next(s for s in payload["summaries"] if s["target_dataset"] == src)
-    ood_cell = next(s for s in payload["summaries"] if s["target_dataset"] != src)
-    assert diag_cell["is_ood"] is False and ood_cell["is_ood"] is True
-    ckpt = R._ckpt_dir(src, "q9", SEED) / "L00.pt"
-    assert ckpt.exists(), "source probe checkpoint was not written"
-    print(f"  [smoke] diagonal best L{diag_cell['best_layer']} Δ={diag_cell['delta_vs_last']:+.3f} | "
-          f"OOD best L{ood_cell['best_layer']} Δ={ood_cell['delta_vs_last']:+.3f}")
+    # redirect ALL writes to a throwaway tempdir so the smoke can never overwrite real committed
+    # results (checkpoints / per_source / bootstrap_inputs live under these module globals).
+    tmp = pathlib.Path(tempfile.mkdtemp(prefix="ood_smoke_"))
+    R.OOD_DIR, R.CKPT_DIR = tmp, tmp / "checkpoints"
+    R.PER_SOURCE_DIR, R.BOOT_IN_DIR, R.FIG_DIR = tmp / "per_source", tmp / "bootstrap_inputs", tmp / "figures"
+    for d in (R.CKPT_DIR, R.PER_SOURCE_DIR, R.BOOT_IN_DIR, R.FIG_DIR):
+        d.mkdir(parents=True, exist_ok=True)
+    try:
+        R.QUANTILE_EPOCHS, R.WD_GRID = 3, (1e-3,)        # keep the smoke fast
+        payload = R.run_source(src, targets, "q9", QUANTILE_SETS["q9"], SEED, "cpu")
+        assert len(payload["summaries"]) == 2
+        diag_cell = next(s for s in payload["summaries"] if s["target_dataset"] == src)
+        ood_cell = next(s for s in payload["summaries"] if s["target_dataset"] != src)
+        assert diag_cell["is_ood"] is False and ood_cell["is_ood"] is True
+        assert (R._ckpt_dir(src, "q9", SEED) / "L00.pt").exists(), "checkpoint not written"
+        bc = R._boot_cell(src, ood_cell["target_dataset"], "q9", SEED)   # paired Δ on the OOD cell
+        assert bc is not None and abs(bc["delta_vs_last"][LAST_LAYER]) < 1e-12
+        print(f"  [smoke] diagonal best L{diag_cell['best_layer']} Δ={diag_cell['delta_vs_last']:+.3f} | "
+              f"OOD best L{ood_cell['best_layer']} Δ={ood_cell['delta_vs_last']:+.3f}")
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
 
 
 TESTS = [test_fit_predict_reproduces_quantile_probe,
@@ -150,6 +188,7 @@ TESTS = [test_fit_predict_reproduces_quantile_probe,
          test_source_to_target_shape_compatibility,
          test_checkpoint_identity_excludes_target,
          test_is_ood_definition,
+         test_paired_delta_bootstrap,
          test_smoke_real_cache]
 
 if __name__ == "__main__":

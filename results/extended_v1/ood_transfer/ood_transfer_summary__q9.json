@@ -7,7 +7,9 @@
     "context_length": 512,
     "prediction_length": 64,
     "last_layer": 12,
-    "delta_vs_last": "loss[last] - min_over_layers(loss); positive = an earlier layer beats the final layer",
+    "bootstrap_replicates": 5000,
+    "bootstrap_seed": 0,
+    "delta_vs_last": "loss[last] \u2212 loss[layer] (scalar cell field uses the best layer); positive = an earlier layer beats the final layer. delta_vs_last_ci = paired 95% cluster-bootstrap CI on the BEST layer's \u0394; the best layer is the test-argmin, so per-cell it is exploratory (see the full-layer \u0394 table for the selection-free view)",
     "best_layer_shift": "best_layer(transfer) - best_layer(source ID)"
   },
   "cells": [
@@ -27,7 +29,17 @@
       "n_test_windows": 1500,
       "n_test_series": 318,
       "best_layer_source_id": 3,
-      "best_layer_shift": 0
+      "best_layer_shift": 0,
+      "delta_vs_last_ci": [
+        0.10596753801393868,
+        0.1672759875815971
+      ],
+      "delta_above_zero": true,
+      "bootstrap": {
+        "n_replicates": 5000,
+        "seed": 0,
+        "n_test_series": 318
+      }
     },
     {
       "source_dataset": "monash_electricity_hourly",
@@ -45,7 +57,17 @@
       "n_test_windows": 506,
       "n_test_series": 75,
       "best_layer_source_id": 3,
-      "best_layer_shift": -1
+      "best_layer_shift": -1,
+      "delta_vs_last_ci": [
+        0.3718169543328946,
+        0.6756597303504495
+      ],
+      "delta_above_zero": true,
+      "bootstrap": {
+        "n_replicates": 5000,
+        "seed": 0,
+        "n_test_series": 75
+      }
     },
     {
       "source_dataset": "monash_electricity_hourly",
@@ -63,7 +85,17 @@
       "n_test_windows": 1500,
       "n_test_series": 260,
       "best_layer_source_id": 3,
-      "best_layer_shift": -2
+      "best_layer_shift": -2,
+      "delta_vs_last_ci": [
+        1.169502749370494,
+        1.6191081252969262
+      ],
+      "delta_above_zero": true,
+      "bootstrap": {
+        "n_replicates": 5000,
+        "seed": 0,
+        "n_test_series": 260
+      }
     },
     {
       "source_dataset": "monash_kdd_cup_2018",
@@ -81,7 +113,17 @@
       "n_test_windows": 1500,
       "n_test_series": 318,
       "best_layer_source_id": 0,
-      "best_layer_shift": 0
+      "best_layer_shift": 0,
+      "delta_vs_last_ci": [
+        4.207127763882334,
+        4.650424632907166
+      ],
+      "delta_above_zero": true,
+      "bootstrap": {
+        "n_replicates": 5000,
+        "seed": 0,
+        "n_test_series": 318
+      }
     },
     {
       "source_dataset": "monash_kdd_cup_2018",
@@ -99,7 +141,17 @@
       "n_test_windows": 506,
       "n_test_series": 75,
       "best_layer_source_id": 0,
-      "best_layer_shift": 0
+      "best_layer_shift": 0,
+      "delta_vs_last_ci": [
+        0.7182046839444636,
+        1.1146316895792685
+      ],
+      "delta_above_zero": true,
+      "bootstrap": {
+        "n_replicates": 5000,
+        "seed": 0,
+        "n_test_series": 75
+      }
     },
     {
       "source_dataset": "monash_kdd_cup_2018",
@@ -117,7 +169,17 @@
       "n_test_windows": 1500,
       "n_test_series": 260,
       "best_layer_source_id": 0,
-      "best_layer_shift": 0
+      "best_layer_shift": 0,
+      "delta_vs_last_ci": [
+        3.889445063938945,
+        4.565270497004285
+      ],
+      "delta_above_zero": true,
+      "bootstrap": {
+        "n_replicates": 5000,
+        "seed": 0,
+        "n_test_series": 260
+      }
     },
     {
       "source_dataset": "uber_tlc_hourly",
@@ -135,7 +197,17 @@
       "n_test_windows": 1500,
       "n_test_series": 318,
       "best_layer_source_id": 6,
-      "best_layer_shift": -1
+      "best_layer_shift": -1,
+      "delta_vs_last_ci": [
+        0.24696499061927157,
+        0.4511263601710725
+      ],
+      "delta_above_zero": true,
+      "bootstrap": {
+        "n_replicates": 5000,
+        "seed": 0,
+        "n_test_series": 318
+      }
     },
     {
       "source_dataset": "uber_tlc_hourly",
@@ -153,7 +225,17 @@
       "n_test_windows": 506,
       "n_test_series": 75,
       "best_layer_source_id": 6,
-      "best_layer_shift": 6
+      "best_layer_shift": 6,
+      "delta_vs_last_ci": [
+        0.0,
+        0.0
+      ],
+      "delta_above_zero": false,
+      "bootstrap": {
+        "n_replicates": 5000,
+        "seed": 0,
+        "n_test_series": 75
+      }
     },
     {
       "source_dataset": "uber_tlc_hourly",
@@ -171,7 +253,17 @@
       "n_test_windows": 1500,
       "n_test_series": 260,
       "best_layer_source_id": 6,
-      "best_layer_shift": 0
+      "best_layer_shift": 0,
+      "delta_vs_last_ci": [
+        0.3498481528814036,
+        0.43548721979746147
+      ],
+      "delta_above_zero": true,
+      "bootstrap": {
+        "n_replicates": 5000,
+        "seed": 0,
+        "n_test_series": 260
+      }
     }
   ]
 }

@@ -283,22 +283,47 @@ def _load_per_source(qset, seed):
     return payloads
 
 
-def _boot_band(source, target, qset, seed):
-    """95% series-level cluster-bootstrap CI band (per layer) for one panel, or None if the
-    per-window inputs are absent. Reuses the exact cluster bootstrap of run_bootstrap."""
+def _paired_delta_bootstrap(wl, sid):
+    """Series-level cluster bootstrap of the per-layer loss AND the paired Δ-vs-last.
+
+    wl (NUM_LAYERS, n) per-window quantile loss, sid (n,) test-series ids. Resamples WHOLE test
+    series (stride 64 << span 576, so windows within a series are correlated); ONE shared counts
+    matrix means each replicate's loss[last] and loss[layer] come from the SAME resampled series,
+    so Δ_l = loss[last] − loss[layer] is a genuinely PAIRED difference (not two independent
+    bootstraps subtracted) — identical method to run_bootstrap.summarize_dataset, reusing
+    probing.stats verbatim. Returns per-layer point + 95% CI for the loss and for Δ-vs-last, plus
+    the CI-excludes-zero flag (positive Δ = an earlier layer beats the last layer). Δ at the last
+    layer is identically 0 (its CI must bracket 0)."""
+    wl = np.asarray(wl, np.float64)
+    sid = np.asarray(sid, np.int64)
+    uniq, inv = np.unique(sid, return_inverse=True)
+    S = len(uniq)
+    cnt = np.bincount(inv).astype(np.float64)              # windows per series
+    sums = np.zeros((S, wl.shape[0]))
+    np.add.at(sums, inv, wl.T)
+    counts = cluster_bootstrap_counts(S, BOOT_B, SEED)     # shared across all layers -> paired
+    boot = cluster_bootstrap_apply(counts, sums, cnt)      # (B, NUM_LAYERS) per-layer loss
+    point = wl.mean(axis=1)
+    delta_b = boot[:, [LAST_LAYER]] - boot                 # paired: same replicates both sides
+    d_lo = np.percentile(delta_b, CI_LO, axis=0)
+    d_hi = np.percentile(delta_b, CI_HI, axis=0)
+    return {"point": point,
+            "ci_lo": np.percentile(boot, CI_LO, axis=0),
+            "ci_hi": np.percentile(boot, CI_HI, axis=0),
+            "delta_vs_last": point[LAST_LAYER] - point,    # loss[last] − loss[layer]
+            "delta_ci_lo": d_lo, "delta_ci_hi": d_hi,
+            "delta_above_zero": d_lo > 0,
+            "n_series": int(S), "n_windows": int(wl.shape[1])}
+
+
+def _boot_cell(source, target, qset, seed):
+    """Paired-Δ bootstrap for one source->target cell (loads the saved per-window npz), or None
+    when that cell has not been run yet."""
     p = BOOT_IN_DIR / f"{source}__to__{target}__{qset}__seed{seed}.npz"
     if not p.exists():
         return None
     with np.load(p) as d:
-        wl, sid = np.asarray(d["window_loss"], np.float64), np.asarray(d["series_test"], np.int64)
-    uniq, inv = np.unique(sid, return_inverse=True)
-    S = len(uniq)
-    cnt = np.bincount(inv).astype(np.float64)
-    sums = np.zeros((S, NUM_LAYERS))
-    np.add.at(sums, inv, wl.T)
-    counts = cluster_bootstrap_counts(S, BOOT_B, SEED)
-    boot = cluster_bootstrap_apply(counts, sums, cnt)     # (B, NUM_LAYERS)
-    return np.percentile(boot, CI_LO, axis=0), np.percentile(boot, CI_HI, axis=0)
+        return _paired_delta_bootstrap(d["window_loss"], d["series_test"])
 
 
 def aggregate(qset, seed):
@@ -320,9 +345,20 @@ def aggregate(qset, seed):
         wr.writerows(rows)
     json.dump(rows, open(OOD_DIR / f"ood_transfer_results__{qset}.json", "w"), indent=2)
 
-    # summary with delta_vs_last + best_layer_shift (shift measured against the source's ID best)
     summ = {(s["source_dataset"], s["target_dataset"]): s
             for pl in payloads.values() for s in pl["summaries"]}
+
+    # paired cluster-bootstrap Δ-vs-last for every present cell (post-hoc, from the saved
+    # per-window npz — no probe re-fit needed), then the tidy Δ table.
+    boot_cells = {}
+    for (src, tgt) in summ:
+        bc = _boot_cell(src, tgt, qset, seed)
+        if bc is not None:
+            boot_cells[(src, tgt)] = bc
+    write_delta_table(boot_cells, summ, qset, seed)
+
+    # summary with delta_vs_last + best_layer_shift (shift measured against the source's ID best),
+    # enriched with the BEST layer's paired Δ CI so the heatmap can print it.
     id_best = {src: summ[(src, src)]["best_layer"] for src in payloads
                if (src, src) in summ}                     # each source's diagonal best layer
     out_summ = []
@@ -331,28 +367,73 @@ def aggregate(qset, seed):
         e["best_layer_source_id"] = id_best.get(src)
         e["best_layer_shift"] = (None if id_best.get(src) is None
                                  else s["best_layer"] - id_best[src])
+        bc = boot_cells.get((src, tgt))
+        if bc is not None:
+            L = s["best_layer"]
+            e["delta_vs_last_ci"] = [float(bc["delta_ci_lo"][L]), float(bc["delta_ci_hi"][L])]
+            e["delta_above_zero"] = bool(bc["delta_above_zero"][L])
+            e["bootstrap"] = {"n_replicates": BOOT_B, "seed": int(seed),
+                              "n_test_series": bc["n_series"]}
         out_summ.append(e)
     json.dump({"config": {"quantile_set": qset, "quantile_config": len(QUANTILE_SETS[qset]),
                           "seed": int(seed), "pooling": POOLING, "context_length": C,
                           "prediction_length": H, "last_layer": LAST_LAYER,
-                          "delta_vs_last": "loss[last] - min_over_layers(loss); "
-                                           "positive = an earlier layer beats the final layer",
+                          "bootstrap_replicates": BOOT_B, "bootstrap_seed": int(seed),
+                          "delta_vs_last": "loss[last] − loss[layer] (scalar cell field uses the "
+                                           "best layer); positive = an earlier layer beats the "
+                                           "final layer. delta_vs_last_ci = paired 95% cluster-"
+                                           "bootstrap CI on the BEST layer's Δ; the best layer is "
+                                           "the test-argmin, so per-cell it is exploratory (see "
+                                           "the full-layer Δ table for the selection-free view)",
                           "best_layer_shift": "best_layer(transfer) - best_layer(source ID)"},
                "cells": out_summ},
               open(OOD_DIR / f"ood_transfer_summary__{qset}.json", "w"), indent=2)
     print(f"  [saved] combined table + summary under {OOD_DIR} ({len(rows)} rows, "
           f"{len(out_summ)} cells)")
 
-    make_matrix_figure(summ, qset, seed)
-    make_summary_figure(out_summ, qset, seed)
+    make_matrix_figure(summ, boot_cells, qset, seed)
+    make_summary_figure(out_summ, boot_cells, qset, seed)
 
 
-def make_matrix_figure(summ, qset, seed):
+def write_delta_table(boot_cells, summ, qset, seed):
+    """Per-cell, per-layer paired Δ-vs-last table — the requested tidy output: delta_vs_last,
+    its 95% cluster-bootstrap CI, and the CI-excludes-zero flag, for every earlier layer vs the
+    final layer in each source->target cell. The last layer's Δ is 0 by construction (kept as a
+    row); is_best_layer marks the test-argmin layer."""
+    fields = ["source_dataset", "target_dataset", "seed", "is_ood", "quantile_set", "layer",
+              "delta_vs_last", "delta_ci_lo", "delta_ci_hi", "delta_above_zero",
+              "is_best_layer", "is_last_layer", "n_test_series", "n_test_windows",
+              "bootstrap_replicates"]
+    rows = []
+    for (src, tgt), bc in sorted(boot_cells.items()):
+        best = summ[(src, tgt)]["best_layer"]
+        for L in range(NUM_LAYERS):
+            rows.append({"source_dataset": src, "target_dataset": tgt, "seed": int(seed),
+                         "is_ood": src != tgt, "quantile_set": qset, "layer": L,
+                         "delta_vs_last": float(bc["delta_vs_last"][L]),
+                         "delta_ci_lo": float(bc["delta_ci_lo"][L]),
+                         "delta_ci_hi": float(bc["delta_ci_hi"][L]),
+                         "delta_above_zero": bool(bc["delta_above_zero"][L]),
+                         "is_best_layer": L == best, "is_last_layer": L == LAST_LAYER,
+                         "n_test_series": bc["n_series"], "n_test_windows": bc["n_windows"],
+                         "bootstrap_replicates": BOOT_B})
+    with open(OOD_DIR / f"ood_transfer_delta_vs_last__{qset}.csv", "w", newline="") as f:
+        wr = csv.DictWriter(f, fieldnames=fields)
+        wr.writeheader()
+        wr.writerows(rows)
+    json.dump(rows, open(OOD_DIR / f"ood_transfer_delta_vs_last__{qset}.json", "w"), indent=2)
+    print(f"  [saved] paired Δ-vs-last table ({len(rows)} rows) -> "
+          f"{OOD_DIR / f'ood_transfer_delta_vs_last__{qset}.csv'}")
+
+
+def make_matrix_figure(summ, boot_cells, qset, seed):
     """3x3 transfer grid: rows = source probe, cols = evaluation target. Each panel: Chronos-2
     quantile loss vs depth (Embed + L1..L12), 95% cluster-bootstrap band, ★ at the best layer,
-    dotted line at the final layer. Diagonal (ID) panels get a tinted background; off-diagonal
-    are strict cross-dataset transfer (OOD). y-scale is SHARED WITHIN A COLUMN (same target =
-    comparable loss scale) and NOT across columns — absolute height is not a distance measure."""
+    filled black-edged markers where an earlier layer's paired Δ-vs-last CI excludes zero (it
+    significantly beats the final layer), dotted line at the final layer. Diagonal (ID) panels get
+    a tinted background; off-diagonal are strict cross-dataset transfer (OOD). y-scale is SHARED
+    WITHIN A COLUMN (same target = comparable loss scale) and NOT across columns — absolute height
+    is not a distance measure."""
     xs = np.arange(NUM_LAYERS)
     xlabels = ["Embed"] + [str(i) for i in range(1, NUM_LAYERS)]
     fig, axes = plt.subplots(3, 3, figsize=(16, 13), sharex=True, sharey="col")
@@ -371,10 +452,15 @@ def make_matrix_figure(summ, qset, seed):
             # per-source payload's rows (the actual point estimates, not a band midpoint).
             curve = _panel_curve(src, tgt, qset, seed)
             ax.plot(xs, curve, color=color, lw=2.3, marker="o", ms=4, zorder=3)
-            band = _boot_band(src, tgt, qset, seed)
-            if band is not None:
-                ax.fill_between(xs, band[0], band[1], color=color, alpha=0.16, lw=0,
+            bc = boot_cells.get((src, tgt))
+            if bc is not None:
+                ax.fill_between(xs, bc["ci_lo"], bc["ci_hi"], color=color, alpha=0.16, lw=0,
                                 label="95% cluster-bootstrap CI")
+                sig = bc["delta_above_zero"].copy()
+                sig[LAST_LAYER] = False                    # the last layer never beats itself
+                if sig.any():
+                    ax.plot(xs[sig], curve[sig], "o", color=color, ms=7, mec="k", mew=0.9,
+                            zorder=4, label="Δ vs last: CI > 0")
             bi = s["best_layer"]
             ax.plot(bi, curve[bi], marker="*", ms=16, color=color, mec="k", mew=0.6, zorder=5,
                     label=f"best = {xlabels[bi]}")
@@ -404,7 +490,8 @@ def make_matrix_figure(summ, qset, seed):
                  f"[{qset}, Q={len(QUANTILE_SETS[qset])}, seed {seed}]\n"
                  "rows = source (training) dataset, columns = target (evaluation) dataset;  "
                  "diagonal = in-dataset, off-diagonal = strict transfer;  LOWER = better, "
-                 "★ = best layer;  y shared within a column only", fontsize=13, y=0.995)
+                 "★ = best layer, filled dot = paired Δ-vs-last CI excludes 0;  "
+                 "y shared within a column only", fontsize=13, y=0.995)
     fig.tight_layout(rect=[0, 0, 1, 0.965])
     out = FIG_DIR / f"transfer_matrix_3x3__{qset}.png"
     fig.savefig(out, dpi=140, bbox_inches="tight")
@@ -420,11 +507,12 @@ def _panel_curve(src, tgt, qset, seed):
     return np.array([by_layer[i] for i in range(NUM_LAYERS)], float)
 
 
-def make_summary_figure(cells, qset, seed):
-    """Compact 3x3 summary heatmap of delta_vs_last (loss[last] - best loss). Annotated with the
-    best layer + delta; ID diagonal outlined. Higher delta (warmer) = a stronger earlier-layer
-    advantage that survived transfer. Absolute cross-panel loss levels are NOT shown (not a
-    distance)."""
+def make_summary_figure(cells, boot_cells, qset, seed):
+    """Compact 3x3 summary heatmap of delta_vs_last (loss[last] - best loss). Each cell shows the
+    best layer, its Δ, and the paired 95% cluster-bootstrap CI of that Δ; a ★ prefix (and bold)
+    marks cells whose best-layer Δ CI EXCLUDES zero (the earlier-layer advantage is significant).
+    ID diagonal outlined. Warmer = a stronger earlier-layer advantage that survived transfer.
+    Absolute cross-panel loss levels are NOT shown (not a distance)."""
     xlabels = ["Embed"] + [str(i) for i in range(1, NUM_LAYERS)]
     idx = {src: i for i, src in enumerate(DATASET_ORDER)}
     M = np.full((3, 3), np.nan)
@@ -432,15 +520,23 @@ def make_summary_figure(cells, qset, seed):
         si, ti = idx.get(c["source_dataset"]), idx.get(c["target_dataset"])
         if si is not None and ti is not None:
             M[si, ti] = c["delta_vs_last"]
-    fig, ax = plt.subplots(figsize=(7.5, 6.5))
+    fig, ax = plt.subplots(figsize=(8.5, 7.0))
     im = ax.imshow(M, cmap="YlOrRd", vmin=0.0)
     for c in cells:
         si, ti = idx.get(c["source_dataset"]), idx.get(c["target_dataset"])
         if si is None or ti is None:
             continue
-        txt = f"best {xlabels[c['best_layer']]}\nΔ={c['delta_vs_last']:+.3f}"
-        ax.text(ti, si, txt, ha="center", va="center", fontsize=9,
-                color="k", fontweight=("bold" if not c["is_ood"] else "normal"))
+        L = c["best_layer"]
+        bc = boot_cells.get((c["source_dataset"], c["target_dataset"]))
+        lines = [f"best {xlabels[L]}", f"Δ={c['delta_vs_last']:+.3f}"]
+        sig = False
+        if bc is not None:
+            lo, hi = bc["delta_ci_lo"][L], bc["delta_ci_hi"][L]
+            lines.append(f"95% CI [{lo:+.2f}, {hi:+.2f}]")
+            sig = bool(bc["delta_above_zero"][L])
+        txt = ("★ " if sig else "") + "\n".join(lines)
+        ax.text(ti, si, txt, ha="center", va="center", fontsize=8,
+                color="k", fontweight=("bold" if sig else "normal"))
         if not c["is_ood"]:
             ax.add_patch(plt.Rectangle((ti - 0.5, si - 0.5), 1, 1, fill=False, ec="k", lw=2.5))
     ax.set_xticks(range(3)); ax.set_xticklabels([SHORT[d] for d in DATASET_ORDER])
@@ -448,8 +544,8 @@ def make_summary_figure(cells, qset, seed):
     ax.set_xlabel("target (evaluation) dataset")
     ax.set_ylabel("source (probe training) dataset")
     ax.set_title(f"delta_vs_last = loss[last] − best-layer loss  [{qset}, seed {seed}]\n"
-                 "positive = an earlier layer beat the final layer;  boxed = in-dataset (ID)",
-                 fontsize=11)
+                 "positive = an earlier layer beat the final layer;  ★ = best-layer Δ 95% CI "
+                 "excludes 0;  boxed = in-dataset (ID)", fontsize=10)
     fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04, label="Δ vs last (quantile loss)")
     fig.tight_layout()
     out = FIG_DIR / f"transfer_summary_delta__{qset}.png"
