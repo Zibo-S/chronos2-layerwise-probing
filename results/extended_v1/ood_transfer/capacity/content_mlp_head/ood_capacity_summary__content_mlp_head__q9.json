@@ -1,0 +1,299 @@
+{
+  "config": {
+    "probe_family": "content_mlp_head",
+    "quantile_set": "q9",
+    "quantile_config": 9,
+    "seed": 0,
+    "context_length": 512,
+    "prediction_length": 64,
+    "last_layer": 12,
+    "hidden_dim": 3072,
+    "dropout": 0.0,
+    "epochs": 300,
+    "bootstrap_replicates": 5000,
+    "oracle_best_layer": "argmin over TARGET-test loss (diagnostic, not deployable)",
+    "source_selected_layer": "argmin over SOURCE-validation loss (fair OOD layer)",
+    "delta_vs_last": "loss[last] \u2212 loss[oracle_best]; positive = earlier layer wins"
+  },
+  "cells": [
+    {
+      "source_dataset": "monash_electricity_hourly",
+      "target_dataset": "monash_electricity_hourly",
+      "seed": 0,
+      "is_ood": false,
+      "probe_family": "content_mlp_head",
+      "quantile_set": "q9",
+      "quantile_config": 9,
+      "parameter_count": 4575360,
+      "oracle_best_layer": 4,
+      "best_layer": 4,
+      "min_loss": 2.672389268875122,
+      "source_selected_layer": 4,
+      "source_selected_loss": 2.672389268875122,
+      "last_layer": 12,
+      "last_layer_loss": 2.8268613815307617,
+      "delta_vs_last": 0.15447211265563965,
+      "native_mase": 0.8508159866034439,
+      "n_test_windows": 1500,
+      "n_test_series": 318,
+      "delta_vs_last_ci": [
+        0.11460488583012915,
+        0.19548297443923096
+      ],
+      "delta_above_zero": true,
+      "bootstrap": {
+        "n_replicates": 5000,
+        "seed": 0,
+        "n_test_series": 318
+      }
+    },
+    {
+      "source_dataset": "monash_electricity_hourly",
+      "target_dataset": "monash_kdd_cup_2018",
+      "seed": 0,
+      "is_ood": true,
+      "probe_family": "content_mlp_head",
+      "quantile_set": "q9",
+      "quantile_config": 9,
+      "parameter_count": 4575360,
+      "oracle_best_layer": 2,
+      "best_layer": 2,
+      "min_loss": 5.8366379737854,
+      "source_selected_layer": 4,
+      "source_selected_loss": 5.93380069732666,
+      "last_layer": 12,
+      "last_layer_loss": 6.729598522186279,
+      "delta_vs_last": 0.8929605484008789,
+      "native_mase": 0.8282584781046308,
+      "n_test_windows": 506,
+      "n_test_series": 75,
+      "delta_vs_last_ci": [
+        0.6521909787028783,
+        1.124890522811124
+      ],
+      "delta_above_zero": true,
+      "bootstrap": {
+        "n_replicates": 5000,
+        "seed": 0,
+        "n_test_series": 75
+      }
+    },
+    {
+      "source_dataset": "monash_electricity_hourly",
+      "target_dataset": "uber_tlc_hourly",
+      "seed": 0,
+      "is_ood": true,
+      "probe_family": "content_mlp_head",
+      "quantile_set": "q9",
+      "quantile_config": 9,
+      "parameter_count": 4575360,
+      "oracle_best_layer": 2,
+      "best_layer": 2,
+      "min_loss": 5.616034030914307,
+      "source_selected_layer": 4,
+      "source_selected_loss": 5.822559356689453,
+      "last_layer": 12,
+      "last_layer_loss": 7.3676371574401855,
+      "delta_vs_last": 1.751603126525879,
+      "native_mase": 0.6582269958161624,
+      "n_test_windows": 1500,
+      "n_test_series": 260,
+      "delta_vs_last_ci": [
+        1.5351575694254906,
+        1.9703343630198236
+      ],
+      "delta_above_zero": true,
+      "bootstrap": {
+        "n_replicates": 5000,
+        "seed": 0,
+        "n_test_series": 260
+      }
+    },
+    {
+      "source_dataset": "monash_kdd_cup_2018",
+      "target_dataset": "monash_electricity_hourly",
+      "seed": 0,
+      "is_ood": true,
+      "probe_family": "content_mlp_head",
+      "quantile_set": "q9",
+      "quantile_config": 9,
+      "parameter_count": 4575360,
+      "oracle_best_layer": 6,
+      "best_layer": 6,
+      "min_loss": 6.71023416519165,
+      "source_selected_layer": 10,
+      "source_selected_loss": 7.722570419311523,
+      "last_layer": 12,
+      "last_layer_loss": 9.300734519958496,
+      "delta_vs_last": 2.5905003547668457,
+      "native_mase": 0.8508159866034439,
+      "n_test_windows": 1500,
+      "n_test_series": 318,
+      "delta_vs_last_ci": [
+        2.3983691225695716,
+        2.7792238215452207
+      ],
+      "delta_above_zero": true,
+      "bootstrap": {
+        "n_replicates": 5000,
+        "seed": 0,
+        "n_test_series": 318
+      }
+    },
+    {
+      "source_dataset": "monash_kdd_cup_2018",
+      "target_dataset": "monash_kdd_cup_2018",
+      "seed": 0,
+      "is_ood": false,
+      "probe_family": "content_mlp_head",
+      "quantile_set": "q9",
+      "quantile_config": 9,
+      "parameter_count": 4575360,
+      "oracle_best_layer": 3,
+      "best_layer": 3,
+      "min_loss": 5.654829502105713,
+      "source_selected_layer": 10,
+      "source_selected_loss": 6.3040361404418945,
+      "last_layer": 12,
+      "last_layer_loss": 6.157668590545654,
+      "delta_vs_last": 0.5028390884399414,
+      "native_mase": 0.8282584781046308,
+      "n_test_windows": 506,
+      "n_test_series": 75,
+      "delta_vs_last_ci": [
+        0.30680191517396543,
+        0.6902894483437491
+      ],
+      "delta_above_zero": true,
+      "bootstrap": {
+        "n_replicates": 5000,
+        "seed": 0,
+        "n_test_series": 75
+      }
+    },
+    {
+      "source_dataset": "monash_kdd_cup_2018",
+      "target_dataset": "uber_tlc_hourly",
+      "seed": 0,
+      "is_ood": true,
+      "probe_family": "content_mlp_head",
+      "quantile_set": "q9",
+      "quantile_config": 9,
+      "parameter_count": 4575360,
+      "oracle_best_layer": 4,
+      "best_layer": 4,
+      "min_loss": 8.912549018859863,
+      "source_selected_layer": 10,
+      "source_selected_loss": 9.959274291992188,
+      "last_layer": 12,
+      "last_layer_loss": 10.248146057128906,
+      "delta_vs_last": 1.335597038269043,
+      "native_mase": 0.6582269958161624,
+      "n_test_windows": 1500,
+      "n_test_series": 260,
+      "delta_vs_last_ci": [
+        1.1375036931497433,
+        1.5258003752515308
+      ],
+      "delta_above_zero": true,
+      "bootstrap": {
+        "n_replicates": 5000,
+        "seed": 0,
+        "n_test_series": 260
+      }
+    },
+    {
+      "source_dataset": "uber_tlc_hourly",
+      "target_dataset": "monash_electricity_hourly",
+      "seed": 0,
+      "is_ood": true,
+      "probe_family": "content_mlp_head",
+      "quantile_set": "q9",
+      "quantile_config": 9,
+      "parameter_count": 4575360,
+      "oracle_best_layer": 6,
+      "best_layer": 6,
+      "min_loss": 5.03233528137207,
+      "source_selected_layer": 12,
+      "source_selected_loss": 5.6426615715026855,
+      "last_layer": 12,
+      "last_layer_loss": 5.6426615715026855,
+      "delta_vs_last": 0.6103262901306152,
+      "native_mase": 0.8508159866034439,
+      "n_test_windows": 1500,
+      "n_test_series": 318,
+      "delta_vs_last_ci": [
+        0.5094511792801719,
+        0.7092594423829343
+      ],
+      "delta_above_zero": true,
+      "bootstrap": {
+        "n_replicates": 5000,
+        "seed": 0,
+        "n_test_series": 318
+      }
+    },
+    {
+      "source_dataset": "uber_tlc_hourly",
+      "target_dataset": "monash_kdd_cup_2018",
+      "seed": 0,
+      "is_ood": true,
+      "probe_family": "content_mlp_head",
+      "quantile_set": "q9",
+      "quantile_config": 9,
+      "parameter_count": 4575360,
+      "oracle_best_layer": 12,
+      "best_layer": 12,
+      "min_loss": 6.286802291870117,
+      "source_selected_layer": 12,
+      "source_selected_loss": 6.286802291870117,
+      "last_layer": 12,
+      "last_layer_loss": 6.286802291870117,
+      "delta_vs_last": 0.0,
+      "native_mase": 0.8282584781046308,
+      "n_test_windows": 506,
+      "n_test_series": 75,
+      "delta_vs_last_ci": [
+        0.0,
+        0.0
+      ],
+      "delta_above_zero": false,
+      "bootstrap": {
+        "n_replicates": 5000,
+        "seed": 0,
+        "n_test_series": 75
+      }
+    },
+    {
+      "source_dataset": "uber_tlc_hourly",
+      "target_dataset": "uber_tlc_hourly",
+      "seed": 0,
+      "is_ood": false,
+      "probe_family": "content_mlp_head",
+      "quantile_set": "q9",
+      "quantile_config": 9,
+      "parameter_count": 4575360,
+      "oracle_best_layer": 4,
+      "best_layer": 4,
+      "min_loss": 4.508028030395508,
+      "source_selected_layer": 12,
+      "source_selected_loss": 4.633461952209473,
+      "last_layer": 12,
+      "last_layer_loss": 4.633461952209473,
+      "delta_vs_last": 0.12543392181396484,
+      "native_mase": 0.6582269958161624,
+      "n_test_windows": 1500,
+      "n_test_series": 260,
+      "delta_vs_last_ci": [
+        0.08310763839931457,
+        0.1670836414970252
+      ],
+      "delta_above_zero": true,
+      "bootstrap": {
+        "n_replicates": 5000,
+        "seed": 0,
+        "n_test_series": 260
+      }
+    }
+  ]
+}
