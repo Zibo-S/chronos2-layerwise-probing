@@ -171,7 +171,8 @@ def _committed_probe_mase(qset):
 def run(qset, seed, device):
     quantiles = QUANTILE_SETS[qset]
     qcfg = int(len(quantiles))
-    best = _best_layers(qset, seed)
+    best = _best_layers(qset, seed)                 # oracle target-test-best layer (diagnostic)
+    sel = {src: ood.source_selected_layer(src, qset, seed)[0] for src in DATASET_ORDER}   # PRIMARY
     committed = _committed_probe_mase(qset)
 
     # 1) target baselines — ONCE per target, reused for every source row
@@ -190,7 +191,8 @@ def run(qset, seed, device):
                     print(f"  [warn] {src}->{tgt} L{L}: re-scored MASE {pw[L].mean():.4f} vs "
                           f"committed {committed[(src, tgt, L)]:.4f} (Δ={diff:.4f}; device drift?)")
             cmp[(src, tgt)] = {}
-            for ptype, L in (("best_layer", best[(src, tgt)]), ("final_layer", LAST_LAYER)):
+            for ptype, L in (("source_val_selected", sel[src]),
+                             ("best_layer", best[(src, tgt)]), ("final_layer", LAST_LAYER)):
                 probe_loss = float(pw[L].mean())
                 cmp[(src, tgt)][ptype] = {"layer": L, "loss": probe_loss, "by_base": {}}
                 for bname in BASELINES:
@@ -211,7 +213,8 @@ def run(qset, seed, device):
                         "n_series": S, "n_windows": pt["n_windows"], "seed": int(seed),
                         "quantile_config": qcfg, "context_length": C, "prediction_length": H})
     _write_comparison_table(comp_rows, qset)
-    make_baseline_comparison_figure(base, cmp, best, qset, seed)
+    make_source_val_baseline_figure(base, cmp, sel, qset, seed)     # PRIMARY (source-val-selected)
+    make_baseline_comparison_figure(base, cmp, best, qset, seed)    # DIAGNOSTIC (oracle test-best)
     make_skill_heatmap(cmp, qset, seed)
     print(f"\n  [done] baselines + comparison written under {ood.OOD_DIR}")
 
@@ -247,10 +250,12 @@ def _write_comparison_table(rows, qset):
 
 
 def make_baseline_comparison_figure(base, cmp, best, qset, seed):
-    """3×3 grouped-bar grid: each source→target cell shows MASE for best-layer probe, final-layer
-    probe, native, seasonal-naive, last-value (LOWER = better). Target baselines are identical
-    down a column (same target) — shown for comparison, not recomputed per source."""
-    labels = ["probe\nbest", "probe\nfinal", "native", "seasonal", "last"]
+    """DIAGNOSTIC N×N grouped-bar grid: each source→target cell shows MASE for the ORACLE
+    test-best-layer probe, the final-layer probe, native, seasonal-naive, last-value (LOWER =
+    better). The oracle layer is target-test-selected (optimistically biased) — see
+    make_source_val_baseline_figure for the PRIMARY (source-validation-selected) view. Target
+    baselines are identical down a column (same target)."""
+    labels = ["probe\noracle", "probe\nfinal", "native", "seasonal", "last"]
     N = len(DATASET_ORDER)
     fig, axes = plt.subplots(N, N, figsize=(5 * N, 4 * N), sharex=True)
     for ri, src in enumerate(DATASET_ORDER):
@@ -269,19 +274,59 @@ def make_baseline_comparison_figure(base, cmp, best, qset, seed):
                         fontsize=7)
             is_ood = src != tgt
             ax.set_title(f"{SHORT[src]} → {SHORT[tgt]}  [{'OOD' if is_ood else 'ID'}]  "
-                         f"best L{cell['best_layer']['layer']}", fontsize=9,
+                         f"oracle L{cell['best_layer']['layer']}", fontsize=9,
                          fontweight="normal" if is_ood else "bold")
             ax.set_xticks(range(5)); ax.set_xticklabels(labels, fontsize=7)
             ax.grid(axis="y", alpha=0.3)
             if not is_ood:
                 ax.set_facecolor("#f4f4ec")
         axes[ri, 0].set_ylabel(f"probe: {SHORT[src]}\nMASE (test)")
-    fig.suptitle(f"Transferred probe vs target baselines — MASE  [{qset}, seed {seed}]\n"
-                 "rows = source (probe) dataset, cols = target;  LOWER = better;  "
-                 "native/seasonal/last are target-only references (identical down a column)",
-                 fontsize=12, y=0.995)
+    fig.suptitle(f"Transferred probe vs target baselines — MASE  (DIAGNOSTIC: oracle test-best "
+                 f"layer)  [{qset}, seed {seed}]\nrows = source (probe) dataset, cols = target;  "
+                 "LOWER = better;  oracle layer = target-test argmin (biased) — see the source_val "
+                 "figure for the primary result;  native/seasonal/last identical down a column",
+                 fontsize=11, y=0.995)
     fig.tight_layout(rect=[0, 0, 1, 0.96])
     out = ood.FIG_DIR / f"baseline_comparison__{qset}.png"
+    fig.savefig(out, dpi=140, bbox_inches="tight"); plt.close(fig)
+    print(f"  [saved] {out}")
+
+
+def make_source_val_baseline_figure(base, cmp, sel, qset, seed):
+    """PRIMARY N×N grouped-bar grid: each source→target cell shows MASE for the SOURCE-VALIDATION-
+    selected probe (primary), the final-layer probe, and the three target baselines (LOWER =
+    better). The source-val layer is fixed per source row (chosen without any target data)."""
+    labels = ["probe\nval-sel", "probe\nfinal", "native", "seasonal", "last"]
+    N = len(DATASET_ORDER)
+    fig, axes = plt.subplots(N, N, figsize=(5.4 * N, 4 * N), sharex=True)
+    for ri, src in enumerate(DATASET_ORDER):
+        color = ID_STYLE.get(src, {}).get("color", "#333333")
+        for ci, tgt in enumerate(DATASET_ORDER):
+            ax = axes[ri, ci]
+            pt, cell = base[tgt], cmp[(src, tgt)]
+            vals = [cell["source_val_selected"]["loss"], cell["final_layer"]["loss"],
+                    pt["metrics"]["native_chronos2"]["mase"],
+                    pt["metrics"]["seasonal_naive"]["mase"], pt["metrics"]["last_value"]["mase"]]
+            colors = [color, color, "#555555", "#999999", "#c0c0c0"]
+            bars = ax.bar(range(5), vals, color=colors, edgecolor="k", linewidth=0.6)
+            bars[1].set_alpha(0.55)          # final-layer probe
+            for b, v in zip(bars, vals):
+                ax.text(b.get_x() + b.get_width() / 2, v, f"{v:.2f}", ha="center", va="bottom",
+                        fontsize=6.5)
+            is_ood = src != tgt
+            ax.set_title(f"{SHORT[src]} → {SHORT[tgt]}  [{'OOD' if is_ood else 'ID'}]  "
+                         f"val-sel L{cell['source_val_selected']['layer']}", fontsize=8.5,
+                         fontweight="normal" if is_ood else "bold")
+            ax.set_xticks(range(5)); ax.set_xticklabels(labels, fontsize=6.5)
+            ax.grid(axis="y", alpha=0.3)
+            if not is_ood:
+                ax.set_facecolor("#f4f4ec")
+        axes[ri, 0].set_ylabel(f"probe: {SHORT[src]}\nMASE (test)")
+    fig.suptitle(f"Transferred probe vs target baselines — MASE  (PRIMARY: source-validation-selected "
+                 f"layer)  [{qset}, seed {seed}]\nrows = source (probe) dataset, cols = target;  "
+                 "LOWER = better;  native/seasonal/last identical down a column", fontsize=11, y=0.996)
+    fig.tight_layout(rect=[0, 0, 1, 0.96])
+    out = ood.FIG_DIR / "source_val_baseline_comparison.png"
     fig.savefig(out, dpi=140, bbox_inches="tight"); plt.close(fig)
     print(f"  [saved] {out}")
 

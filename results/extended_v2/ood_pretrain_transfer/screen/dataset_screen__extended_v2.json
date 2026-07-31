@@ -1,0 +1,80 @@
+{
+  "dataset_set": "extended_v2",
+  "seed": 0,
+  "with_native": false,
+  "note": "last-value < seasonal-naive => persistence-dominated WARNING (not a triviality proof); confirm with native. Inclusion on data+task quality only.",
+  "rows": [
+    {
+      "dataset": "coastal_ts",
+      "tag": "coastal_ts",
+      "n_series": 48,
+      "cluster_unit": "station",
+      "n_clusters": 24,
+      "length_quantiles": {
+        "p0": 2733,
+        "p10": 3733,
+        "p25": 4125,
+        "p50": 5224,
+        "p75": 6023,
+        "p90": 8524,
+        "p100": 8784
+      },
+      "series_ge_2span": 48,
+      "series_ge_span": 48,
+      "missing_fraction_overall": 0.0,
+      "missing_fraction_per_series_p50": 0.0,
+      "missing_fraction_per_series_max": 0.0,
+      "constant_series": 0,
+      "constant_series_rate": 0.0,
+      "scale_std_p10_p50_p90": [
+        0.0761,
+        0.6166,
+        2.1912
+      ],
+      "split_mode": "ood_eval_only",
+      "target_budget": [
+        0,
+        650
+      ],
+      "before_subsample": [
+        0,
+        3682
+      ],
+      "after_subsample": [
+        0,
+        650
+      ],
+      "n_skipped_windows": 32,
+      "train_spread": {
+        "distinct_series": 0,
+        "per_series_min_med_max": [
+          0,
+          0,
+          0
+        ],
+        "top_series_share": null
+      },
+      "test_spread": {
+        "distinct_series": 24,
+        "per_series_min_med_max": [
+          27,
+          27,
+          28
+        ],
+        "top_series_share": null
+      },
+      "n_test_windows": 650,
+      "denominator_clamped": 0,
+      "denominator_non_finite": 0,
+      "denominator_p5_p50": [
+        0.0147,
+        0.0868
+      ],
+      "last_value_mase": 1.3079,
+      "seasonal_naive_m24_mase": 1.4876,
+      "seasonal_naive_m168_mase": 2.5369,
+      "last_over_seasonal_ratio": 0.879,
+      "persistence_warning": true
+    }
+  ]
+}

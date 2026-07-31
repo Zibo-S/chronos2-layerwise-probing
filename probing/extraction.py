@@ -85,6 +85,9 @@ def _idf_prefix(tag):
     and the label guard would otherwise fail loud). Legacy sets keep the un-suffixed ``IDF_<tag>``
     prefix so their committed caches stay valid; new sets get ``IDF_<tag>__<set>``."""
     from probing import config
+    from probing.id_data import OOD_TARGET_TAGS
+    if tag in OOD_TARGET_TAGS:          # eval-only pretraining-OOD targets: set-independent cache
+        return f"IDF_{tag}__ood"
     s = config.DATASET_SET
     return f"IDF_{tag}" if s in ("extended_v1", "phase0_trio") else f"IDF_{tag}__{s}"
 

@@ -176,6 +176,38 @@ def load_checkpoints(source, qset, seed, quantiles, device):
     return fitted
 
 
+def source_selected_layer(source, qset, seed):
+    """Layer chosen on the SOURCE VALIDATION split ONLY — never touches any target data.
+
+    Each per-layer checkpoint stores selection.val_loss_by_wd (the source 80/20 validation q9 loss
+    at every weight decay) and chosen_wd (its per-layer argmin). We collapse that to ONE validation
+    score per layer = min over the wd grid (== the loss at chosen_wd), then take the argmin across
+    the NUM_LAYERS depths. np.argmin breaks exact ties toward the EARLIEST layer (the deterministic
+    source-only tie rule). Returns (layer, validation_loss_at_that_layer)."""
+    d = _ckpt_dir(source, qset, seed)
+    vals = []
+    for i in range(NUM_LAYERS):
+        p = d / f"L{i:02d}.pt"
+        if not p.exists():
+            raise FileNotFoundError(f"{p} missing — cannot derive the source-validation-selected "
+                                    "layer; run the source job first")
+        sel = torch.load(p, map_location="cpu", weights_only=False)["selection"]
+        vals.append(float(min(sel["val_loss_by_wd"].values())))
+    vals = np.asarray(vals, dtype=float)
+    L = int(np.argmin(vals))
+    return L, float(vals[L])
+
+
+def _selected_layers_by_source(qset, seed):
+    """{source: (layer, val_loss)} for every source whose checkpoints are present — the fixed,
+    source-validation-selected layer reused for that source's ID cell AND all its transfer cells."""
+    out = {}
+    for src in DATASET_ORDER:
+        if (_ckpt_dir(src, qset, seed) / "L00.pt").exists():
+            out[src] = source_selected_layer(src, qset, seed)
+    return out
+
+
 # --------------------------------------------------------------------------- #
 # train ONCE on source; evaluate the frozen probe on each target
 # --------------------------------------------------------------------------- #
@@ -411,14 +443,27 @@ def aggregate(qset, seed):
     print(f"  [saved] combined table + summary under {OOD_DIR} ({len(rows)} rows, "
           f"{len(out_summ)} cells)")
 
-    make_matrix_figure(summ, boot_cells, qset, seed)
     make_summary_figure(out_summ, boot_cells, qset, seed)
 
-    # normalized improvement over L12 (additive; raw delta_vs_last outputs above are untouched)
-    rg_rows = write_relative_gain_table(boot_cells, summ, qset, seed)
-    make_relative_gain_heatmap(summ, boot_cells, qset, seed)
-    make_relative_gain_id_vs_ood(summ, boot_cells, qset, seed)
-    _print_relative_gain_summary(rg_rows)
+    # ------------------------------------------------------------------ #
+    # normalized improvement over L12 — two layer-selection views.
+    #   PRIMARY  (source_val): layer chosen on SOURCE VALIDATION only, one per source row, reused
+    #            for the ID cell + all transfer cells; gains may be NEGATIVE; the fair result.
+    #   DIAGNOSTIC (oracle):   layer = target-test argmin — optimistically biased, kept for
+    #            reference under oracle_* filenames (the layer-selection-bias correction).
+    # Same saved per-window q9 losses + same paired series-cluster bootstrap for both; only the
+    # (fixed, pre-bootstrap) layer differs. Raw delta_vs_last table/figure above are untouched.
+    # ------------------------------------------------------------------ #
+    sel_by_src = _selected_layers_by_source(qset, seed)
+    sv_rows = write_relative_gain_table(boot_cells, summ, qset, seed, "source_val", sel_by_src)
+    make_relative_gain_heatmap(summ, boot_cells, qset, seed, "source_val", sel_by_src)
+    make_relative_gain_id_vs_ood(summ, boot_cells, qset, seed, "source_val", sel_by_src)
+    make_matrix_figure(summ, boot_cells, qset, seed, "source_val", sel_by_src)
+    or_rows = write_relative_gain_table(boot_cells, summ, qset, seed, "oracle", sel_by_src)
+    make_relative_gain_heatmap(summ, boot_cells, qset, seed, "oracle", sel_by_src)
+    make_relative_gain_id_vs_ood(summ, boot_cells, qset, seed, "oracle", sel_by_src)
+    make_matrix_figure(summ, boot_cells, qset, seed, "oracle", sel_by_src)
+    _print_corrected_summary(sv_rows, or_rows, sel_by_src, qset)
 
 
 def write_delta_table(boot_cells, summ, qset, seed):
@@ -452,14 +497,18 @@ def write_delta_table(boot_cells, summ, qset, seed):
           f"{OOD_DIR / f'ood_transfer_delta_vs_last__{qset}.csv'}")
 
 
-def make_matrix_figure(summ, boot_cells, qset, seed):
-    """3x3 transfer grid: rows = source probe, cols = evaluation target. Each panel: Chronos-2
-    quantile loss vs depth (Embed + L1..L12), 95% cluster-bootstrap band, ★ at the best layer,
-    filled black-edged markers where an earlier layer's paired Δ-vs-last CI excludes zero (it
-    significantly beats the final layer), dotted line at the final layer. Diagonal (ID) panels get
-    a tinted background; off-diagonal are strict cross-dataset transfer (OOD). y-scale is SHARED
-    WITHIN A COLUMN (same target = comparable loss scale) and NOT across columns — absolute height
-    is not a distance measure."""
+def make_matrix_figure(summ, boot_cells, qset, seed, mode="oracle", sel_by_src=None):
+    """N×N transfer grid: rows = source probe, cols = evaluation target. Each panel: Chronos-2
+    quantile loss vs depth (Embed + L1..L12), 95% cluster-bootstrap band, filled black-edged markers
+    where a layer's paired Δ-vs-last CI excludes zero, dotted line at the final layer. All curves are
+    kept (descriptive); the highlighted layer + the Δ / relative-gain reported per title depend on
+    `mode`:
+      mode='source_val' (PRIMARY): prominent ◆ at the SOURCE-VALIDATION-selected layer (one per
+        source row, chosen with NO target data) + a secondary hollow ★ at the target-test oracle
+        best layer, clearly labeled. Δ / gain reported for the ◆ layer and MAY be negative.
+      mode='oracle' (DIAGNOSTIC): ★ at the target-test-best layer — optimistically biased.
+    Diagonal (ID) panels get a tinted background. y-scale is SHARED WITHIN A COLUMN only (same target
+    = comparable loss scale); absolute height is not a distance measure."""
     xs = np.arange(NUM_LAYERS)
     xlabels = ["Embed"] + [str(i) for i in range(1, NUM_LAYERS)]
     fig, axes = plt.subplots(NDATA, NDATA, figsize=(5.3 * NDATA, 4.3 * NDATA),
@@ -488,22 +537,32 @@ def make_matrix_figure(summ, boot_cells, qset, seed):
                 if sig.any():
                     ax.plot(xs[sig], curve[sig], "o", color=color, ms=7, mec="k", mew=0.9,
                             zorder=4, label="Δ vs last: CI > 0")
-            bi = s["best_layer"]
-            ax.plot(bi, curve[bi], marker="*", ms=16, color=color, mec="k", mew=0.6, zorder=5,
-                    label=f"best = {xlabels[bi]}")
+            oracle_bi = s["best_layer"]
+            if mode == "source_val":
+                chosen = sel_by_src[src][0]
+                ax.plot(chosen, curve[chosen], marker="D", ms=12, color=color, mec="k", mew=1.4,
+                        zorder=6, label=f"source-val sel = {xlabels[chosen]}")
+                ax.plot(oracle_bi, curve[oracle_bi], marker="*", ms=14, mfc="none", mec="0.25",
+                        mew=1.1, zorder=5, label=f"oracle test-best = {xlabels[oracle_bi]}")
+            else:
+                chosen = oracle_bi
+                ax.plot(chosen, curve[chosen], marker="*", ms=16, color=color, mec="k", mew=0.6,
+                        zorder=5, label=f"oracle test-best = {xlabels[chosen]}")
             ax.axvline(LAST_LAYER, color="0.4", ls=":", lw=1.1)
             if is_ood:
                 ax.set_facecolor("white")
-                border = "0.75"
             else:                                          # ID diagonal: tinted + bold frame
                 ax.set_facecolor("#f4f4ec")
-                border = "k"
                 for spine in ax.spines.values():
                     spine.set_linewidth(1.8)
-                    spine.set_edgecolor(border)
+                    spine.set_edgecolor("k")
+            delta_chosen = float(curve[LAST_LAYER] - curve[chosen])
+            rg_txt = ("" if bc is None
+                      else f"  ({_relative_gain_cell(bc, chosen)['relative_gain_pct']:+.1f}%)")
+            sel_word = "source-val sel" if mode == "source_val" else "oracle test-best"
             tagtxt = "OOD (cross-dataset)" if is_ood else "ID (in-dataset)"
             ax.set_title(f"{SHORT[src]} → {SHORT[tgt]}   [{tagtxt}]\n"
-                         f"best {xlabels[bi]}, Δ vs last = {s['delta_vs_last']:+.3f}",
+                         f"{sel_word} {xlabels[chosen]}: Δ vs last = {delta_chosen:+.3f}{rg_txt}",
                          fontsize=10, fontweight=("bold" if not is_ood else "normal"))
             ax.set_xticks(xs)
             ax.set_xticklabels(xlabels, fontsize=7)
@@ -513,14 +572,23 @@ def make_matrix_figure(summ, boot_cells, qset, seed):
         ax.set_xlabel("representation (Embed + L1..L12)")
     for ri, src in enumerate(DATASET_ORDER):
         axes[ri, 0].set_ylabel(f"probe trained on {SHORT[src]}\nChronos-2 quantile loss (test)")
-    fig.suptitle(f"Cross-dataset probe transfer ({NDATA}×{NDATA}) — Chronos-2 quantile loss by layer  "
-                 f"[{qset}, Q={len(QUANTILE_SETS[qset])}, seed {seed}]\n"
-                 "rows = source (training) dataset, columns = target (evaluation) dataset;  "
-                 "diagonal = in-dataset, off-diagonal = strict transfer;  LOWER = better, "
-                 "★ = best layer, filled dot = paired Δ-vs-last CI excludes 0;  "
-                 "y shared within a column only", fontsize=13, y=0.995)
+    if mode == "source_val":
+        head = (f"Cross-dataset probe transfer ({NDATA}×{NDATA}) — PRIMARY: layer selected on SOURCE "
+                f"VALIDATION only  [{qset}, Q={len(QUANTILE_SETS[qset])}, seed {seed}]")
+        sub = ("rows = source, cols = target;  ◆ = source-validation-selected layer (one per row, no "
+               "target data);  hollow ★ = target-test oracle best (secondary/diagnostic);  Δ / gain "
+               "reported for ◆ and MAY be negative;  filled dot = paired Δ-vs-last CI>0;  LOWER = "
+               "better;  y shared within a column")
+        out = FIG_DIR / f"source_val_selected_layerwise_matrix_{qset}.png"
+    else:
+        head = (f"Cross-dataset probe transfer ({NDATA}×{NDATA}) — DIAGNOSTIC (oracle test-best layer)"
+                f"  [{qset}, Q={len(QUANTILE_SETS[qset])}, seed {seed}]")
+        sub = ("rows = source, cols = target;  ★ = target-test-best layer (optimistically biased — NOT "
+               "the primary result);  filled dot = paired Δ-vs-last CI>0;  LOWER = better;  "
+               "y shared within a column")
+        out = FIG_DIR / f"oracle_test_selected_layerwise_matrix_{qset}.png"
+    fig.suptitle(head + "\n" + sub, fontsize=12, y=0.995)
     fig.tight_layout(rect=[0, 0, 1, 0.965])
-    out = FIG_DIR / f"transfer_matrix_{NDATA}x{NDATA}__{qset}.png"
     fig.savefig(out, dpi=140, bbox_inches="tight")
     plt.close(fig)
     print(f"  [saved] {out}")
@@ -620,62 +688,105 @@ def _split_mode_map():
     return {}
 
 
-def write_relative_gain_table(boot_cells, summ, qset, seed):
-    """relative_gain_summary_<qset>.csv/json — normalized improvement over L12 per source->target cell.
-    Best layer = full-sample test-argmin, held fixed in the bootstrap; the CI is DESCRIPTIVE (not
-    adjusted for layer selection)."""
+def write_relative_gain_table(boot_cells, summ, qset, seed, mode="oracle", sel_by_src=None):
+    """Normalized improvement over L12 per source->target cell, for one layer-selection view.
+
+    mode='source_val' (PRIMARY): layer chosen on SOURCE VALIDATION only (one per source row). Writes
+      source_val_relative_gain_summary_<qset>.csv/json with the full requested schema — the selected
+      layer + the validation loss used, its test loss and L12's, raw gain + 95% CI, relative gain +
+      95% CI, whether each CI excludes 0, the target-test ORACLE best layer + its relative gain, the
+      split mode, the test-window count and the number of bootstrap clusters. Gains may be NEGATIVE.
+    mode='oracle' (DIAGNOSTIC): layer = target-test argmin (optimistically biased). Writes
+      oracle_relative_gain_summary_<qset>.csv/json AND the legacy relative_gain_summary_<qset>.*
+      alias (so run_ood_pretrain_transfer's overlay keeps resolving) — same oracle content.
+    Both reuse the same paired series-cluster bootstrap; the layer is fixed BEFORE the bootstrap, so
+    every CI here is DESCRIPTIVE (not adjusted for layer selection)."""
     smap = _split_mode_map()
-    fields = ["source_dataset", "target_dataset", "id_or_ood", "best_layer",
-              "best_layer_q9_loss", "last_layer_q9_loss", "delta_vs_last",
-              "relative_gain_pct", "relative_ci_lo", "relative_ci_hi",
-              "relative_ci_excludes_zero", "split_mode"]
     rows = []
     for (src, tgt), bc in sorted(boot_cells.items()):
-        best = summ[(src, tgt)]["best_layer"]
-        rg = _relative_gain_cell(bc, best)
-        rows.append({"source_dataset": src, "target_dataset": tgt,
-                     "id_or_ood": ("ID" if src == tgt else "OOD"), "best_layer": int(best),
-                     "best_layer_q9_loss": round(float(bc["point"][best]), 6),
-                     "last_layer_q9_loss": round(float(bc["point"][LAST_LAYER]), 6),
-                     "delta_vs_last": round(float(summ[(src, tgt)]["delta_vs_last"]), 6),
-                     "relative_gain_pct": round(rg["relative_gain_pct"], 4),
-                     "relative_ci_lo": round(rg["ci_lo"], 4), "relative_ci_hi": round(rg["ci_hi"], 4),
-                     "relative_ci_excludes_zero": rg["excludes_zero"],
-                     "split_mode": smap.get(tgt, "unknown")})
-    with open(OOD_DIR / f"relative_gain_summary_{qset}.csv", "w", newline="") as f:
-        wr = csv.DictWriter(f, fieldnames=fields)
-        wr.writeheader()
-        wr.writerows(rows)
-    json.dump(rows, open(OOD_DIR / f"relative_gain_summary_{qset}.json", "w"), indent=2)
-    print(f"  [saved] relative-gain table ({len(rows)} cells) -> "
-          f"{OOD_DIR / f'relative_gain_summary_{qset}.csv'}")
+        oracle_best = int(summ[(src, tgt)]["best_layer"])
+        L = int(sel_by_src[src][0]) if mode == "source_val" else oracle_best
+        rg = _relative_gain_cell(bc, L)
+        raw_gain = float(bc["delta_vs_last"][L])                       # loss[last] − loss[L]
+        raw_lo, raw_hi = float(bc["delta_ci_lo"][L]), float(bc["delta_ci_hi"][L])
+        common = {"source_dataset": src, "target_dataset": tgt,
+                  "id_or_ood": ("ID" if src == tgt else "OOD")}
+        if mode == "source_val":
+            oracle_rg = _relative_gain_cell(bc, oracle_best)["relative_gain_pct"]
+            rows.append({**common,
+                         "source_val_selected_layer": L,
+                         "validation_loss_used": round(float(sel_by_src[src][1]), 6),
+                         "selected_layer_test_q9_loss": round(float(bc["point"][L]), 6),
+                         "last_layer_test_q9_loss": round(float(bc["point"][LAST_LAYER]), 6),
+                         "raw_gain": round(raw_gain, 6),
+                         "raw_ci_lo": round(raw_lo, 6), "raw_ci_hi": round(raw_hi, 6),
+                         "raw_ci_excludes_zero": bool(raw_lo > 0 or raw_hi < 0),
+                         "relative_gain_pct": round(rg["relative_gain_pct"], 4),
+                         "relative_ci_lo": round(rg["ci_lo"], 4),
+                         "relative_ci_hi": round(rg["ci_hi"], 4),
+                         "relative_ci_excludes_zero": rg["excludes_zero"],
+                         "oracle_best_layer": oracle_best,
+                         "oracle_relative_gain_pct": round(float(oracle_rg), 4),
+                         "split_mode": smap.get(tgt, "unknown"),
+                         "n_test_windows": int(bc["n_windows"]),
+                         "n_bootstrap_clusters": int(bc["n_series"])})
+        else:
+            rows.append({**common, "best_layer": L,
+                         "best_layer_q9_loss": round(float(bc["point"][L]), 6),
+                         "last_layer_q9_loss": round(float(bc["point"][LAST_LAYER]), 6),
+                         "delta_vs_last": round(raw_gain, 6),
+                         "relative_gain_pct": round(rg["relative_gain_pct"], 4),
+                         "relative_ci_lo": round(rg["ci_lo"], 4),
+                         "relative_ci_hi": round(rg["ci_hi"], 4),
+                         "relative_ci_excludes_zero": rg["excludes_zero"],
+                         "split_mode": smap.get(tgt, "unknown")})
+    prefix = ("source_val_relative_gain_summary" if mode == "source_val"
+              else "oracle_relative_gain_summary")
+    stems = [prefix] + ([] if mode == "source_val" else ["relative_gain_summary"])   # legacy alias
+    fields = list(rows[0].keys()) if rows else []
+    for stem in stems:
+        with open(OOD_DIR / f"{stem}_{qset}.csv", "w", newline="") as f:
+            wr = csv.DictWriter(f, fieldnames=fields)
+            wr.writeheader()
+            wr.writerows(rows)
+        json.dump(rows, open(OOD_DIR / f"{stem}_{qset}.json", "w"), indent=2)
+    print(f"  [saved] {mode} relative-gain table ({len(rows)} cells) -> "
+          f"{OOD_DIR / f'{prefix}_{qset}.csv'}")
     return rows
 
 
-def make_relative_gain_heatmap(summ, boot_cells, qset, seed):
-    """N×N normalized-gain heatmap: relative_gain_pct = 100*(loss[L12]-loss[best])/loss[L12]. Diverging
-    colormap centered at 0 (warm = best layer beats L12); each cell annotated with best layer, gain %,
-    and the 95% paired-bootstrap CI; cells whose CI excludes 0 are bold + ★; ID diagonal boxed. The best
-    layer is chosen on the full test set and held FIXED in the bootstrap -> CIs descriptive, not
-    selection-adjusted."""
+def make_relative_gain_heatmap(summ, boot_cells, qset, seed, mode="oracle", sel_by_src=None):
+    """N×N normalized-gain heatmap: relative_gain_pct = 100*(loss[L12]-loss[L])/loss[L12]. Diverging
+    colormap centered at 0 (warm = layer L beats L12, cool = worse); each cell annotated with the
+    chosen layer, gain %, and 95% paired-bootstrap CI; cells whose CI excludes 0 are bold + ★; ID
+    diagonal boxed. `mode` picks L and the filename/caption:
+      'source_val' (PRIMARY): L = SOURCE-VALIDATION-selected layer (one per source row, no target
+        data); also prints the oracle layer in small text. -> source_val_relative_gain_heatmap.
+      'oracle' (DIAGNOSTIC): L = target-test argmin (optimistically biased). -> oracle_*.
+    The layer is fixed BEFORE the bootstrap -> CIs descriptive, not selection-adjusted."""
     idx = {d: i for i, d in enumerate(DATASET_ORDER)}
     xlabels = ["Embed"] + [str(i) for i in range(1, NUM_LAYERS)]
     M = np.full((NDATA, NDATA), np.nan)
     cell_rg = {}
     for (src, tgt), bc in boot_cells.items():
-        best = summ[(src, tgt)]["best_layer"]
-        rg = _relative_gain_cell(bc, best)
-        cell_rg[(src, tgt)] = (best, rg)
+        oracle_best = summ[(src, tgt)]["best_layer"]
+        L = sel_by_src[src][0] if mode == "source_val" else oracle_best
+        rg = _relative_gain_cell(bc, L)
+        cell_rg[(src, tgt)] = (L, oracle_best, rg)
         M[idx[src], idx[tgt]] = rg["relative_gain_pct"]
     vmax = float(np.nanmax(np.abs(M))) or 1.0
     fig, ax = plt.subplots(figsize=(max(9.0, 2.9 * NDATA), max(7.5, 2.6 * NDATA)))
     im = ax.imshow(M, cmap="RdBu_r", vmin=-vmax, vmax=vmax)          # centered at 0; warm = positive gain
-    for (src, tgt), (best, rg) in cell_rg.items():
+    for (src, tgt), (L, oracle_best, rg) in cell_rg.items():
         si, ti = idx[src], idx[tgt]
         sig = rg["excludes_zero"]
-        txt = (("★ " if sig else "") + f"best {xlabels[best]}\n{rg['relative_gain_pct']:+.1f}%\n"
-               f"95% CI [{rg['ci_lo']:+.1f}, {rg['ci_hi']:+.1f}]")
-        ax.text(ti, si, txt, ha="center", va="center", fontsize=8,
+        if mode == "source_val":
+            head, tail = f"sel {xlabels[L]}", f"\n(oracle {xlabels[oracle_best]})"
+        else:
+            head, tail = f"oracle {xlabels[L]}", ""
+        txt = (("★ " if sig else "") + f"{head}\n{rg['relative_gain_pct']:+.1f}%\n"
+               f"95% CI [{rg['ci_lo']:+.1f}, {rg['ci_hi']:+.1f}]" + tail)
+        ax.text(ti, si, txt, ha="center", va="center", fontsize=7.5,
                 fontweight=("bold" if sig else "normal"), color="k")
         if src == tgt:                                              # ID diagonal boxed
             ax.add_patch(plt.Rectangle((ti - 0.5, si - 0.5), 1, 1, fill=False, ec="k", lw=2.5))
@@ -683,26 +794,37 @@ def make_relative_gain_heatmap(summ, boot_cells, qset, seed):
     ax.set_yticks(range(NDATA)); ax.set_yticklabels([SHORT[d] for d in DATASET_ORDER])
     ax.set_xlabel("target (evaluation) dataset")
     ax.set_ylabel("source (probe training) dataset")
-    ax.set_title(f"Relative improvement of the best intermediate layer over L12  [{qset}, seed {seed}]\n"
-                 "warm = best layer beats L12; ★/bold = 95% paired-bootstrap CI excludes 0; boxed = "
-                 "in-dataset (ID).\nBest layer chosen on the full test set + held fixed in the bootstrap "
-                 "→ CIs DESCRIPTIVE, not adjusted for layer selection", fontsize=9)
+    if mode == "source_val":
+        title = (f"PRIMARY — relative improvement over L12 at the SOURCE-VALIDATION-selected layer  "
+                 f"[{qset}, seed {seed}]\nlayer chosen on source validation ONLY (one per source row, "
+                 "no target data); warm = beats L12, cool = worse; ★/bold = 95% paired CI excludes 0; "
+                 "boxed = ID.\ngains may be NEGATIVE; CIs descriptive (layer fixed before the bootstrap)")
+        prefix = "source_val_relative_gain_heatmap"
+    else:
+        title = (f"DIAGNOSTIC (oracle) — relative improvement over L12 at the TARGET-TEST-best layer  "
+                 f"[{qset}, seed {seed}]\noptimistically biased (L = test argmin, ≥0 by construction); "
+                 "★/bold = CI excludes 0; boxed = ID.\nNOT the primary result — see the source_val heatmap")
+        prefix = "oracle_relative_gain_heatmap"
+    ax.set_title(title, fontsize=9)
     fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04, label=REL_GAIN_LABEL)
     fig.tight_layout()
-    out = FIG_DIR / f"relative_gain_heatmap_{qset}.png"
+    out = FIG_DIR / f"{prefix}_{qset}.png"
     fig.savefig(out, dpi=140, bbox_inches="tight")
     plt.close(fig)
     print(f"  [saved] {out}")
 
 
-def make_relative_gain_id_vs_ood(summ, boot_cells, qset, seed):
+def make_relative_gain_id_vs_ood(summ, boot_cells, qset, seed, mode="oracle", sel_by_src=None):
     """Descriptive ID-vs-OOD view: the diagonal (ID) and off-diagonal (OOD) relative gains shown
-    individually, with each group's MEAN (solid) and MEDIAN (dashed) overlaid. The cells are NOT
-    statistically independent, so this is descriptive only — no inferential test across cells."""
+    individually, with each group's MEAN (solid) and MEDIAN (dashed) overlaid. `mode` picks the
+    per-cell layer + filename/caption: 'source_val' (PRIMARY, source-validation-selected layer, gains
+    may be negative) -> source_val_relative_gain_id_vs_ood; 'oracle' (DIAGNOSTIC, target-test-best,
+    biased) -> oracle_*. The cells are NOT statistically independent, so this is descriptive only —
+    no inferential test across cells."""
     cells = {"ID": [], "OOD": []}                        # (label, relative_gain_pct) per point
     for (src, tgt), bc in boot_cells.items():
-        best = summ[(src, tgt)]["best_layer"]
-        rg = _relative_gain_cell(bc, best)
+        L = sel_by_src[src][0] if mode == "source_val" else summ[(src, tgt)]["best_layer"]
+        rg = _relative_gain_cell(bc, L)
         cells["ID" if src == tgt else "OOD"].append((f"{SHORT[src]}→{SHORT[tgt]}", rg["relative_gain_pct"]))
     fig, ax = plt.subplots(figsize=(9.5, 7.0))
     rng = np.random.default_rng(SEED)
@@ -737,35 +859,60 @@ def make_relative_gain_id_vs_ood(summ, boot_cells, qset, seed):
     ax.set_xticklabels([f"ID  (n={n_by['ID']})", f"OOD  (n={n_by['OOD']})"])
     ax.set_xlim(-0.5, 1.95)
     ax.set_ylabel(REL_GAIN_LABEL)
-    ax.set_title(f"Relative improvement over L12 — ID vs OOD  [{qset}, seed {seed}]\n"
-                 "each point = one source→target cell (best layer fixed on the full test set); "
-                 "solid = mean, dashed = median.\nDescriptive only — the 16 cells are NOT statistically "
-                 "independent (no cross-cell inference).", fontsize=9)
+    if mode == "source_val":
+        title = ("Relative improvement over L12 — ID vs OOD  (PRIMARY: source-validation-selected "
+                 f"layer)  [{qset}, seed {seed}]\neach point = one source→target cell (layer fixed on "
+                 "SOURCE validation only); solid = mean, dashed = median; gains may be negative.\n"
+                 "Descriptive only — the 16 cells are NOT statistically independent (no cross-cell "
+                 "inference).")
+        prefix = "source_val_relative_gain_id_vs_ood"
+    else:
+        title = ("Relative improvement over L12 — ID vs OOD  (DIAGNOSTIC: oracle target-test-best "
+                 f"layer)  [{qset}, seed {seed}]\noptimistically biased (layer = test argmin); "
+                 "descriptive only — NOT the primary result.")
+        prefix = "oracle_relative_gain_id_vs_ood"
+    ax.set_title(title, fontsize=9)
     ax.legend(fontsize=7, loc="upper left")
     ax.grid(axis="y", alpha=0.3)
     fig.tight_layout()
-    out = FIG_DIR / f"relative_gain_id_vs_ood_{qset}.png"
+    out = FIG_DIR / f"{prefix}_{qset}.png"
     fig.savefig(out, dpi=140, bbox_inches="tight")
     plt.close(fig)
     print(f"  [saved] {out}")
 
 
-def _print_relative_gain_summary(rows):
-    """Concise terminal summary of the normalized gains (descriptive)."""
-    def ms(sub):
-        v = np.array([r["relative_gain_pct"] for r in sub], float)
-        return (float(v.mean()), float(np.median(v))) if len(v) else (float("nan"), float("nan"))
-    idc = [r for r in rows if r["id_or_ood"] == "ID"]
-    oodc = [r for r in rows if r["id_or_ood"] == "OOD"]
-    id_mean, id_med = ms(idc)
-    ood_mean, ood_med = ms(oodc)
-    n_pos = sum(1 for r in rows if r["relative_gain_pct"] > 0)
-    n_sig = sum(1 for r in rows if r["relative_ci_excludes_zero"])
-    print("\n  ── Relative improvement over L12 (q9); best layer fixed on the full test set ──")
-    print(f"    ID  (n={len(idc):2d}):  mean {id_mean:+.2f}%   median {id_med:+.2f}%")
-    print(f"    OOD (n={len(oodc):2d}):  mean {ood_mean:+.2f}%   median {ood_med:+.2f}%")
-    print(f"    positive cells: {n_pos}/{len(rows)}   |   95% CI excludes 0: {n_sig}/{len(rows)}")
-    print("    (CIs descriptive / post-selection — NOT adjusted for layer selection)")
+def _print_corrected_summary(sv_rows, or_rows, sel_by_src, qset):
+    """Terminal summary of the CORRECTED (source-validation-selected) result, with the OLD ORACLE
+    estimates alongside for comparison. Both sets are descriptive (layer fixed before the bootstrap);
+    the source-val view is the fair primary result, the oracle view is optimistically biased."""
+    def ms(rows, grp):
+        v = np.array([r["relative_gain_pct"] for r in rows if r["id_or_ood"] == grp], float)
+        return (float(v.mean()), float(np.median(v)), len(v)) if len(v) else (float("nan"),
+                                                                              float("nan"), 0)
+    print(f"\n  ══ CORRECTED primary result — layer selected on SOURCE VALIDATION only  ({qset}) ══")
+    print("    source-validation-selected layer (reused for the ID cell + all transfer cells):")
+    for src in DATASET_ORDER:
+        if src in sel_by_src:
+            L, vl = sel_by_src[src]
+            print(f"       {SHORT[src]:12s} -> L{L:<2d}  (source-val q9 loss {vl:.4f})")
+    n_pos = sum(1 for r in sv_rows if r["relative_gain_pct"] > 0)
+    n_sig = sum(1 for r in sv_rows if r["relative_ci_excludes_zero"])
+    n_sig_neg = sum(1 for r in sv_rows
+                    if r["relative_ci_excludes_zero"] and r["relative_gain_pct"] < 0)
+    id_m, id_md, id_n = ms(sv_rows, "ID")
+    ood_m, ood_md, ood_n = ms(sv_rows, "OOD")
+    print(f"    positive cells: {n_pos}/{len(sv_rows)}   |   95% rel-CI excludes 0: "
+          f"{n_sig}/{len(sv_rows)}  (of which significantly NEGATIVE: {n_sig_neg})")
+    print(f"    ID  (n={id_n:2d}):  mean {id_m:+.2f}%   median {id_md:+.2f}%")
+    print(f"    OOD (n={ood_n:2d}):  mean {ood_m:+.2f}%   median {ood_md:+.2f}%")
+    oid_m, oid_md, _ = ms(or_rows, "ID")
+    ood_o_m, ood_o_md, _ = ms(or_rows, "OOD")
+    o_pos = sum(1 for r in or_rows if r["relative_gain_pct"] > 0)
+    print("    ── vs OLD ORACLE (target-test-best layer, optimistically biased) ──")
+    print(f"    ID  oracle:  mean {oid_m:+.2f}%   median {oid_md:+.2f}%")
+    print(f"    OOD oracle:  mean {ood_o_m:+.2f}%   median {ood_o_md:+.2f}%   "
+          f"(oracle positive cells: {o_pos}/{len(or_rows)})")
+    print("    (source-val = fair primary result; oracle CIs are post-selection / optimistic)")
 
 
 # --------------------------------------------------------------------------- #
