@@ -182,6 +182,69 @@ def test_smoke_real_cache():
         shutil.rmtree(tmp, ignore_errors=True)
 
 
+# 9 (4×4 extension). The matrix order is per-set: extended_v2 is a 4×4 (elec/uber/m4/wind), and
+# extended_v1 stays the committed 3×3 (elec/kdd/uber) even though its roster has 4 datasets.
+def test_matrix_order_is_per_set():
+    from probing import config
+    import experiments.run_ood_transfer as R
+    orig = config.DATASET_SET
+    try:
+        config.set_dataset_set("extended_v2"); R._derive_datasets()
+        assert R.NDATA == 4, "extended_v2 must be a 4×4 matrix"
+        assert R.DATASET_ORDER == ["monash_electricity_hourly", "uber_tlc_hourly",
+                                   "m4_hourly", "wind_farms_hourly"]
+        assert "M4" in R.SHORT.values() and "WindFarms" in R.SHORT.values()
+        config.set_dataset_set("extended_v1"); R._derive_datasets()
+        assert R.NDATA == 3, "extended_v1 OOD stays the committed 3×3 (pedestrian excluded)"
+        assert R.DATASET_ORDER == ["monash_electricity_hourly", "monash_kdd_cup_2018",
+                                   "uber_tlc_hourly"]
+    finally:
+        config.set_dataset_set(orig); R._derive_datasets()
+
+
+# 10 (budget + cache isolation). extended_v2 has the matched 1500/650 budget and a namespaced ID
+# cache prefix, so it can never collide with extended_v1's committed 3000/1500 caches.
+def test_budget_and_cache_namespacing():
+    from probing import config
+    from probing.id_data import BUDGET_BY_SET
+    from probing.extraction import _idf_prefix
+    orig = config.DATASET_SET
+    try:
+        assert BUDGET_BY_SET["extended_v2"] == (1500, 650)
+        assert BUDGET_BY_SET["extended_v1"] == (3000, 1500)
+        config.set_dataset_set("extended_v2")
+        assert _idf_prefix("t") == "IDF_t__extended_v2", "new set must namespace its ID cache"
+        config.set_dataset_set("extended_v1")
+        assert _idf_prefix("t") == "IDF_t", "legacy set must keep the committed cache key"
+    finally:
+        config.set_dataset_set(orig)
+
+
+# 11 (windows/split/budget for the NEW datasets; gated — needs the HF dataset cache).
+def test_extended_v2_windows_split_and_budget():
+    if os.environ.get("RUN_OOD_SMOKE") != "1":
+        print("  [skip] test_extended_v2_windows_split_and_budget (set RUN_OOD_SMOKE=1; needs data cache)")
+        return
+    from probing import config
+    from probing.id_data import build_windows
+    orig = config.DATASET_SET
+    try:
+        config.set_dataset_set("extended_v2")
+        expect = {"m4_hourly": "cross_series", "wind_farms_hourly": "within_series"}
+        for tag, split_mode in expect.items():
+            w = build_windows(tag)
+            m = w["meta"]
+            assert m["split_mode"] == split_mode, f"{tag}: split {m['split_mode']} != {split_mode}"
+            assert m["target_train"] == 1500 and m["target_test"] == 650
+            assert m["n_train"] <= 1500 and m["n_test"] <= 650
+            assert w["X_train"].shape[0] == m["n_train"] == w["Y_train_traj"].shape[0]
+            assert w["X_test"].shape[0] == m["n_test"] == len(w["series_test"])
+            assert w["X_test"].shape[1] == 512 and w["Y_test_traj"].shape[1] == 64
+            print(f"  [ext_v2] {tag}: split={split_mode} n_train={m['n_train']} n_test={m['n_test']}")
+    finally:
+        config.set_dataset_set(orig)
+
+
 TESTS = [test_fit_predict_reproduces_quantile_probe,
          test_frozen_probe_reused_across_targets_not_mutated,
          test_training_signature_has_no_target_or_val,
@@ -189,6 +252,9 @@ TESTS = [test_fit_predict_reproduces_quantile_probe,
          test_checkpoint_identity_excludes_target,
          test_is_ood_definition,
          test_paired_delta_bootstrap,
+         test_matrix_order_is_per_set,
+         test_budget_and_cache_namespacing,
+         test_extended_v2_windows_split_and_budget,
          test_smoke_real_cache]
 
 if __name__ == "__main__":

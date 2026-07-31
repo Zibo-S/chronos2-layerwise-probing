@@ -56,8 +56,25 @@ ID_DATASET_SPECS = {
         "monash_pedestrian_counts":  {"hf_config": "monash_pedestrian_counts",  "target": "target"},  # Transport / foot traffic
         "uber_tlc_hourly":           {"hf_config": "uber_tlc_hourly",           "target": "target"},  # Transport / ride demand
     },
+    # 4×4 OOD-transfer set (KDD dropped as persistence-dominated). All hourly (m=24).
+    # m4_hourly is short -> cross_series; the other three -> within_series.
+    "extended_v2": {
+        "monash_electricity_hourly": {"hf_config": "monash_electricity_hourly", "target": "target"},  # Energy consumption
+        "uber_tlc_hourly":           {"hf_config": "uber_tlc_hourly",           "target": "target"},  # Transport / ride demand
+        "m4_hourly":                 {"hf_config": "m4_hourly",                 "target": "target"},  # Mixed hourly (cross_series)
+        "wind_farms_hourly":         {"hf_config": "wind_farms_hourly",         "target": "target"},  # Renewable generation
+    },
 }
 _HF_REPO = "autogluon/chronos_datasets"
+
+# Matched TOTAL train/test window budget per dataset set (applied by the existing uniform
+# _subsample — NOT a per-series cap). extended_v2 = 1500/650 (M4 is the floor); the others keep
+# the historical 3000/1500 so their committed numbers are unchanged.
+BUDGET_BY_SET = {
+    "phase0_trio": (3000, 1500),
+    "extended_v1": (3000, 1500),
+    "extended_v2": (1500, 650),
+}
 
 
 def _active_specs() -> dict:
@@ -173,8 +190,8 @@ def build_windows(
     H: int = 64,
     stride: int = 64,
     test_frac: float = 0.25,
-    target_train: int = 3000,
-    target_test: int = 1500,
+    target_train: int | None = None,
+    target_test: int | None = None,
     sigma_eps: float = 1e-6,
     m_season: int = 24,
     seed: int = SEED,
@@ -187,6 +204,13 @@ def build_windows(
         Y_train_traj, Y_test_traj : float32 arrays (n, H)   (normalized future TRAJECTORY; quantile probe)
         meta                      : split_mode, counts, skip counts, params
     """
+    # Resolve the matched budget from the ACTIVE dataset set unless explicitly overridden.
+    if target_train is None or target_test is None:
+        from probing import config
+        _bt, _bte = BUDGET_BY_SET.get(config.DATASET_SET, (3000, 1500))
+        target_train = _bt if target_train is None else target_train
+        target_test = _bte if target_test is None else target_test
+
     series = load_seen_series(tag)
     rng = np.random.default_rng(seed)
     span = C + H
@@ -253,6 +277,7 @@ def build_windows(
         "n_series": len(series),
         "n_series_supporting_within": n_series_ok,
         "C": C, "H": H, "stride": stride, "test_frac": test_frac,
+        "target_train": target_train, "target_test": target_test,
         "sigma_eps": sigma_eps, "seed": seed,
         "m_season": m_season,
         "mase_denominator": "per_series_train_seasonal_naive",

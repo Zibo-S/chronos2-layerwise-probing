@@ -79,6 +79,16 @@ def _cache_path(dataset, split, corruption, pooling):
     return CACHE_DIR / f"{dataset}__{split}__{_corr_repr(corruption)}__{pooling}.npz"
 
 
+def _idf_prefix(tag):
+    """ID-forecasting cache prefix, namespaced by the ACTIVE dataset set so two sets that share an
+    HF tag but use a different window budget never collide (their windows -> features/native differ,
+    and the label guard would otherwise fail loud). Legacy sets keep the un-suffixed ``IDF_<tag>``
+    prefix so their committed caches stay valid; new sets get ``IDF_<tag>__<set>``."""
+    from probing import config
+    s = config.DATASET_SET
+    return f"IDF_{tag}" if s in ("extended_v1", "phase0_trio") else f"IDF_{tag}__{s}"
+
+
 def _all_pool_caches_exist(dataset, split, corruption):
     return all(_cache_path(dataset, split, corruption, p).exists()
                for p in ("content", "all", "reg"))
@@ -288,7 +298,7 @@ def extract_window_features(tag, split, contexts, y, pooling="content", batch_si
     Returns ({layer: (n_windows, 768)}, y). All three poolings are written to the
     cache in one pass, so a later request for a different pooling is free.
     """
-    cache_dataset = f"IDF_{tag}"
+    cache_dataset = _idf_prefix(tag)
     cache_path = _cache_path(cache_dataset, split, None, pooling)
     if cache_path.exists():
         feats, y_cached = _load_cache(cache_path)
@@ -298,7 +308,7 @@ def extract_window_features(tag, split, contexts, y, pooling="content", batch_si
             raise RuntimeError(
                 f"stale feature cache {cache_path.name}: cached labels do not match the "
                 f"current windows (n_cached={len(y_cached)}, n_now={len(y)}) — the "
-                f"windowing changed; delete features_cache/IDF_{tag}__* and re-extract")
+                f"windowing changed; delete features_cache/{cache_dataset}__* and re-extract")
         print(f"  [cache HIT]  {cache_path.name}")
         return feats, y_cached
 
@@ -401,7 +411,7 @@ def extract_kout_features(tag, split, contexts, y, horizon, batch_size=128):
       final = {"content": (n,768),     "reg": (n,768),     "fslot": (n,K,768)}       post-final-norm
     """
     K = math.ceil(horizon / OUTPUT_PATCH_SIZE)   # native rule: pipeline.get_num_output_patches
-    cache_path = _cache_path(f"IDF_{tag}", split, None, f"K{K}_H{horizon}")
+    cache_path = _cache_path(_idf_prefix(tag), split, None, f"K{K}_H{horizon}")
     types = ("content", "reg", "fslot")
     if cache_path.exists():
         d = np.load(cache_path, allow_pickle=True)

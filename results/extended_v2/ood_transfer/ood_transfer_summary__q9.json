@@ -1,0 +1,465 @@
+{
+  "config": {
+    "quantile_set": "q9",
+    "quantile_config": 9,
+    "seed": 0,
+    "pooling": "content",
+    "context_length": 512,
+    "prediction_length": 64,
+    "last_layer": 12,
+    "bootstrap_replicates": 5000,
+    "bootstrap_seed": 0,
+    "delta_vs_last": "loss[last] \u2212 loss[layer] (scalar cell field uses the best layer); positive = an earlier layer beats the final layer. delta_vs_last_ci = paired 95% cluster-bootstrap CI on the BEST layer's \u0394; the best layer is the test-argmin, so per-cell it is exploratory (see the full-layer \u0394 table for the selection-free view)",
+    "best_layer_shift": "best_layer(transfer) - best_layer(source ID)"
+  },
+  "cells": [
+    {
+      "source_dataset": "monash_electricity_hourly",
+      "target_dataset": "monash_electricity_hourly",
+      "seed": 0,
+      "is_ood": false,
+      "quantile_set": "q9",
+      "quantile_config": 9,
+      "best_layer": 3,
+      "min_loss": 2.516197443008423,
+      "last_layer": 12,
+      "last_layer_loss": 2.6565942764282227,
+      "delta_vs_last": 0.1403968334197998,
+      "native_mase": 0.8230175280653528,
+      "n_test_windows": 650,
+      "n_test_series": 286,
+      "best_layer_source_id": 3,
+      "best_layer_shift": 0,
+      "delta_vs_last_ci": [
+        0.025322318532107493,
+        0.23089144813713355
+      ],
+      "delta_above_zero": true,
+      "bootstrap": {
+        "n_replicates": 5000,
+        "seed": 0,
+        "n_test_series": 286
+      }
+    },
+    {
+      "source_dataset": "monash_electricity_hourly",
+      "target_dataset": "uber_tlc_hourly",
+      "seed": 0,
+      "is_ood": true,
+      "quantile_set": "q9",
+      "quantile_config": 9,
+      "best_layer": 1,
+      "min_loss": 5.363816261291504,
+      "last_layer": 12,
+      "last_layer_loss": 6.787094593048096,
+      "delta_vs_last": 1.4232783317565918,
+      "native_mase": 0.6901952135422846,
+      "n_test_windows": 650,
+      "n_test_series": 245,
+      "best_layer_source_id": 3,
+      "best_layer_shift": -2,
+      "delta_vs_last_ci": [
+        1.286564645996057,
+        1.5533340016352133
+      ],
+      "delta_above_zero": true,
+      "bootstrap": {
+        "n_replicates": 5000,
+        "seed": 0,
+        "n_test_series": 245
+      }
+    },
+    {
+      "source_dataset": "monash_electricity_hourly",
+      "target_dataset": "m4_hourly",
+      "seed": 0,
+      "is_ood": true,
+      "quantile_set": "q9",
+      "quantile_config": 9,
+      "best_layer": 3,
+      "min_loss": 2.4838271141052246,
+      "last_layer": 12,
+      "last_layer_loss": 3.287614107131958,
+      "delta_vs_last": 0.8037869930267334,
+      "native_mase": 0.9656504472455608,
+      "n_test_windows": 650,
+      "n_test_series": 124,
+      "best_layer_source_id": 3,
+      "best_layer_shift": 0,
+      "delta_vs_last_ci": [
+        0.6876776361177066,
+        0.9164491308090137
+      ],
+      "delta_above_zero": true,
+      "bootstrap": {
+        "n_replicates": 5000,
+        "seed": 0,
+        "n_test_series": 124
+      }
+    },
+    {
+      "source_dataset": "monash_electricity_hourly",
+      "target_dataset": "wind_farms_hourly",
+      "seed": 0,
+      "is_ood": true,
+      "quantile_set": "q9",
+      "quantile_config": 9,
+      "best_layer": 0,
+      "min_loss": 5.97462797164917,
+      "last_layer": 12,
+      "last_layer_loss": 7.027923583984375,
+      "delta_vs_last": 1.053295612335205,
+      "native_mase": 1.1493114884583049,
+      "n_test_windows": 650,
+      "n_test_series": 261,
+      "best_layer_source_id": 3,
+      "best_layer_shift": -3,
+      "delta_vs_last_ci": [
+        0.7804788796529166,
+        1.323561299893017
+      ],
+      "delta_above_zero": true,
+      "bootstrap": {
+        "n_replicates": 5000,
+        "seed": 0,
+        "n_test_series": 261
+      }
+    },
+    {
+      "source_dataset": "uber_tlc_hourly",
+      "target_dataset": "monash_electricity_hourly",
+      "seed": 0,
+      "is_ood": true,
+      "quantile_set": "q9",
+      "quantile_config": 9,
+      "best_layer": 3,
+      "min_loss": 5.339934349060059,
+      "last_layer": 12,
+      "last_layer_loss": 5.479974269866943,
+      "delta_vs_last": 0.14003992080688477,
+      "native_mase": 0.8230175280653528,
+      "n_test_windows": 650,
+      "n_test_series": 286,
+      "best_layer_source_id": 3,
+      "best_layer_shift": 0,
+      "delta_vs_last_ci": [
+        0.02232457955611607,
+        0.25550582878532285
+      ],
+      "delta_above_zero": true,
+      "bootstrap": {
+        "n_replicates": 5000,
+        "seed": 0,
+        "n_test_series": 286
+      }
+    },
+    {
+      "source_dataset": "uber_tlc_hourly",
+      "target_dataset": "uber_tlc_hourly",
+      "seed": 0,
+      "is_ood": false,
+      "quantile_set": "q9",
+      "quantile_config": 9,
+      "best_layer": 3,
+      "min_loss": 4.177713394165039,
+      "last_layer": 12,
+      "last_layer_loss": 4.509777069091797,
+      "delta_vs_last": 0.3320636749267578,
+      "native_mase": 0.6901952135422846,
+      "n_test_windows": 650,
+      "n_test_series": 245,
+      "best_layer_source_id": 3,
+      "best_layer_shift": 0,
+      "delta_vs_last_ci": [
+        0.2720847979342042,
+        0.3918464782821654
+      ],
+      "delta_above_zero": true,
+      "bootstrap": {
+        "n_replicates": 5000,
+        "seed": 0,
+        "n_test_series": 245
+      }
+    },
+    {
+      "source_dataset": "uber_tlc_hourly",
+      "target_dataset": "m4_hourly",
+      "seed": 0,
+      "is_ood": true,
+      "quantile_set": "q9",
+      "quantile_config": 9,
+      "best_layer": 0,
+      "min_loss": 5.678868770599365,
+      "last_layer": 12,
+      "last_layer_loss": 6.659952163696289,
+      "delta_vs_last": 0.9810833930969238,
+      "native_mase": 0.9656504472455608,
+      "n_test_windows": 650,
+      "n_test_series": 124,
+      "best_layer_source_id": 3,
+      "best_layer_shift": -3,
+      "delta_vs_last_ci": [
+        0.6819400349717675,
+        1.2656250597370178
+      ],
+      "delta_above_zero": true,
+      "bootstrap": {
+        "n_replicates": 5000,
+        "seed": 0,
+        "n_test_series": 124
+      }
+    },
+    {
+      "source_dataset": "uber_tlc_hourly",
+      "target_dataset": "wind_farms_hourly",
+      "seed": 0,
+      "is_ood": true,
+      "quantile_set": "q9",
+      "quantile_config": 9,
+      "best_layer": 0,
+      "min_loss": 6.534313201904297,
+      "last_layer": 12,
+      "last_layer_loss": 8.276421546936035,
+      "delta_vs_last": 1.7421083450317383,
+      "native_mase": 1.1493114884583049,
+      "n_test_windows": 650,
+      "n_test_series": 261,
+      "best_layer_source_id": 3,
+      "best_layer_shift": -3,
+      "delta_vs_last_ci": [
+        1.4955612608893674,
+        1.992017427842325
+      ],
+      "delta_above_zero": true,
+      "bootstrap": {
+        "n_replicates": 5000,
+        "seed": 0,
+        "n_test_series": 261
+      }
+    },
+    {
+      "source_dataset": "m4_hourly",
+      "target_dataset": "monash_electricity_hourly",
+      "seed": 0,
+      "is_ood": true,
+      "quantile_set": "q9",
+      "quantile_config": 9,
+      "best_layer": 3,
+      "min_loss": 3.9323670864105225,
+      "last_layer": 12,
+      "last_layer_loss": 3.9407007694244385,
+      "delta_vs_last": 0.008333683013916016,
+      "native_mase": 0.8230175280653528,
+      "n_test_windows": 650,
+      "n_test_series": 286,
+      "best_layer_source_id": 1,
+      "best_layer_shift": 2,
+      "delta_vs_last_ci": [
+        -0.13494962259102583,
+        0.14200632687697734
+      ],
+      "delta_above_zero": false,
+      "bootstrap": {
+        "n_replicates": 5000,
+        "seed": 0,
+        "n_test_series": 286
+      }
+    },
+    {
+      "source_dataset": "m4_hourly",
+      "target_dataset": "uber_tlc_hourly",
+      "seed": 0,
+      "is_ood": true,
+      "quantile_set": "q9",
+      "quantile_config": 9,
+      "best_layer": 6,
+      "min_loss": 6.645632743835449,
+      "last_layer": 12,
+      "last_layer_loss": 6.905816555023193,
+      "delta_vs_last": 0.26018381118774414,
+      "native_mase": 0.6901952135422846,
+      "n_test_windows": 650,
+      "n_test_series": 245,
+      "best_layer_source_id": 1,
+      "best_layer_shift": 5,
+      "delta_vs_last_ci": [
+        0.08414675642353205,
+        0.44733534120314
+      ],
+      "delta_above_zero": true,
+      "bootstrap": {
+        "n_replicates": 5000,
+        "seed": 0,
+        "n_test_series": 245
+      }
+    },
+    {
+      "source_dataset": "m4_hourly",
+      "target_dataset": "m4_hourly",
+      "seed": 0,
+      "is_ood": false,
+      "quantile_set": "q9",
+      "quantile_config": 9,
+      "best_layer": 1,
+      "min_loss": 1.8061343431472778,
+      "last_layer": 12,
+      "last_layer_loss": 1.9605393409729004,
+      "delta_vs_last": 0.15440499782562256,
+      "native_mase": 0.9656504472455608,
+      "n_test_windows": 650,
+      "n_test_series": 124,
+      "best_layer_source_id": 1,
+      "best_layer_shift": 0,
+      "delta_vs_last_ci": [
+        0.06395864537088433,
+        0.24213330104822128
+      ],
+      "delta_above_zero": true,
+      "bootstrap": {
+        "n_replicates": 5000,
+        "seed": 0,
+        "n_test_series": 124
+      }
+    },
+    {
+      "source_dataset": "m4_hourly",
+      "target_dataset": "wind_farms_hourly",
+      "seed": 0,
+      "is_ood": true,
+      "quantile_set": "q9",
+      "quantile_config": 9,
+      "best_layer": 10,
+      "min_loss": 8.541733741760254,
+      "last_layer": 12,
+      "last_layer_loss": 8.65609073638916,
+      "delta_vs_last": 0.11435699462890625,
+      "native_mase": 1.1493114884583049,
+      "n_test_windows": 650,
+      "n_test_series": 261,
+      "best_layer_source_id": 1,
+      "best_layer_shift": 9,
+      "delta_vs_last_ci": [
+        -0.09538356085663166,
+        0.3326798676549769
+      ],
+      "delta_above_zero": false,
+      "bootstrap": {
+        "n_replicates": 5000,
+        "seed": 0,
+        "n_test_series": 261
+      }
+    },
+    {
+      "source_dataset": "wind_farms_hourly",
+      "target_dataset": "monash_electricity_hourly",
+      "seed": 0,
+      "is_ood": true,
+      "quantile_set": "q9",
+      "quantile_config": 9,
+      "best_layer": 3,
+      "min_loss": 3.749253273010254,
+      "last_layer": 12,
+      "last_layer_loss": 4.484079837799072,
+      "delta_vs_last": 0.7348265647888184,
+      "native_mase": 0.8230175280653528,
+      "n_test_windows": 650,
+      "n_test_series": 286,
+      "best_layer_source_id": 3,
+      "best_layer_shift": 0,
+      "delta_vs_last_ci": [
+        0.5852646395479368,
+        0.8906804833290894
+      ],
+      "delta_above_zero": true,
+      "bootstrap": {
+        "n_replicates": 5000,
+        "seed": 0,
+        "n_test_series": 286
+      }
+    },
+    {
+      "source_dataset": "wind_farms_hourly",
+      "target_dataset": "uber_tlc_hourly",
+      "seed": 0,
+      "is_ood": true,
+      "quantile_set": "q9",
+      "quantile_config": 9,
+      "best_layer": 0,
+      "min_loss": 4.672293186187744,
+      "last_layer": 12,
+      "last_layer_loss": 5.273924350738525,
+      "delta_vs_last": 0.6016311645507812,
+      "native_mase": 0.6901952135422846,
+      "n_test_windows": 650,
+      "n_test_series": 245,
+      "best_layer_source_id": 3,
+      "best_layer_shift": -3,
+      "delta_vs_last_ci": [
+        0.5123961804206895,
+        0.6882426144449774
+      ],
+      "delta_above_zero": true,
+      "bootstrap": {
+        "n_replicates": 5000,
+        "seed": 0,
+        "n_test_series": 245
+      }
+    },
+    {
+      "source_dataset": "wind_farms_hourly",
+      "target_dataset": "m4_hourly",
+      "seed": 0,
+      "is_ood": true,
+      "quantile_set": "q9",
+      "quantile_config": 9,
+      "best_layer": 3,
+      "min_loss": 3.8503966331481934,
+      "last_layer": 12,
+      "last_layer_loss": 4.7125678062438965,
+      "delta_vs_last": 0.8621711730957031,
+      "native_mase": 0.9656504472455608,
+      "n_test_windows": 650,
+      "n_test_series": 124,
+      "best_layer_source_id": 3,
+      "best_layer_shift": 0,
+      "delta_vs_last_ci": [
+        0.7622517262456875,
+        0.9597764711595551
+      ],
+      "delta_above_zero": true,
+      "bootstrap": {
+        "n_replicates": 5000,
+        "seed": 0,
+        "n_test_series": 124
+      }
+    },
+    {
+      "source_dataset": "wind_farms_hourly",
+      "target_dataset": "wind_farms_hourly",
+      "seed": 0,
+      "is_ood": false,
+      "quantile_set": "q9",
+      "quantile_config": 9,
+      "best_layer": 3,
+      "min_loss": 4.1912407875061035,
+      "last_layer": 12,
+      "last_layer_loss": 4.375844955444336,
+      "delta_vs_last": 0.18460416793823242,
+      "native_mase": 1.1493114884583049,
+      "n_test_windows": 650,
+      "n_test_series": 261,
+      "best_layer_source_id": 3,
+      "best_layer_shift": 0,
+      "delta_vs_last_ci": [
+        0.09922786687801696,
+        0.26896859366253745
+      ],
+      "delta_above_zero": true,
+      "bootstrap": {
+        "n_replicates": 5000,
+        "seed": 0,
+        "n_test_series": 261
+      }
+    }
+  ]
+}

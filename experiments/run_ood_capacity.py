@@ -550,15 +550,17 @@ def _make_matrix_figure(family, summ, boot_cells, qset, seed):
 
 def _make_baseline_bars_figure(family, summ, rows, qset, seed):
     """Per-family clone of run_ood_baselines' baseline_comparison: 3×3 grid, each source→target
-    cell shows target-space MASE for probe-best-layer, probe-final-layer, native Chronos-2,
-    seasonal-naive, last-value (LOWER = better). Target references are identical down a column."""
+    cell shows target-space MASE for capacity-probe-best, LINEAR-probe-best, capacity-probe-final,
+    LINEAR-probe-final, native Chronos-2, seasonal-naive, last-value (LOWER = better). Capacity and
+    linear best layers are each the source→target quantile-loss argmin; references identical down a column."""
     by_cell = {}
     for r in rows:
         by_cell.setdefault((r["source_dataset"], r["target_dataset"]), {})[r["layer"]] = r["mase"]
     bmetrics = {t: target_baselines(t, qset, QUANTILE_SETS[qset])["metrics"]
                 for t in DATASET_ORDER if any(tt == t for (_s, tt) in summ)}
-    labels = ["probe\nbest", "probe\nfinal", "native", "seasonal", "last"]
-    fig, axes = plt.subplots(3, 3, figsize=(15, 12), sharex=True)
+    lin = _committed_linear_curves(qset) or {}     # {(src,tgt): {layer: {quantile_loss, mase}}}
+    labels = ["cap\nbest", "lin\nbest", "cap\nfinal", "lin\nfinal", "native", "seasonal", "last"]
+    fig, axes = plt.subplots(3, 3, figsize=(17, 12), sharex=True)
     for ri, src in enumerate(DATASET_ORDER):
         color = ID_STYLE.get(src, {}).get("color", "#333333")
         for ci, tgt in enumerate(DATASET_ORDER):
@@ -567,30 +569,40 @@ def _make_baseline_bars_figure(family, summ, rows, qset, seed):
             if s is None:
                 ax.text(0.5, 0.5, "(not run)", ha="center", va="center", transform=ax.transAxes,
                         color="0.6")
-                ax.set_xticks(range(5))
+                ax.set_xticks(range(7))
                 continue
             L_best, lm, b = s["oracle_best_layer"], by_cell[(src, tgt)], bmetrics[tgt]
-            vals = [lm[L_best], lm[LAST_LAYER], b["native_chronos2"]["mase"],
-                    b["seasonal_naive"]["mase"], b["last_value"]["mase"]]
-            colors = [color, color, "#555555", "#999999", "#c0c0c0"]
-            bars = ax.bar(range(5), vals, color=colors, edgecolor="k", linewidth=0.6)
-            bars[1].set_alpha(0.55)
+            lc = lin.get((src, tgt))
+            if lc is not None:
+                lin_best_L = int(min(lc, key=lambda i: lc[i]["quantile_loss"]))
+                lin_best, lin_final = lc[lin_best_L]["mase"], lc[LAST_LAYER]["mase"]
+            else:
+                lin_best_L, lin_best, lin_final = None, np.nan, np.nan
+            vals = [lm[L_best], lin_best, lm[LAST_LAYER], lin_final,
+                    b["native_chronos2"]["mase"], b["seasonal_naive"]["mase"], b["last_value"]["mase"]]
+            colors = [color, "#4c72b0", color, "#4c72b0", "#555555", "#999999", "#c0c0c0"]
+            bars = ax.bar(range(7), vals, color=colors, edgecolor="k", linewidth=0.6)
+            bars[2].set_alpha(0.55)      # capacity final-layer
+            bars[3].set_alpha(0.55)      # linear final-layer
             for bar, v in zip(bars, vals):
-                ax.text(bar.get_x() + bar.get_width() / 2, v, f"{v:.2f}", ha="center",
-                        va="bottom", fontsize=7)
+                if np.isfinite(v):
+                    ax.text(bar.get_x() + bar.get_width() / 2, v, f"{v:.2f}", ha="center",
+                            va="bottom", fontsize=7)
             is_ood = src != tgt
+            lin_lbl = f" / lin L{lin_best_L}" if lin_best_L is not None else ""
             ax.set_title(f"{SHORT[src]} → {SHORT[tgt]}  [{'OOD' if is_ood else 'ID'}]  "
-                         f"best L{L_best}", fontsize=9, fontweight="normal" if is_ood else "bold")
-            ax.set_xticks(range(5)); ax.set_xticklabels(labels, fontsize=7)
+                         f"best cap L{L_best}{lin_lbl}", fontsize=9,
+                         fontweight="normal" if is_ood else "bold")
+            ax.set_xticks(range(7)); ax.set_xticklabels(labels, fontsize=7)
             ax.grid(axis="y", alpha=0.3)
             if not is_ood:
                 ax.set_facecolor("#f4f4ec")
         axes[ri, 0].set_ylabel(f"probe: {SHORT[src]}\nMASE (test)")
     pc = summ[next(iter(summ))]["parameter_count"]
-    fig.suptitle(f"{family} transferred probe vs target baselines — MASE  "
+    fig.suptitle(f"{family} (colored) vs linear probe (blue) vs target baselines — MASE  "
                  f"[{qset}, {pc:,} head params, seed {seed}]\n"
-                 "rows = source (probe) dataset, cols = target;  LOWER = better;  "
-                 "native/seasonal/last are target-only references (identical down a column)",
+                 "rows = source (probe) dataset, cols = target;  LOWER = better;  cap/lin = "
+                 "capacity/linear probe (best & final layer);  native/seasonal/last identical down a column",
                  fontsize=12, y=0.995)
     fig.tight_layout(rect=[0, 0, 1, 0.96])
     out = _fam_dirs(family)["fig"] / f"baseline_comparison__{family}__{qset}.png"

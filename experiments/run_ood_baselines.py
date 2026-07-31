@@ -251,7 +251,8 @@ def make_baseline_comparison_figure(base, cmp, best, qset, seed):
     probe, native, seasonal-naive, last-value (LOWER = better). Target baselines are identical
     down a column (same target) — shown for comparison, not recomputed per source."""
     labels = ["probe\nbest", "probe\nfinal", "native", "seasonal", "last"]
-    fig, axes = plt.subplots(3, 3, figsize=(15, 12), sharex=True)
+    N = len(DATASET_ORDER)
+    fig, axes = plt.subplots(N, N, figsize=(5 * N, 4 * N), sharex=True)
     for ri, src in enumerate(DATASET_ORDER):
         color = ID_STYLE.get(src, {}).get("color", "#333333")
         for ci, tgt in enumerate(DATASET_ORDER):
@@ -289,9 +290,10 @@ def make_skill_heatmap(cmp, qset, seed):
     """Best-layer probe skill = 1 − probe/baseline, vs native and vs seasonal-naive. Positive
     (blue) = probe better; ★ = paired improvement CI excludes 0."""
     idx = {d: i for i, d in enumerate(DATASET_ORDER)}
-    fig, axes = plt.subplots(1, 2, figsize=(13, 5.5))
+    N = len(DATASET_ORDER)
+    fig, axes = plt.subplots(1, 2, figsize=(max(13, 4.5 * N), max(5.5, 2.0 * N)))
     for ax, bname in zip(axes, ["native_chronos2", "seasonal_naive"]):
-        M = np.full((3, 3), np.nan)
+        M = np.full((N, N), np.nan)
         for (src, tgt), cell in cmp.items():
             M[idx[src], idx[tgt]] = cell["best_layer"]["by_base"][bname]["skill"]
         vmax = np.nanmax(np.abs(M)) or 1.0
@@ -304,8 +306,8 @@ def make_skill_heatmap(cmp, qset, seed):
             if src == tgt:
                 ax.add_patch(plt.Rectangle((idx[tgt] - .5, idx[src] - .5), 1, 1, fill=False,
                                            ec="k", lw=2.2))
-        ax.set_xticks(range(3)); ax.set_xticklabels([SHORT[d] for d in DATASET_ORDER])
-        ax.set_yticks(range(3)); ax.set_yticklabels([SHORT[d] for d in DATASET_ORDER])
+        ax.set_xticks(range(N)); ax.set_xticklabels([SHORT[d] for d in DATASET_ORDER])
+        ax.set_yticks(range(N)); ax.set_yticklabels([SHORT[d] for d in DATASET_ORDER])
         ax.set_xlabel("target"); ax.set_ylabel("source (probe)")
         ax.set_title(f"best-probe skill vs {BASE_LABEL[bname]}")
         fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04, label="skill = 1 − probe/baseline")
@@ -356,6 +358,9 @@ def main():
     if args.dataset_set:
         config.set_dataset_set(args.dataset_set)
     ood._derive_dirs()
+    ood._derive_datasets()                       # matrix order/labels follow the override
+    global DATASET_ORDER, SHORT
+    DATASET_ORDER, SHORT = ood.DATASET_ORDER, ood.SHORT
     qset, seed = args.quantile_set, SEED
     if median_index(QUANTILE_SETS[qset]) is None:
         raise SystemExit(f"{qset} has no 0.5 level — MASE/MAE undefined")

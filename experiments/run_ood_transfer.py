@@ -64,10 +64,30 @@ SEEDS = (SEED,)                # the repo is single-seed (SEED=0); uncertainty =
 BOOT_B = 5000                  # series-level cluster-bootstrap replicates for the CI bands
 CI_LO, CI_HI = 2.5, 97.5
 
-# 3x3 matrix order + short panel labels
-DATASET_ORDER = ["monash_electricity_hourly", "monash_kdd_cup_2018", "uber_tlc_hourly"]
-SHORT = {"monash_electricity_hourly": "Electricity",
-         "monash_kdd_cup_2018": "KDD", "uber_tlc_hourly": "Uber"}
+# Matrix order + short panel labels. The order is PER SET (explicit, not list(ID_DATASETS)):
+# extended_v1's OOD pilot used only 3 of its 4 datasets (pedestrian excluded), so deriving the
+# order from the roster would silently change the committed 3x3. extended_v2 uses all four.
+ORDER_BY_SET = {
+    "extended_v1": ["monash_electricity_hourly", "monash_kdd_cup_2018", "uber_tlc_hourly"],
+    "extended_v2": ["monash_electricity_hourly", "uber_tlc_hourly", "m4_hourly", "wind_farms_hourly"],
+}
+SHORT_LABELS = {
+    "monash_electricity_hourly": "Electricity", "monash_kdd_cup_2018": "KDD",
+    "uber_tlc_hourly": "Uber", "monash_pedestrian_counts": "Pedestrian",
+    "m4_hourly": "M4", "wind_farms_hourly": "WindFarms", "solar_1h": "Solar",
+}
+
+
+def _derive_datasets():
+    """(Re)derive the matrix order + labels for the ACTIVE dataset set. Called at import and again
+    after a --dataset-set override in main(). NDATA is the matrix side length (3 or 4)."""
+    global DATASET_ORDER, SHORT, NDATA
+    DATASET_ORDER = ORDER_BY_SET.get(config.DATASET_SET, list(id_data.ID_DATASETS))
+    SHORT = {t: SHORT_LABELS.get(t, t) for t in DATASET_ORDER}
+    NDATA = len(DATASET_ORDER)
+
+
+_derive_datasets()
 
 
 # --------------------------------------------------------------------------- #
@@ -307,7 +327,7 @@ def _paired_delta_bootstrap(wl, sid):
     delta_b = boot[:, [LAST_LAYER]] - boot                 # paired: same replicates both sides
     d_lo = np.percentile(delta_b, CI_LO, axis=0)
     d_hi = np.percentile(delta_b, CI_HI, axis=0)
-    return {"point": point,
+    return {"point": point, "boot": boot,             # boot (B, NUM_LAYERS): paired per-replicate loss
             "ci_lo": np.percentile(boot, CI_LO, axis=0),
             "ci_hi": np.percentile(boot, CI_HI, axis=0),
             "delta_vs_last": point[LAST_LAYER] - point,    # loss[last] − loss[layer]
@@ -394,6 +414,12 @@ def aggregate(qset, seed):
     make_matrix_figure(summ, boot_cells, qset, seed)
     make_summary_figure(out_summ, boot_cells, qset, seed)
 
+    # normalized improvement over L12 (additive; raw delta_vs_last outputs above are untouched)
+    rg_rows = write_relative_gain_table(boot_cells, summ, qset, seed)
+    make_relative_gain_heatmap(summ, boot_cells, qset, seed)
+    make_relative_gain_id_vs_ood(summ, boot_cells, qset, seed)
+    _print_relative_gain_summary(rg_rows)
+
 
 def write_delta_table(boot_cells, summ, qset, seed):
     """Per-cell, per-layer paired Δ-vs-last table — the requested tidy output: delta_vs_last,
@@ -436,7 +462,8 @@ def make_matrix_figure(summ, boot_cells, qset, seed):
     is not a distance measure."""
     xs = np.arange(NUM_LAYERS)
     xlabels = ["Embed"] + [str(i) for i in range(1, NUM_LAYERS)]
-    fig, axes = plt.subplots(3, 3, figsize=(16, 13), sharex=True, sharey="col")
+    fig, axes = plt.subplots(NDATA, NDATA, figsize=(5.3 * NDATA, 4.3 * NDATA),
+                             sharex=True, sharey="col")
     for ri, src in enumerate(DATASET_ORDER):
         color = ID_STYLE.get(src, {}).get("color", "#333333")
         for ci, tgt in enumerate(DATASET_ORDER):
@@ -486,14 +513,14 @@ def make_matrix_figure(summ, boot_cells, qset, seed):
         ax.set_xlabel("representation (Embed + L1..L12)")
     for ri, src in enumerate(DATASET_ORDER):
         axes[ri, 0].set_ylabel(f"probe trained on {SHORT[src]}\nChronos-2 quantile loss (test)")
-    fig.suptitle(f"Cross-dataset probe transfer (3×3) — Chronos-2 quantile loss by layer  "
+    fig.suptitle(f"Cross-dataset probe transfer ({NDATA}×{NDATA}) — Chronos-2 quantile loss by layer  "
                  f"[{qset}, Q={len(QUANTILE_SETS[qset])}, seed {seed}]\n"
                  "rows = source (training) dataset, columns = target (evaluation) dataset;  "
                  "diagonal = in-dataset, off-diagonal = strict transfer;  LOWER = better, "
                  "★ = best layer, filled dot = paired Δ-vs-last CI excludes 0;  "
                  "y shared within a column only", fontsize=13, y=0.995)
     fig.tight_layout(rect=[0, 0, 1, 0.965])
-    out = FIG_DIR / f"transfer_matrix_3x3__{qset}.png"
+    out = FIG_DIR / f"transfer_matrix_{NDATA}x{NDATA}__{qset}.png"
     fig.savefig(out, dpi=140, bbox_inches="tight")
     plt.close(fig)
     print(f"  [saved] {out}")
@@ -515,12 +542,12 @@ def make_summary_figure(cells, boot_cells, qset, seed):
     Absolute cross-panel loss levels are NOT shown (not a distance)."""
     xlabels = ["Embed"] + [str(i) for i in range(1, NUM_LAYERS)]
     idx = {src: i for i, src in enumerate(DATASET_ORDER)}
-    M = np.full((3, 3), np.nan)
+    M = np.full((NDATA, NDATA), np.nan)
     for c in cells:
         si, ti = idx.get(c["source_dataset"]), idx.get(c["target_dataset"])
         if si is not None and ti is not None:
             M[si, ti] = c["delta_vs_last"]
-    fig, ax = plt.subplots(figsize=(8.5, 7.0))
+    fig, ax = plt.subplots(figsize=(max(8.5, 2.6 * NDATA), max(7.0, 2.3 * NDATA)))
     im = ax.imshow(M, cmap="YlOrRd", vmin=0.0)
     for c in cells:
         si, ti = idx.get(c["source_dataset"]), idx.get(c["target_dataset"])
@@ -539,8 +566,8 @@ def make_summary_figure(cells, boot_cells, qset, seed):
                 color="k", fontweight=("bold" if sig else "normal"))
         if not c["is_ood"]:
             ax.add_patch(plt.Rectangle((ti - 0.5, si - 0.5), 1, 1, fill=False, ec="k", lw=2.5))
-    ax.set_xticks(range(3)); ax.set_xticklabels([SHORT[d] for d in DATASET_ORDER])
-    ax.set_yticks(range(3)); ax.set_yticklabels([SHORT[d] for d in DATASET_ORDER])
+    ax.set_xticks(range(NDATA)); ax.set_xticklabels([SHORT[d] for d in DATASET_ORDER])
+    ax.set_yticks(range(NDATA)); ax.set_yticklabels([SHORT[d] for d in DATASET_ORDER])
     ax.set_xlabel("target (evaluation) dataset")
     ax.set_ylabel("source (probe training) dataset")
     ax.set_title(f"delta_vs_last = loss[last] − best-layer loss  [{qset}, seed {seed}]\n"
@@ -552,6 +579,193 @@ def make_summary_figure(cells, boot_cells, qset, seed):
     fig.savefig(out, dpi=140, bbox_inches="tight")
     plt.close(fig)
     print(f"  [saved] {out}")
+
+
+# --------------------------------------------------------------------------- #
+# Normalized improvement over L12: relative_gain_pct = 100 * (loss[L12] - loss[best]) / loss[L12].
+# ADDITIVE — the raw delta_vs_last outputs/plots above are untouched. Same saved per-window q9 losses,
+# same full-sample best layer (test-argmin), same paired series cluster bootstrap. The CI is the
+# percentile of the per-replicate RATIO (never raw-CI / a constant). The best layer is selected on the
+# full test set and held FIXED during the bootstrap, so these CIs are DESCRIPTIVE (post-selection) and
+# NOT adjusted for layer selection.
+# --------------------------------------------------------------------------- #
+
+REL_GAIN_LABEL = "Relative improvement over L12 (%)"
+
+
+def _relative_gain_cell(bc, best_layer):
+    """relative_gain_pct + paired-bootstrap percentile CI for the FIXED best layer vs L12.
+
+    Full sample: 100 * (loss[L12] - loss[best]) / loss[L12]. Per replicate (same resampled series on
+    both sides -> paired): 100 * (boot[L12] - boot[best]) / boot[L12], then the 2.5/97.5 percentiles.
+    best_layer is the full-sample test-argmin held FIXED (CI is descriptive, not selection-adjusted).
+    excludes_zero is True when the whole CI sits on one side of 0."""
+    point, boot = bc["point"], bc["boot"]
+    L = LAST_LAYER
+    pct = 100.0 * (point[L] - point[best_layer]) / point[L]
+    rg_b = 100.0 * (boot[:, L] - boot[:, best_layer]) / boot[:, L]
+    lo, hi = float(np.percentile(rg_b, CI_LO)), float(np.percentile(rg_b, CI_HI))
+    return {"relative_gain_pct": float(pct), "ci_lo": lo, "ci_hi": hi,
+            "excludes_zero": bool(lo > 0 or hi < 0)}
+
+
+def _split_mode_map():
+    """{dataset: split_mode} read from the saved screen JSON (file-only, no dataset load). Empty when
+    the screen has not been run — callers then fall back to 'unknown'."""
+    for suffix in ("", "_native"):
+        p = OOD_DIR / "screen" / f"dataset_screen__{config.DATASET_SET}{suffix}.json"
+        if p.exists():
+            d = json.load(open(p))
+            return {r["dataset"]: r.get("split_mode", "unknown") for r in d.get("rows", [])}
+    return {}
+
+
+def write_relative_gain_table(boot_cells, summ, qset, seed):
+    """relative_gain_summary_<qset>.csv/json — normalized improvement over L12 per source->target cell.
+    Best layer = full-sample test-argmin, held fixed in the bootstrap; the CI is DESCRIPTIVE (not
+    adjusted for layer selection)."""
+    smap = _split_mode_map()
+    fields = ["source_dataset", "target_dataset", "id_or_ood", "best_layer",
+              "best_layer_q9_loss", "last_layer_q9_loss", "delta_vs_last",
+              "relative_gain_pct", "relative_ci_lo", "relative_ci_hi",
+              "relative_ci_excludes_zero", "split_mode"]
+    rows = []
+    for (src, tgt), bc in sorted(boot_cells.items()):
+        best = summ[(src, tgt)]["best_layer"]
+        rg = _relative_gain_cell(bc, best)
+        rows.append({"source_dataset": src, "target_dataset": tgt,
+                     "id_or_ood": ("ID" if src == tgt else "OOD"), "best_layer": int(best),
+                     "best_layer_q9_loss": round(float(bc["point"][best]), 6),
+                     "last_layer_q9_loss": round(float(bc["point"][LAST_LAYER]), 6),
+                     "delta_vs_last": round(float(summ[(src, tgt)]["delta_vs_last"]), 6),
+                     "relative_gain_pct": round(rg["relative_gain_pct"], 4),
+                     "relative_ci_lo": round(rg["ci_lo"], 4), "relative_ci_hi": round(rg["ci_hi"], 4),
+                     "relative_ci_excludes_zero": rg["excludes_zero"],
+                     "split_mode": smap.get(tgt, "unknown")})
+    with open(OOD_DIR / f"relative_gain_summary_{qset}.csv", "w", newline="") as f:
+        wr = csv.DictWriter(f, fieldnames=fields)
+        wr.writeheader()
+        wr.writerows(rows)
+    json.dump(rows, open(OOD_DIR / f"relative_gain_summary_{qset}.json", "w"), indent=2)
+    print(f"  [saved] relative-gain table ({len(rows)} cells) -> "
+          f"{OOD_DIR / f'relative_gain_summary_{qset}.csv'}")
+    return rows
+
+
+def make_relative_gain_heatmap(summ, boot_cells, qset, seed):
+    """N×N normalized-gain heatmap: relative_gain_pct = 100*(loss[L12]-loss[best])/loss[L12]. Diverging
+    colormap centered at 0 (warm = best layer beats L12); each cell annotated with best layer, gain %,
+    and the 95% paired-bootstrap CI; cells whose CI excludes 0 are bold + ★; ID diagonal boxed. The best
+    layer is chosen on the full test set and held FIXED in the bootstrap -> CIs descriptive, not
+    selection-adjusted."""
+    idx = {d: i for i, d in enumerate(DATASET_ORDER)}
+    xlabels = ["Embed"] + [str(i) for i in range(1, NUM_LAYERS)]
+    M = np.full((NDATA, NDATA), np.nan)
+    cell_rg = {}
+    for (src, tgt), bc in boot_cells.items():
+        best = summ[(src, tgt)]["best_layer"]
+        rg = _relative_gain_cell(bc, best)
+        cell_rg[(src, tgt)] = (best, rg)
+        M[idx[src], idx[tgt]] = rg["relative_gain_pct"]
+    vmax = float(np.nanmax(np.abs(M))) or 1.0
+    fig, ax = plt.subplots(figsize=(max(9.0, 2.9 * NDATA), max(7.5, 2.6 * NDATA)))
+    im = ax.imshow(M, cmap="RdBu_r", vmin=-vmax, vmax=vmax)          # centered at 0; warm = positive gain
+    for (src, tgt), (best, rg) in cell_rg.items():
+        si, ti = idx[src], idx[tgt]
+        sig = rg["excludes_zero"]
+        txt = (("★ " if sig else "") + f"best {xlabels[best]}\n{rg['relative_gain_pct']:+.1f}%\n"
+               f"95% CI [{rg['ci_lo']:+.1f}, {rg['ci_hi']:+.1f}]")
+        ax.text(ti, si, txt, ha="center", va="center", fontsize=8,
+                fontweight=("bold" if sig else "normal"), color="k")
+        if src == tgt:                                              # ID diagonal boxed
+            ax.add_patch(plt.Rectangle((ti - 0.5, si - 0.5), 1, 1, fill=False, ec="k", lw=2.5))
+    ax.set_xticks(range(NDATA)); ax.set_xticklabels([SHORT[d] for d in DATASET_ORDER])
+    ax.set_yticks(range(NDATA)); ax.set_yticklabels([SHORT[d] for d in DATASET_ORDER])
+    ax.set_xlabel("target (evaluation) dataset")
+    ax.set_ylabel("source (probe training) dataset")
+    ax.set_title(f"Relative improvement of the best intermediate layer over L12  [{qset}, seed {seed}]\n"
+                 "warm = best layer beats L12; ★/bold = 95% paired-bootstrap CI excludes 0; boxed = "
+                 "in-dataset (ID).\nBest layer chosen on the full test set + held fixed in the bootstrap "
+                 "→ CIs DESCRIPTIVE, not adjusted for layer selection", fontsize=9)
+    fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04, label=REL_GAIN_LABEL)
+    fig.tight_layout()
+    out = FIG_DIR / f"relative_gain_heatmap_{qset}.png"
+    fig.savefig(out, dpi=140, bbox_inches="tight")
+    plt.close(fig)
+    print(f"  [saved] {out}")
+
+
+def make_relative_gain_id_vs_ood(summ, boot_cells, qset, seed):
+    """Descriptive ID-vs-OOD view: the diagonal (ID) and off-diagonal (OOD) relative gains shown
+    individually, with each group's MEAN (solid) and MEDIAN (dashed) overlaid. The cells are NOT
+    statistically independent, so this is descriptive only — no inferential test across cells."""
+    cells = {"ID": [], "OOD": []}                        # (label, relative_gain_pct) per point
+    for (src, tgt), bc in boot_cells.items():
+        best = summ[(src, tgt)]["best_layer"]
+        rg = _relative_gain_cell(bc, best)
+        cells["ID" if src == tgt else "OOD"].append((f"{SHORT[src]}→{SHORT[tgt]}", rg["relative_gain_pct"]))
+    fig, ax = plt.subplots(figsize=(9.5, 7.0))
+    rng = np.random.default_rng(SEED)
+    colors = {"ID": "#4c72b0", "OOD": "#dd8452"}
+    allv = [v for pts in cells.values() for _, v in pts]
+    min_gap = 0.034 * ((max(allv) - min(allv)) or 1.0)   # min vertical spacing between stacked labels
+    n_by = {}
+    for g, x0 in (("ID", 0), ("OOD", 1)):
+        pts = sorted(cells[g], key=lambda p: p[1])       # ascending -> leader lines don't cross
+        n_by[g] = len(pts)
+        if not pts:
+            continue
+        vals = np.array([p[1] for p in pts], float)
+        xdot = x0 + rng.uniform(-0.05, 0.05, size=len(vals))
+        ax.scatter(xdot, vals, s=60, color=colors[g], edgecolor="k", lw=0.5, zorder=3)
+        # keep ALL labels: stack them to the right of the column with a greedy min-gap (bottom-up)
+        # so none overlap, connected to their dot by a thin leader line.
+        ly = vals.astype(float).copy()
+        for i in range(1, len(ly)):
+            if ly[i] < ly[i - 1] + min_gap:
+                ly[i] = ly[i - 1] + min_gap
+        for (lab, v), yl, xd in zip(pts, ly, xdot):
+            ax.annotate(lab, xy=(xd, v), xytext=(x0 + 0.30, yl), fontsize=6.5, va="center", ha="left",
+                        arrowprops=dict(arrowstyle="-", color="0.65", lw=0.5), annotation_clip=False)
+        mean_v, med_v = float(vals.mean()), float(np.median(vals))
+        ax.hlines(mean_v, x0 - 0.22, x0 + 0.22, color=colors[g], lw=2.6, zorder=4,
+                  label=f"{g} mean {mean_v:+.1f}%")
+        ax.hlines(med_v, x0 - 0.22, x0 + 0.22, color=colors[g], lw=1.6, ls="--", zorder=4,
+                  label=f"{g} median {med_v:+.1f}%")
+    ax.axhline(0, color="0.5", lw=1.0, ls=":")
+    ax.set_xticks([0, 1])
+    ax.set_xticklabels([f"ID  (n={n_by['ID']})", f"OOD  (n={n_by['OOD']})"])
+    ax.set_xlim(-0.5, 1.95)
+    ax.set_ylabel(REL_GAIN_LABEL)
+    ax.set_title(f"Relative improvement over L12 — ID vs OOD  [{qset}, seed {seed}]\n"
+                 "each point = one source→target cell (best layer fixed on the full test set); "
+                 "solid = mean, dashed = median.\nDescriptive only — the 16 cells are NOT statistically "
+                 "independent (no cross-cell inference).", fontsize=9)
+    ax.legend(fontsize=7, loc="upper left")
+    ax.grid(axis="y", alpha=0.3)
+    fig.tight_layout()
+    out = FIG_DIR / f"relative_gain_id_vs_ood_{qset}.png"
+    fig.savefig(out, dpi=140, bbox_inches="tight")
+    plt.close(fig)
+    print(f"  [saved] {out}")
+
+
+def _print_relative_gain_summary(rows):
+    """Concise terminal summary of the normalized gains (descriptive)."""
+    def ms(sub):
+        v = np.array([r["relative_gain_pct"] for r in sub], float)
+        return (float(v.mean()), float(np.median(v))) if len(v) else (float("nan"), float("nan"))
+    idc = [r for r in rows if r["id_or_ood"] == "ID"]
+    oodc = [r for r in rows if r["id_or_ood"] == "OOD"]
+    id_mean, id_med = ms(idc)
+    ood_mean, ood_med = ms(oodc)
+    n_pos = sum(1 for r in rows if r["relative_gain_pct"] > 0)
+    n_sig = sum(1 for r in rows if r["relative_ci_excludes_zero"])
+    print("\n  ── Relative improvement over L12 (q9); best layer fixed on the full test set ──")
+    print(f"    ID  (n={len(idc):2d}):  mean {id_mean:+.2f}%   median {id_med:+.2f}%")
+    print(f"    OOD (n={len(oodc):2d}):  mean {ood_mean:+.2f}%   median {ood_med:+.2f}%")
+    print(f"    positive cells: {n_pos}/{len(rows)}   |   95% CI excludes 0: {n_sig}/{len(rows)}")
+    print("    (CIs descriptive / post-selection — NOT adjusted for layer selection)")
 
 
 # --------------------------------------------------------------------------- #
@@ -569,8 +783,8 @@ def _parse_args(argv=None):
     ap.add_argument("--source-dataset", default=None,
                     help="the dataset the probe is TRAINED on (one per job). Use the exact tag, "
                          "e.g. monash_electricity_hourly / monash_kdd_cup_2018 / uber_tlc_hourly.")
-    ap.add_argument("--target-datasets", nargs="+", default=DATASET_ORDER,
-                    help="the datasets to EVALUATE the frozen probe on (default: all three).")
+    ap.add_argument("--target-datasets", nargs="+", default=None,
+                    help="the datasets to EVALUATE the frozen probe on (default: all in the set).")
     ap.add_argument("--quantile-set", choices=sorted(QUANTILE_SETS), default="q9",
                     help="probe-head quantile configuration (default q9 for this experiment).")
     ap.add_argument("--device", default=None, help="torch device (default: cuda if available).")
@@ -585,6 +799,9 @@ def main():
     if args.dataset_set:
         config.set_dataset_set(args.dataset_set)
         _derive_dirs()
+        _derive_datasets()            # matrix order/labels must follow the override
+    if args.target_datasets is None:  # default = every dataset in the active set
+        args.target_datasets = list(DATASET_ORDER)
     qset = args.quantile_set
     quantiles = QUANTILE_SETS[qset]
     if median_index(quantiles) is None:

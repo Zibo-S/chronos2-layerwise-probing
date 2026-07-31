@@ -113,6 +113,7 @@ ID_STYLE = {
     "uber_tlc_hourly":           {"color": "#9467bd", "demoted": False, "label": "uber_tlc_hourly (transport)"},
     # phase0_trio extras
     "m4_hourly":                 {"color": "#e377c2", "demoted": False, "label": "m4_hourly (cross-series)"},
+    "wind_farms_hourly":         {"color": "#17becf", "demoted": False, "label": "wind_farms_hourly (wind generation)"},
     "solar_1h":                  {"color": "#8c564b", "demoted": True,  "label": "solar_1h (label pathology)"},
 }
 
@@ -126,6 +127,12 @@ DATASET_NOTES = {
                    "normalized future-mean label on strongly diurnal series; demoted in the "
                    "overlay) and m4_hourly uses a cross-series split (comparable in shape, "
                    "not absolute level). See paper/phase0_fixes.md.",
+    "extended_v2": "4x4 OOD-transfer set: electricity, uber_tlc, m4_hourly, wind_farms_hourly "
+                   "(KDD dropped as persistence-dominated). All hourly (m=24). m4_hourly uses the "
+                   "cross_series split (short series); the other three within_series. Matched total "
+                   "budget 1500 train / 650 test per dataset (uniform subsample, no per-series cap). "
+                   "wind_farms_hourly has ~17% missing data, handled leakage-free by dropping any "
+                   "window with a non-finite context/horizon span.",
 }
 
 
@@ -161,7 +168,8 @@ def native_median_forecast(tag, X_test, H):
     """Native Chronos-2 median (q=0.5) forecast for every test context, in RAW units
     (the pipeline inverse-instance-norms internally). Cached to features_cache; the cache
     guard compares context tails so a re-windowed dataset fails loudly instead of misaligning."""
-    cache = CACHE_DIR / f"IDF_{tag}__test__native_median_H{H}.npz"
+    from probing.extraction import _idf_prefix
+    cache = CACHE_DIR / f"{_idf_prefix(tag)}__test__native_median_H{H}.npz"
     X_test = np.asarray(X_test, dtype=np.float32)
     if cache.exists():
         d = np.load(cache)
