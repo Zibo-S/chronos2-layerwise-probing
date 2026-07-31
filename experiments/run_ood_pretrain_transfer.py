@@ -533,6 +533,10 @@ def _parse_args(argv=None):
                                              "targets); frozen source probes, no target adaptation.")
     ap.add_argument("--sources", nargs="+", default=None, help="subset of sources (default: all 4).")
     ap.add_argument("--target", default=None, help="evaluate a single target (default: all 3).")
+    ap.add_argument("--source-set", default=SOURCE_SET,
+                    help="dataset set whose frozen 4×4 source probes to transfer (default: "
+                         "extended_v2; pass extended_v3_rolling for the rolling-trained sources). "
+                         "Also namespaces outputs to results/<source-set>/ood_pretrain_transfer/.")
     ap.add_argument("--quantile-set", choices=sorted(QUANTILE_SETS), default="q9")
     ap.add_argument("--device", default=None, help="torch device (default: cuda if available).")
     ap.add_argument("--figure-only", action="store_true", help="aggregate saved cells only (CPU).")
@@ -541,7 +545,10 @@ def _parse_args(argv=None):
 
 def main():
     args = _parse_args()
-    # source probes live under extended_v2; point config there so ood.load_checkpoints resolves them
+    global SOURCE_SET
+    SOURCE_SET = args.source_set
+    # source probes live under SOURCE_SET; point config there so ood.load_checkpoints resolves them
+    # AND outputs namespace to results/<SOURCE_SET>/ood_pretrain_transfer/.
     config.set_dataset_set(SOURCE_SET)
     ood._derive_dirs(); ood._derive_datasets()
     _derive_dirs()

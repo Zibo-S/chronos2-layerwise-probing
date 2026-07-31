@@ -478,6 +478,60 @@ def fit_quantile_probe(train_feats, train_labels, quantiles=CHRONOS2_QUANTILES,
     return fitted
 
 
+def fit_quantile_probe_explicit_val(train_feats, train_labels, val_feats, val_labels,
+                                    quantiles=CHRONOS2_QUANTILES, epochs=300, lr=1e-2,
+                                    weight_decay=1e-3, wd_grid=None, device=None):
+    """Like fit_quantile_probe, but weight-decay selection uses an EXPLICIT, temporally held-out
+    validation set (val_feats/val_labels) instead of the seed-based 80/20 carve of train.
+
+    Used by the rolling-origin sets (id_data.ROLLING_SETS): the val split is a dedicated LATER
+    forecast origin per series, so wd — and the downstream source-selected layer — are chosen on
+    genuine out-of-time data. Per layer: the StandardScaler AND the Linear are fit on the FULL
+    train split (validation NEVER touches the scaler or the weights); each wd candidate is scored
+    on val; the chosen-wd full-train model is kept (no refit needed — it is already trained on all
+    of train). The returned dict shape and the recorded selection.{val_loss_by_wd, chosen_wd}
+    match fit_quantile_probe exactly, so save_checkpoints / source_selected_layer /
+    predict_quantile_probe are unchanged."""
+    device = device or ("cuda" if torch.cuda.is_available() else "cpu")
+    quantiles = validate_quantiles(quantiles)
+    Ytr = np.asarray(train_labels, dtype=np.float32)
+    Yva = np.asarray(val_labels, dtype=np.float32)
+    if Ytr.ndim != 2 or Yva.ndim != 2:
+        raise ValueError("fit_quantile_probe_explicit_val needs (n, H) trajectory labels for BOTH "
+                         f"train and val -- got {Ytr.shape} / {Yva.shape}")
+    q = torch.as_tensor(quantiles, dtype=torch.float32, device=device)
+    Q, H = len(quantiles), Ytr.shape[1]
+    ytr = torch.as_tensor(Ytr, device=device)
+    yva = torch.as_tensor(Yva, device=device)
+
+    fitted = {}
+    for i in range(NUM_LAYERS):
+        sc = StandardScaler().fit(train_feats[i])                       # scaler on FULL train only
+        Xtr = torch.as_tensor(sc.transform(train_feats[i]), dtype=torch.float32, device=device)
+        Xva = torch.as_tensor(sc.transform(val_feats[i]), dtype=torch.float32, device=device)
+        if wd_grid is None:
+            wd, selection = weight_decay, None
+            m = _fit_quantile_linear(Xtr, ytr, q, wd, epochs, lr, device)
+        else:
+            best_wd, best_val, best_m, sel = wd_grid[0], float("inf"), None, {}
+            for cand in wd_grid:
+                cm = _fit_quantile_linear(Xtr, ytr, q, cand, epochs, lr, device)   # FULL train
+                with torch.no_grad():
+                    v = chronos2_quantile_loss(cm(Xva).view(-1, Q, H), yva, q).item()
+                sel[cand] = v
+                if v < best_val:
+                    best_val, best_wd, best_m = v, cand, cm
+            wd, m = best_wd, best_m                              # keep the chosen-wd full-train model
+            selection = {"val_loss_by_wd": {float(k): float(v) for k, v in sel.items()},
+                         "chosen_wd": float(best_wd)}
+        m.eval()
+        fitted[i] = {"scaler": sc, "linear": m, "wd": float(wd), "selection": selection,
+                     "in_features": int(m.in_features), "out_features": int(m.out_features),
+                     "device": str(device)}
+        print(f"    [fit-explicit-val] L{i:>2}  wd={wd:g}  out_dim={m.out_features}")
+    return fitted
+
+
 def predict_quantile_probe(fitted, feats, labels, quantiles=CHRONOS2_QUANTILES, device=None,
                            collect_test_median=False, collect_test_window_loss=False):
     """Apply a FROZEN fitted probe (from fit_quantile_probe) to `feats`/`labels`; NEVER trains.

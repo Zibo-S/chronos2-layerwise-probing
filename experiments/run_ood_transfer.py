@@ -43,10 +43,10 @@ import torch
 
 from probing import config, id_data
 from probing.config import NUM_LAYERS, LAST_LAYER, SEED
-from probing.id_data import build_windows
+from probing.id_data import build_windows, ROLLING_SETS
 from probing.extraction import extract_window_features
-from probing.probes import (fit_quantile_probe, predict_quantile_probe, QUANTILE_SETS,
-                            median_index)
+from probing.probes import (fit_quantile_probe, fit_quantile_probe_explicit_val,
+                            predict_quantile_probe, QUANTILE_SETS, median_index)
 from probing.stats import cluster_bootstrap_counts, cluster_bootstrap_apply
 # reuse the per-dataset pipeline's MASE definition + cached native forecast + context inverse,
 # so the diagonal MASE matches the committed per-dataset numbers exactly (importing this module
@@ -70,6 +70,8 @@ CI_LO, CI_HI = 2.5, 97.5
 ORDER_BY_SET = {
     "extended_v1": ["monash_electricity_hourly", "monash_kdd_cup_2018", "uber_tlc_hourly"],
     "extended_v2": ["monash_electricity_hourly", "uber_tlc_hourly", "m4_hourly", "wind_farms_hourly"],
+    # rolling-origin within-series 4×4 (same roster as extended_v2; uniform temporal split)
+    "extended_v3_rolling": ["monash_electricity_hourly", "uber_tlc_hourly", "m4_hourly", "wind_farms_hourly"],
 }
 SHORT_LABELS = {
     "monash_electricity_hourly": "Electricity", "monash_kdd_cup_2018": "KDD",
@@ -221,8 +223,18 @@ def get_source_probe(source, qset, quantiles, seed, device):
     print(f"  [fit] training source probe on {source} (seed {seed}, {qset})")
     w = build_windows(source)      # seed default = SEED -> same windows the q9 per-dataset run used
     f_tr, _ = extract_window_features(source, "train", w["X_train"], w["y_train"], pooling=POOLING)
-    fitted = fit_quantile_probe(f_tr, w["Y_train_traj"], quantiles=quantiles,
-                                epochs=QUANTILE_EPOCHS, wd_grid=WD_GRID, device=device)
+    if config.DATASET_SET in ROLLING_SETS:
+        # rolling sets: weight-decay selection on the EXPLICIT temporal val split (no 80/20 carve).
+        f_va, _ = extract_window_features(source, "val", w["X_val"], w["y_val"], pooling=POOLING)
+        print(f"    [rolling] explicit temporal val: {w['meta']['n_val']} windows / "
+              f"{w['meta']['n_val_series']} series")
+        fitted = fit_quantile_probe_explicit_val(f_tr, w["Y_train_traj"], f_va, w["Y_val_traj"],
+                                                 quantiles=quantiles, epochs=QUANTILE_EPOCHS,
+                                                 wd_grid=WD_GRID, device=device)
+        del f_va
+    else:
+        fitted = fit_quantile_probe(f_tr, w["Y_train_traj"], quantiles=quantiles,
+                                    epochs=QUANTILE_EPOCHS, wd_grid=WD_GRID, device=device)
     ckpt = save_checkpoints(fitted, source, qset, seed, quantiles)
     del w, f_tr
     gc.collect()

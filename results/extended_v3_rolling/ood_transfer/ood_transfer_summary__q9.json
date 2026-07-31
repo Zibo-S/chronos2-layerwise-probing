@@ -1,0 +1,45 @@
+{
+  "config": {
+    "quantile_set": "q9",
+    "quantile_config": 9,
+    "seed": 0,
+    "pooling": "content",
+    "context_length": 512,
+    "prediction_length": 64,
+    "last_layer": 12,
+    "bootstrap_replicates": 5000,
+    "bootstrap_seed": 0,
+    "delta_vs_last": "loss[last] \u2212 loss[layer] (scalar cell field uses the best layer); positive = an earlier layer beats the final layer. delta_vs_last_ci = paired 95% cluster-bootstrap CI on the BEST layer's \u0394; the best layer is the test-argmin, so per-cell it is exploratory (see the full-layer \u0394 table for the selection-free view)",
+    "best_layer_shift": "best_layer(transfer) - best_layer(source ID)"
+  },
+  "cells": [
+    {
+      "source_dataset": "monash_electricity_hourly",
+      "target_dataset": "uber_tlc_hourly",
+      "seed": 0,
+      "is_ood": true,
+      "quantile_set": "q9",
+      "quantile_config": 9,
+      "best_layer": 1,
+      "min_loss": 6.261124134063721,
+      "last_layer": 12,
+      "last_layer_loss": 6.841433525085449,
+      "delta_vs_last": 0.5803093910217285,
+      "native_mase": 0.8060061846106554,
+      "n_test_windows": 262,
+      "n_test_series": 262,
+      "best_layer_source_id": null,
+      "best_layer_shift": null,
+      "delta_vs_last_ci": [
+        0.42906807137809644,
+        0.7316576557532523
+      ],
+      "delta_above_zero": true,
+      "bootstrap": {
+        "n_replicates": 5000,
+        "seed": 0,
+        "n_test_series": 262
+      }
+    }
+  ]
+}

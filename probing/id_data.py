@@ -67,6 +67,17 @@ ID_DATASET_SPECS = {
         "m4_hourly":                 {"hf_config": "m4_hourly",                 "target": "target"},  # Mixed hourly (cross_series)
         "wind_farms_hourly":         {"hf_config": "wind_farms_hourly",         "target": "target"},  # Renewable generation
     },
+    # 4×4 ROLLING-ORIGIN WITHIN-SERIES set. Same tags/targets as extended_v2, but ALL FOUR
+    # datasets (including m4_hourly, which the length-derived auto split forces onto cross_series)
+    # use ONE uniform temporal split — dedicated train/val/test forecast origins per series,
+    # H-spaced non-overlapping targets. See _build_rolling_windows + ROLLING_SETS. extended_v2 is
+    # left untouched as a cross-series sensitivity comparison.
+    "extended_v3_rolling": {
+        "monash_electricity_hourly": {"hf_config": "monash_electricity_hourly", "target": "target"},  # Energy consumption
+        "uber_tlc_hourly":           {"hf_config": "uber_tlc_hourly",           "target": "target"},  # Transport / ride demand
+        "m4_hourly":                 {"hf_config": "m4_hourly",                 "target": "target"},  # Mixed hourly (rolling)
+        "wind_farms_hourly":         {"hf_config": "wind_farms_hourly",         "target": "target"},  # Renewable generation
+    },
 }
 _HF_REPO = "autogluon/chronos_datasets"
 
@@ -77,7 +88,16 @@ BUDGET_BY_SET = {
     "phase0_trio": (3000, 1500),
     "extended_v1": (3000, 1500),
     "extended_v2": (1500, 650),
+    # rolling-origin sets carry a (train, VAL, test) 3-tuple: val is a dedicated temporal split,
+    # not a carve of train. build_windows dispatches these to _build_rolling_windows.
+    "extended_v3_rolling": (1394, 262, 262),
 }
+
+# Dataset sets that use the uniform rolling-origin WITHIN-SERIES split (explicit temporal
+# train/val/test, H-spaced non-overlapping targets) instead of the length-derived
+# within_series/cross_series auto split. Their BUDGET_BY_SET entry is a (train, val, test)
+# 3-tuple and build_windows routes them through _build_rolling_windows.
+ROLLING_SETS = {"extended_v3_rolling"}
 
 
 def _active_specs() -> dict:
@@ -156,6 +176,22 @@ def _all_starts(L, C, H, stride):
     return list(range(0, L - span + 1, stride))
 
 
+def _rolling_valid_starts(s, C, H, sigma_eps):
+    """Chronological, H-SPACED context-start positions st (context [st, st+C), target
+    [st+C, st+C+H)) whose window is finite AND non-constant — the SAME validity rule as
+    _make_examples. Stepping by H (not an arbitrary stride) guarantees the kept origins' targets
+    are pairwise NON-OVERLAPPING (the rolling-origin invariant). Non-finite / constant spans are
+    simply skipped, so missing data drops windows leakage-free. Returned in time order."""
+    span = C + H
+    out = []
+    for st in range(0, len(s) - span + 1, H):
+        ctx = s[st:st + C]
+        fut = s[st + C:st + C + H]
+        if np.all(np.isfinite(ctx)) and np.all(np.isfinite(fut)) and ctx.std() >= sigma_eps:
+            out.append(st)
+    return out
+
+
 def _seasonal_naive_scale(x, m):
     """In-sample seasonal-naive MASE denominator d = mean_t |x_t - x_{t-m}| over `x`.
 
@@ -187,6 +223,133 @@ def _subsample(ctxs, ys, yvecs, sids, target, rng):
             [yvecs[i] for i in idx], [sids[i] for i in idx])
 
 
+def _build_rolling_windows(tag, C, H, stride, sigma_eps, m_season, seed,
+                           target_train=None, target_val=None, target_test=None):
+    """Uniform rolling-origin WITHIN-SERIES windows for the extended_v3_rolling set.
+
+    ALL datasets (including m4_hourly) use the SAME protocol — no cross_series fallback:
+      * H-spaced non-overlapping forecast targets; a window is valid iff its context and target
+        are finite and the context is non-constant (`_rolling_valid_starts`).
+      * Per eligible series (>= 3 valid origins): LAST valid origin -> test, 2nd-last -> val, all
+        earlier -> train. Within a series every train target precedes the val target, which
+        precedes the test target, so no target timestamp is shared across splits.
+      * The SAME deterministic `target_val` (== `target_test`) series carry both the val and the
+        test window (one each). Train windows are drawn from EVERY eligible series and
+        cluster-balanced (round-robin) down to `target_train`, so a few long series can't dominate
+        and every selected val/test series keeps >= 1 train window (enforced, fail-loud).
+
+    Returns the build_windows dict shape PLUS X_val/y_val/Y_val_traj/series_val. The reported MASE
+    still uses the in-context seasonal-naive scale (run_id_forecasting._mase_denominator); the
+    canonical `test_denominator` here is the seasonal-naive scale of each test series' history
+    STRICTLY BEFORE its test target (leakage-free), so `mase_canonical` is True for all four."""
+    from probing import config
+    b_tr, b_va, b_te = BUDGET_BY_SET[config.DATASET_SET]
+    target_train = b_tr if target_train is None else target_train
+    target_val = b_va if target_val is None else target_val
+    target_test = b_te if target_test is None else target_test
+    if target_val != target_test:
+        raise ValueError(f"rolling split uses the SAME series for val and test; "
+                         f"target_val ({target_val}) must equal target_test ({target_test})")
+
+    series = load_seen_series(tag)
+    rng = np.random.default_rng(seed)
+    min_len = C + 3 * H                                  # 704: shortest series giving 3 origins
+
+    # 1) eligible series -> their valid H-spaced context starts (>= 3 each)
+    eligible: dict[int, list[int]] = {}
+    excl = {"too_short": 0, "insufficient_valid": 0}
+    for i, s in enumerate(series):
+        s = np.asarray(s, dtype=np.float64)
+        if len(s) < min_len:
+            excl["too_short"] += 1
+            continue
+        starts = _rolling_valid_starts(s, C, H, sigma_eps)
+        if len(starts) < 3:
+            excl["insufficient_valid"] += 1
+            continue
+        eligible[i] = starts
+    if len(eligible) < target_val:
+        raise RuntimeError(f"{tag}: only {len(eligible)} eligible series (need {target_val} for "
+                           "val/test) — lower the val/test budget or check the data")
+
+    # 2) the SAME deterministic series carry val AND test (one window each)
+    elig_idx = np.array(sorted(eligible))
+    sel = np.sort(rng.permutation(elig_idx)[:target_val])
+    sel_set = {int(i) for i in sel}
+
+    # 3) candidate windows: train from EVERY eligible series (valid[:-2]); val/test from the
+    #    selected series (valid[-2] / valid[-1]). origins recorded as the target-start index.
+    tr_ctx, tr_y, tr_yv, tr_sid, tr_org = [], [], [], [], []
+    va_ctx, va_y, va_yv, va_sid, va_org = [], [], [], [], []
+    te_ctx, te_y, te_yv, te_sid, te_org = [], [], [], [], []
+    den_by_series: dict[int, float] = {}
+    for i in sorted(eligible):
+        s = np.asarray(series[i], dtype=np.float64)
+        starts = eligible[i]
+        c, y, v, _ = _make_examples(s, starts[:-2], C, H, sigma_eps)
+        tr_ctx += c; tr_y += y; tr_yv += v; tr_sid += [i] * len(c)
+        tr_org += [st + C for st in starts[:-2]]
+        if i in sel_set:
+            va_st, te_st = starts[-2], starts[-1]
+            c, y, v, _ = _make_examples(s, [va_st], C, H, sigma_eps)
+            va_ctx += c; va_y += y; va_yv += v; va_sid += [i]; va_org += [va_st + C]
+            c, y, v, _ = _make_examples(s, [te_st], C, H, sigma_eps)
+            te_ctx += c; te_y += y; te_yv += v; te_sid += [i]; te_org += [te_st + C]
+            den_by_series[i] = _seasonal_naive_scale(s[:te_st + C], m_season)  # history before test
+
+    n_tr_full = len(tr_y)
+    # 4) cluster-balanced (round-robin) subsample of TRAIN to target_train — broad series coverage.
+    order = _cluster_balanced_order(np.asarray(tr_sid, np.int64), target_train, rng)
+    tr_ctx = [tr_ctx[j] for j in order]; tr_y = [tr_y[j] for j in order]
+    tr_yv = [tr_yv[j] for j in order]; tr_sid = [tr_sid[j] for j in order]
+    tr_org = [tr_org[j] for j in order]
+
+    # 5) fail-loud: every selected val/test series MUST keep >= 1 retained train window.
+    missing = sel_set - {int(i) for i in tr_sid}
+    if missing:
+        raise RuntimeError(f"{tag}: {len(missing)} selected val/test series kept no train window "
+                           f"after subsample (e.g. {sorted(missing)[:5]}) — target_train "
+                           f"({target_train}) must be >= n_eligible_series ({len(eligible)})")
+
+    def _stack(ctxs, dim):
+        return np.stack(ctxs).astype(np.float32) if ctxs else np.zeros((0, dim), np.float32)
+
+    X_train, X_val, X_test = _stack(tr_ctx, C), _stack(va_ctx, C), _stack(te_ctx, C)
+    Y_train_traj, Y_val_traj, Y_test_traj = _stack(tr_yv, H), _stack(va_yv, H), _stack(te_yv, H)
+    series_train = np.asarray(tr_sid, np.int64)
+    series_val = np.asarray(va_sid, np.int64)
+    series_test = np.asarray(te_sid, np.int64)
+    test_denominator = np.array([den_by_series[int(i)] for i in te_sid], np.float64)
+
+    meta = {
+        "tag": tag, "hf_config": _active_specs()[tag]["hf_config"],
+        "split_mode": "rolling_origin_within_series",
+        "n_series": len(series), "n_eligible_series": len(eligible), "excluded_series": excl,
+        "C": C, "H": H, "stride": H, "test_frac": None,
+        "target_train": target_train, "target_val": target_val, "target_test": target_test,
+        "sigma_eps": sigma_eps, "seed": seed, "m_season": m_season,
+        "mase_denominator": "per_series_history_before_test_seasonal_naive",
+        "mase_canonical": True,
+        "selected_series": [int(i) for i in sel],                 # the val/test series (req: metadata)
+        "origins": {"train": [int(o) for o in tr_org],            # per-window target-start index
+                    "val": [int(o) for o in va_org],
+                    "test": [int(o) for o in te_org]},
+        "n_train_windows_before_subsample": n_tr_full,
+        "n_test_windows_before_subsample": len(te_y),
+        "n_train": int(len(tr_y)), "n_val": int(len(va_y)), "n_test": int(len(te_y)),
+        "n_val_series": int(len(np.unique(series_val))) if series_val.size else 0,
+        "n_test_series": int(len(np.unique(series_test))) if series_test.size else 0,
+        "n_denominator_invalid": int((~np.isfinite(test_denominator)).sum()),
+        "n_skipped_windows": 0,
+    }
+    return {"X_train": X_train, "y_train": np.asarray(tr_y, np.float32),
+            "X_val": X_val, "y_val": np.asarray(va_y, np.float32),
+            "X_test": X_test, "y_test": np.asarray(te_y, np.float32),
+            "Y_train_traj": Y_train_traj, "Y_val_traj": Y_val_traj, "Y_test_traj": Y_test_traj,
+            "series_train": series_train, "series_val": series_val, "series_test": series_test,
+            "test_denominator": test_denominator, "meta": meta}
+
+
 def build_windows(
     tag: str,
     C: int = 512,
@@ -207,6 +370,12 @@ def build_windows(
         Y_train_traj, Y_test_traj : float32 arrays (n, H)   (normalized future TRAJECTORY; quantile probe)
         meta                      : split_mode, counts, skip counts, params
     """
+    from probing import config
+    # rolling-origin sets use a uniform explicit temporal train/val/test split for ALL datasets;
+    # dispatch before the length-derived within_series/cross_series logic below (legacy path).
+    if config.DATASET_SET in ROLLING_SETS:
+        return _build_rolling_windows(tag, C, H, stride, sigma_eps, m_season, seed,
+                                      target_train=target_train, target_test=target_test)
     # Resolve the matched budget from the ACTIVE dataset set unless explicitly overridden.
     if target_train is None or target_test is None:
         from probing import config
