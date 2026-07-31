@@ -42,26 +42,41 @@ retention (content pooling; binned chance = 0.20):
 | solar_1h | within-series | L4 / 0.289 | 0.839 |
 
 **Interpretation.** With a genuine in-distribution condition in place (forecasting
-probes on Chronos-2-seen data, Table 6 of arXiv:2510.15821), two findings emerge.
-**(1) The mid-layer peak is robust and task-general:** binned future-mean accuracy
-peaks at intermediate layers (L7/L6) on both clean ID datasets, mirroring the
-mid-layer peaks of the classification probes — the "intermediate layers are most
-linearly decodable" observation survives the move to the model's native task, so it
-is not an artifact of task mismatch. **(2) Tunnel-style selective compression does
-not appear:** late-layer retention (score at L11 / peak) is ~0.93 for ID curves
-versus 0.81–1.00 across transfer curves, with the only TS-appropriate transfer
-dataset (UWave) at 0.89 — i.e., no ID-vs-transfer divergence. Late-layer decay in
-Chronos-2's encoder is mild and task-insensitive rather than selectively destroying
-transferable structure. This is consistent with our earlier OOD null (Part 2) and
-with the decodability-vs-transfer dissociation emphasized in "Deeper is Not Always
-Better" (arXiv:2606.21906): mid-layer decodability is real, but it does not license
-tunnel-style claims about transfer. **Consequence for the plan:** Track A's corrected
-replication yields a bounded negative on the tunnel signature plus a robust mid-layer
-peak; mechanism-level evidence for *why* middle layers matter must come from Track
-B's shift-type localization. Caveats: solar_1h excluded (context-normalization label
-pathology on strongly diurnal data); m4_hourly uses a cross-series split (shape
-comparable, absolute level not); retention comparisons rest on 5-bin accuracy with
-n_test ≈ 0.7–1.5k, so the ~4pp ID-vs-UWave difference should not be over-read.
+probes on Chronos-2-seen data, Table 6 of arXiv:2510.15821), the result is best read
+against the tunnel signature, which has two halves: in-distribution accuracy should
+rise then *plateau* through the late layers, while transfer/OOD accuracy should
+*selectively drop* — the two diverging.
+
+**(1) The mid-layer peak is robust and task-general.** Binned future-mean accuracy
+peaks at intermediate layers (L7/L6) on both clean ID datasets, mirroring the mid-layer
+peaks of the classification probes. The "intermediate layers are most linearly
+decodable" observation therefore survives the move to the model's native task — it is
+not an artifact of task mismatch.
+
+**(2) The ID half of the signature holds, but the divergence does not.** The ID curves
+do approximately plateau in the late layers (late-layer retention, score at L11 / peak,
+≈ 0.93), consistent with the signature's ID prediction. However, the transfer curves
+also plateau (retention 0.81–1.00; the one TS-appropriate transfer set, UWave, at 0.89)
+rather than selectively dropping. What is absent is the ID-vs-transfer divergence:
+late-layer decay in Chronos-2's encoder is mild and *task-insensitive*, not a selective
+destruction of transferable structure. This is consistent with our earlier OOD null
+(Part 2) and with the decodability-vs-transfer dissociation emphasized in "Deeper is Not
+Always Better" (arXiv:2606.21906): mid-layer decodability is real, but it does not
+license tunnel-style claims about transfer.
+
+**(3) Scope of the present evidence.** These conclusions are on the *accuracy-side*
+signature only. The per-layer effective-rank diagnostic — the tunnel paper's core
+measure (rank rising then falling) — is not yet implemented (stub in the probe registry)
+and has not been run. Confirming or complicating this picture on the rank side is a
+direct next step.
+
+**Consequence for the plan.** Track A's corrected replication yields a robust mid-layer
+peak plus a bounded negative on tunnel-style *selective* compression; mechanism-level
+evidence for *why* middle layers matter must come from Track B's shift-type
+localization. Caveats: solar_1h excluded (context-normalization label pathology on
+strongly diurnal data); m4_hourly uses a cross-series split (shape comparable, absolute
+level not); retention comparisons rest on 5-bin accuracy with n_test ≈ 0.7–1.5k, so the
+~4pp ID-vs-UWave difference should not be over-read.
 
 ### Known limitation — the context-normalized label on strongly periodic series
 `solar_1h` produces strongly **negative ridge R²** (the regression does worse than predicting
