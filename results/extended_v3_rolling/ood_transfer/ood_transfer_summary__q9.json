@@ -15,6 +15,34 @@
   "cells": [
     {
       "source_dataset": "monash_electricity_hourly",
+      "target_dataset": "monash_electricity_hourly",
+      "seed": 0,
+      "is_ood": false,
+      "quantile_set": "q9",
+      "quantile_config": 9,
+      "best_layer": 2,
+      "min_loss": 3.0568554401397705,
+      "last_layer": 12,
+      "last_layer_loss": 3.085876226425171,
+      "delta_vs_last": 0.02902078628540039,
+      "native_mase": 0.8361892480123696,
+      "n_test_windows": 262,
+      "n_test_series": 262,
+      "best_layer_source_id": 2,
+      "best_layer_shift": 0,
+      "delta_vs_last_ci": [
+        -0.07765908344783866,
+        0.12872073298874698
+      ],
+      "delta_above_zero": false,
+      "bootstrap": {
+        "n_replicates": 5000,
+        "seed": 0,
+        "n_test_series": 262
+      }
+    },
+    {
+      "source_dataset": "monash_electricity_hourly",
       "target_dataset": "uber_tlc_hourly",
       "seed": 0,
       "is_ood": true,
@@ -28,11 +56,403 @@
       "native_mase": 0.8060061846106554,
       "n_test_windows": 262,
       "n_test_series": 262,
-      "best_layer_source_id": null,
-      "best_layer_shift": null,
+      "best_layer_source_id": 2,
+      "best_layer_shift": -1,
       "delta_vs_last_ci": [
         0.42906807137809644,
         0.7316576557532523
+      ],
+      "delta_above_zero": true,
+      "bootstrap": {
+        "n_replicates": 5000,
+        "seed": 0,
+        "n_test_series": 262
+      }
+    },
+    {
+      "source_dataset": "monash_electricity_hourly",
+      "target_dataset": "m4_hourly",
+      "seed": 0,
+      "is_ood": true,
+      "quantile_set": "q9",
+      "quantile_config": 9,
+      "best_layer": 1,
+      "min_loss": 2.7940521240234375,
+      "last_layer": 12,
+      "last_layer_loss": 3.798232316970825,
+      "delta_vs_last": 1.0041801929473877,
+      "native_mase": 0.9289487746104895,
+      "n_test_windows": 262,
+      "n_test_series": 262,
+      "best_layer_source_id": 2,
+      "best_layer_shift": -1,
+      "delta_vs_last_ci": [
+        0.7933543999800247,
+        1.2714648817217982
+      ],
+      "delta_above_zero": true,
+      "bootstrap": {
+        "n_replicates": 5000,
+        "seed": 0,
+        "n_test_series": 262
+      }
+    },
+    {
+      "source_dataset": "monash_electricity_hourly",
+      "target_dataset": "wind_farms_hourly",
+      "seed": 0,
+      "is_ood": true,
+      "quantile_set": "q9",
+      "quantile_config": 9,
+      "best_layer": 0,
+      "min_loss": 5.783726692199707,
+      "last_layer": 12,
+      "last_layer_loss": 7.091375827789307,
+      "delta_vs_last": 1.3076491355895996,
+      "native_mase": 4.3542799348733885,
+      "n_test_windows": 262,
+      "n_test_series": 262,
+      "best_layer_source_id": 2,
+      "best_layer_shift": -2,
+      "delta_vs_last_ci": [
+        0.9007777027728902,
+        1.74580940080963
+      ],
+      "delta_above_zero": true,
+      "bootstrap": {
+        "n_replicates": 5000,
+        "seed": 0,
+        "n_test_series": 262
+      }
+    },
+    {
+      "source_dataset": "uber_tlc_hourly",
+      "target_dataset": "monash_electricity_hourly",
+      "seed": 0,
+      "is_ood": true,
+      "quantile_set": "q9",
+      "quantile_config": 9,
+      "best_layer": 1,
+      "min_loss": 5.0835957527160645,
+      "last_layer": 12,
+      "last_layer_loss": 6.15155029296875,
+      "delta_vs_last": 1.0679545402526855,
+      "native_mase": 0.8361892480123696,
+      "n_test_windows": 262,
+      "n_test_series": 262,
+      "best_layer_source_id": 10,
+      "best_layer_shift": -9,
+      "delta_vs_last_ci": [
+        0.8929861605849886,
+        1.2403482519260796
+      ],
+      "delta_above_zero": true,
+      "bootstrap": {
+        "n_replicates": 5000,
+        "seed": 0,
+        "n_test_series": 262
+      }
+    },
+    {
+      "source_dataset": "uber_tlc_hourly",
+      "target_dataset": "uber_tlc_hourly",
+      "seed": 0,
+      "is_ood": false,
+      "quantile_set": "q9",
+      "quantile_config": 9,
+      "best_layer": 10,
+      "min_loss": 4.389427661895752,
+      "last_layer": 12,
+      "last_layer_loss": 4.59585428237915,
+      "delta_vs_last": 0.20642662048339844,
+      "native_mase": 0.8060061846106554,
+      "n_test_windows": 262,
+      "n_test_series": 262,
+      "best_layer_source_id": 10,
+      "best_layer_shift": 0,
+      "delta_vs_last_ci": [
+        0.15269663431717234,
+        0.2616492260162159
+      ],
+      "delta_above_zero": true,
+      "bootstrap": {
+        "n_replicates": 5000,
+        "seed": 0,
+        "n_test_series": 262
+      }
+    },
+    {
+      "source_dataset": "uber_tlc_hourly",
+      "target_dataset": "m4_hourly",
+      "seed": 0,
+      "is_ood": true,
+      "quantile_set": "q9",
+      "quantile_config": 9,
+      "best_layer": 0,
+      "min_loss": 5.550634384155273,
+      "last_layer": 12,
+      "last_layer_loss": 6.107077121734619,
+      "delta_vs_last": 0.5564427375793457,
+      "native_mase": 0.9289487746104895,
+      "n_test_windows": 262,
+      "n_test_series": 262,
+      "best_layer_source_id": 10,
+      "best_layer_shift": -10,
+      "delta_vs_last_ci": [
+        0.30851057874792437,
+        0.9040089812897542
+      ],
+      "delta_above_zero": true,
+      "bootstrap": {
+        "n_replicates": 5000,
+        "seed": 0,
+        "n_test_series": 262
+      }
+    },
+    {
+      "source_dataset": "uber_tlc_hourly",
+      "target_dataset": "wind_farms_hourly",
+      "seed": 0,
+      "is_ood": true,
+      "quantile_set": "q9",
+      "quantile_config": 9,
+      "best_layer": 0,
+      "min_loss": 5.620556354522705,
+      "last_layer": 12,
+      "last_layer_loss": 7.275504112243652,
+      "delta_vs_last": 1.6549477577209473,
+      "native_mase": 4.3542799348733885,
+      "n_test_windows": 262,
+      "n_test_series": 262,
+      "best_layer_source_id": 10,
+      "best_layer_shift": -10,
+      "delta_vs_last_ci": [
+        1.4161629853357793,
+        1.8971674942788277
+      ],
+      "delta_above_zero": true,
+      "bootstrap": {
+        "n_replicates": 5000,
+        "seed": 0,
+        "n_test_series": 262
+      }
+    },
+    {
+      "source_dataset": "m4_hourly",
+      "target_dataset": "monash_electricity_hourly",
+      "seed": 0,
+      "is_ood": true,
+      "quantile_set": "q9",
+      "quantile_config": 9,
+      "best_layer": 3,
+      "min_loss": 3.9416000843048096,
+      "last_layer": 12,
+      "last_layer_loss": 4.178310871124268,
+      "delta_vs_last": 0.236710786819458,
+      "native_mase": 0.8361892480123696,
+      "n_test_windows": 262,
+      "n_test_series": 262,
+      "best_layer_source_id": 2,
+      "best_layer_shift": 1,
+      "delta_vs_last_ci": [
+        0.10934704827670774,
+        0.36095381155041323
+      ],
+      "delta_above_zero": true,
+      "bootstrap": {
+        "n_replicates": 5000,
+        "seed": 0,
+        "n_test_series": 262
+      }
+    },
+    {
+      "source_dataset": "m4_hourly",
+      "target_dataset": "uber_tlc_hourly",
+      "seed": 0,
+      "is_ood": true,
+      "quantile_set": "q9",
+      "quantile_config": 9,
+      "best_layer": 5,
+      "min_loss": 6.7856125831604,
+      "last_layer": 12,
+      "last_layer_loss": 7.710818290710449,
+      "delta_vs_last": 0.9252057075500488,
+      "native_mase": 0.8060061846106554,
+      "n_test_windows": 262,
+      "n_test_series": 262,
+      "best_layer_source_id": 2,
+      "best_layer_shift": 3,
+      "delta_vs_last_ci": [
+        0.6802862802534615,
+        1.170459854511814
+      ],
+      "delta_above_zero": true,
+      "bootstrap": {
+        "n_replicates": 5000,
+        "seed": 0,
+        "n_test_series": 262
+      }
+    },
+    {
+      "source_dataset": "m4_hourly",
+      "target_dataset": "m4_hourly",
+      "seed": 0,
+      "is_ood": false,
+      "quantile_set": "q9",
+      "quantile_config": 9,
+      "best_layer": 2,
+      "min_loss": 2.456178903579712,
+      "last_layer": 12,
+      "last_layer_loss": 2.6130549907684326,
+      "delta_vs_last": 0.1568760871887207,
+      "native_mase": 0.9289487746104895,
+      "n_test_windows": 262,
+      "n_test_series": 262,
+      "best_layer_source_id": 2,
+      "best_layer_shift": 0,
+      "delta_vs_last_ci": [
+        0.06996011363754742,
+        0.24725770147815918
+      ],
+      "delta_above_zero": true,
+      "bootstrap": {
+        "n_replicates": 5000,
+        "seed": 0,
+        "n_test_series": 262
+      }
+    },
+    {
+      "source_dataset": "m4_hourly",
+      "target_dataset": "wind_farms_hourly",
+      "seed": 0,
+      "is_ood": true,
+      "quantile_set": "q9",
+      "quantile_config": 9,
+      "best_layer": 3,
+      "min_loss": 8.480095863342285,
+      "last_layer": 12,
+      "last_layer_loss": 9.258975982666016,
+      "delta_vs_last": 0.7788801193237305,
+      "native_mase": 4.3542799348733885,
+      "n_test_windows": 262,
+      "n_test_series": 262,
+      "best_layer_source_id": 2,
+      "best_layer_shift": 1,
+      "delta_vs_last_ci": [
+        0.405060112112352,
+        1.160055370230712
+      ],
+      "delta_above_zero": true,
+      "bootstrap": {
+        "n_replicates": 5000,
+        "seed": 0,
+        "n_test_series": 262
+      }
+    },
+    {
+      "source_dataset": "wind_farms_hourly",
+      "target_dataset": "monash_electricity_hourly",
+      "seed": 0,
+      "is_ood": true,
+      "quantile_set": "q9",
+      "quantile_config": 9,
+      "best_layer": 3,
+      "min_loss": 3.9974257946014404,
+      "last_layer": 12,
+      "last_layer_loss": 5.851446628570557,
+      "delta_vs_last": 1.8540208339691162,
+      "native_mase": 0.8361892480123696,
+      "n_test_windows": 262,
+      "n_test_series": 262,
+      "best_layer_source_id": 4,
+      "best_layer_shift": -1,
+      "delta_vs_last_ci": [
+        1.6805480848514396,
+        2.0202663827715943
+      ],
+      "delta_above_zero": true,
+      "bootstrap": {
+        "n_replicates": 5000,
+        "seed": 0,
+        "n_test_series": 262
+      }
+    },
+    {
+      "source_dataset": "wind_farms_hourly",
+      "target_dataset": "uber_tlc_hourly",
+      "seed": 0,
+      "is_ood": true,
+      "quantile_set": "q9",
+      "quantile_config": 9,
+      "best_layer": 1,
+      "min_loss": 5.0590105056762695,
+      "last_layer": 12,
+      "last_layer_loss": 5.592890739440918,
+      "delta_vs_last": 0.5338802337646484,
+      "native_mase": 0.8060061846106554,
+      "n_test_windows": 262,
+      "n_test_series": 262,
+      "best_layer_source_id": 4,
+      "best_layer_shift": -3,
+      "delta_vs_last_ci": [
+        0.4272897751049234,
+        0.6384979591114828
+      ],
+      "delta_above_zero": true,
+      "bootstrap": {
+        "n_replicates": 5000,
+        "seed": 0,
+        "n_test_series": 262
+      }
+    },
+    {
+      "source_dataset": "wind_farms_hourly",
+      "target_dataset": "m4_hourly",
+      "seed": 0,
+      "is_ood": true,
+      "quantile_set": "q9",
+      "quantile_config": 9,
+      "best_layer": 1,
+      "min_loss": 3.9614970684051514,
+      "last_layer": 12,
+      "last_layer_loss": 5.616065502166748,
+      "delta_vs_last": 1.6545684337615967,
+      "native_mase": 0.9289487746104895,
+      "n_test_windows": 262,
+      "n_test_series": 262,
+      "best_layer_source_id": 4,
+      "best_layer_shift": -3,
+      "delta_vs_last_ci": [
+        1.3133932122064913,
+        2.126813967605582
+      ],
+      "delta_above_zero": true,
+      "bootstrap": {
+        "n_replicates": 5000,
+        "seed": 0,
+        "n_test_series": 262
+      }
+    },
+    {
+      "source_dataset": "wind_farms_hourly",
+      "target_dataset": "wind_farms_hourly",
+      "seed": 0,
+      "is_ood": false,
+      "quantile_set": "q9",
+      "quantile_config": 9,
+      "best_layer": 4,
+      "min_loss": 3.525881767272949,
+      "last_layer": 12,
+      "last_layer_loss": 3.913325071334839,
+      "delta_vs_last": 0.38744330406188965,
+      "native_mase": 4.3542799348733885,
+      "n_test_windows": 262,
+      "n_test_series": 262,
+      "best_layer_source_id": 4,
+      "best_layer_shift": 0,
+      "delta_vs_last_ci": [
+        0.27644562522191124,
+        0.4919163013801319
       ],
       "delta_above_zero": true,
       "bootstrap": {

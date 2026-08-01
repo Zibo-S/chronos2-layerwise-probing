@@ -1,0 +1,21 @@
+{
+  "target": "sg_carpark",
+  "frequency": "H (agg 15min)",
+  "cluster_unit": "carpark",
+  "n_windows": 650,
+  "n_clusters": 354,
+  "n_clusters_total": 354,
+  "windows_per_cluster_min_med_max": [
+    1,
+    2,
+    2
+  ],
+  "n_windows_before_subsample": 16991,
+  "n_skipped_windows": 1,
+  "baselines_mase": {
+    "last_value": 2.853307868500099,
+    "seasonal_naive": 1.2370816593243992,
+    "native_chronos2": 0.6795416351185893
+  },
+  "notes": "SG Carpark; target = available-lot count; 15min->hourly mean of available samples (>=3 of 4 required; <=1 missing tolerated, no fill)"
+}

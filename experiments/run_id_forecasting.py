@@ -892,6 +892,16 @@ def main():
         DATASET_SET, ID_OUT_DIR = config.DATASET_SET, config.ID_OUT_DIR
         QUANT_DIR, BOOT_DIR = config.QUANT_DIR, config.BOOT_DIR
         ID_DATASETS = id_data.ID_DATASETS
+    # rolling-origin sets have an explicit temporal val split and are fit via
+    # fit_quantile_probe_explicit_val in run_ood_transfer; this driver's 80/20-carve
+    # quantile_probe path would silently violate that protocol AND write into the rolling
+    # set's results namespace — refuse (checked after CLI/env resolution so both paths hit).
+    from probing.id_data import ROLLING_SETS
+    if config.DATASET_SET in ROLLING_SETS:
+        raise SystemExit(
+            f"dataset set {config.DATASET_SET!r} uses the rolling-origin protocol with an "
+            "explicit temporal validation split; run it through experiments.run_ood_transfer "
+            "— this driver's 80/20-carve fitting path does not apply to rolling sets")
     configure_quantile_set(args.quantile_set)
 
     Q = len(QUANTILES)

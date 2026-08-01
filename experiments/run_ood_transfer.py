@@ -97,12 +97,14 @@ _derive_datasets()
 # --------------------------------------------------------------------------- #
 
 def _derive_dirs():
-    global OOD_DIR, CKPT_DIR, PER_SOURCE_DIR, BOOT_IN_DIR, FIG_DIR
+    global OOD_DIR, CKPT_DIR, PER_SOURCE_DIR, BOOT_IN_DIR, FIG_DIR, SPLIT_META_DIR
     OOD_DIR = config.ID_OUT_DIR / "ood_transfer"
     CKPT_DIR = OOD_DIR / "checkpoints"
     PER_SOURCE_DIR = OOD_DIR / "per_source"
     BOOT_IN_DIR = OOD_DIR / "bootstrap_inputs"
     FIG_DIR = OOD_DIR / "figures"
+    # rolling sets only (created lazily by _dump_split_meta, so legacy result trees stay unchanged)
+    SPLIT_META_DIR = OOD_DIR / "split_meta"
     for d in (OOD_DIR, CKPT_DIR, PER_SOURCE_DIR, BOOT_IN_DIR, FIG_DIR):
         d.mkdir(parents=True, exist_ok=True)
 
@@ -129,6 +131,11 @@ def _ckpt_meta(source, qset, seed, quantiles):
     return {"source": source, "pooling": POOLING, "context_length": C, "prediction_length": H,
             "quantile_set": qset, "quantile_config": int(len(quantiles)),
             "quantiles": [float(x) for x in quantiles], "seed": int(seed),
+            # dataset_set/split_mode pin the checkpoint to its namespace (directory separation
+            # alone would let a manually copied probe pass the meta check unnoticed)
+            "dataset_set": config.DATASET_SET,
+            "split_mode": ("rolling_origin_within_series" if config.DATASET_SET in ROLLING_SETS
+                           else "auto_within_or_cross_series"),
             "model": "amazon/chronos-2",
             "normalization": "arcsinh-context (per-window, context-only) + source-fit StandardScaler",
             "epochs": QUANTILE_EPOCHS, "wd_grid": list(WD_GRID),
@@ -167,6 +174,13 @@ def load_checkpoints(source, qset, seed, quantiles, device):
                 raise RuntimeError(
                     f"checkpoint {p} meta[{k}]={got.get(k)!r} != expected {want[k]!r} — stale or "
                     "mismatched probe; delete the run dir and re-fit")
+        # dataset_set was added to the meta later: enforce only when the checkpoint carries it,
+        # so the pre-existing extended_v2/v3 seed-0 checkpoints (written before the key) resume.
+        if "dataset_set" in got and got["dataset_set"] != want["dataset_set"]:
+            raise RuntimeError(
+                f"checkpoint {p} meta[dataset_set]={got['dataset_set']!r} != active "
+                f"{want['dataset_set']!r} — a probe from another dataset set was placed in this "
+                "namespace; delete the run dir and re-fit")
         lin = torch.nn.Linear(ck["in_features"], ck["out_features"])
         lin.load_state_dict(ck["linear_state"])
         lin.to(device)
@@ -259,6 +273,7 @@ def evaluate_target(fitted, ckpt_dir, source, target, qset, quantiles, seed, dev
     tag = "OOD" if is_ood else "ID "
     print(f"  [eval {tag}] {SHORT.get(source, source)} -> {SHORT.get(target, target)}")
     w = build_windows(target)
+    _dump_split_meta(target, w)      # rolling sets: persist the split's audit trail (idempotent)
     f_te, _ = extract_window_features(target, "test", w["X_test"], w["y_test"], pooling=POOLING)
     out, diag = predict_quantile_probe(fitted, f_te, w["Y_test_traj"], quantiles=quantiles,
                                        device=device, collect_test_median=True,
@@ -310,6 +325,36 @@ def _save_boot_inputs(source, target, qset, seed, sid, diag, n_test):
     assert wl.shape == (NUM_LAYERS, n_test), f"window-loss {wl.shape} != ({NUM_LAYERS}, {n_test})"
     out = BOOT_IN_DIR / f"{source}__to__{target}__{qset}__seed{seed}.npz"
     np.savez(out, window_loss=wl, series_test=sid)
+
+
+def _dump_split_meta(tag, w):
+    """Persist the rolling split's audit trail for `tag` (rolling sets only; no-op otherwise).
+
+    One JSON per dataset per set: split mode, the deterministic selected val/test series, the
+    per-window series id and target-start origin of every RETAINED window, and the realized
+    counts vs the budget. The window build is deterministic (window seed = SEED even when probe
+    seeds vary), so re-dumps overwrite identical content — the file is keyed by tag alone."""
+    if config.DATASET_SET not in ROLLING_SETS:
+        return
+    m = w["meta"]
+    payload = {
+        "dataset_set": config.DATASET_SET, "tag": tag, "split_mode": m["split_mode"],
+        "C": m["C"], "H": m["H"], "seed": m["seed"],
+        "budget": [m["target_train"], m["target_val"], m["target_test"]],
+        "selected_series": m["selected_series"],
+        "series": {"train": np.asarray(w["series_train"]).tolist(),
+                   "val": np.asarray(w["series_val"]).tolist(),
+                   "test": np.asarray(w["series_test"]).tolist()},
+        "origins": m["origins"],
+        "counts": {"n_train": m["n_train"], "n_val": m["n_val"], "n_test": m["n_test"],
+                   "n_train_series": int(len(np.unique(np.asarray(w["series_train"])))),
+                   "n_val_series": m["n_val_series"], "n_test_series": m["n_test_series"],
+                   "n_eligible_series": m["n_eligible_series"]},
+    }
+    SPLIT_META_DIR.mkdir(parents=True, exist_ok=True)
+    out = SPLIT_META_DIR / f"{tag}.json"
+    json.dump(payload, open(out, "w"), indent=2)
+    print(f"  [saved] split meta -> {out}")
 
 
 def run_source(source, targets, qset, quantiles, seed, device):

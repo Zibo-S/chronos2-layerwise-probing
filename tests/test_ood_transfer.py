@@ -245,6 +245,72 @@ def test_extended_v2_windows_split_and_budget():
         config.set_dataset_set(orig)
 
 
+# 12 (rolling dispatch). extended_v3_rolling must fit through the EXPLICIT temporal-val path
+# (fit_quantile_probe_explicit_val); the legacy 80/20-carve fit must never run for a rolling
+# set — and vice versa for extended_v2. Everything heavy is monkeypatched, so this only tests
+# the driver's routing (the fit contracts themselves are covered elsewhere).
+def test_rolling_dispatch_uses_explicit_val_fit():
+    from probing import config
+    import experiments.run_ood_transfer as R
+
+    n_tr, n_va, h = 12, 4, 8
+
+    def fake_windows(tag):
+        rng = np.random.default_rng(0)
+        return {"X_train": rng.normal(size=(n_tr, 16)).astype(np.float32),
+                "y_train": np.zeros(n_tr, np.float32),
+                "X_val": rng.normal(size=(n_va, 16)).astype(np.float32),
+                "y_val": np.zeros(n_va, np.float32),
+                "Y_train_traj": rng.normal(size=(n_tr, h)).astype(np.float32),
+                "Y_val_traj": rng.normal(size=(n_va, h)).astype(np.float32),
+                "meta": {"n_val": n_va, "n_val_series": n_va}}
+
+    def fake_extract(tag, split, X, y, pooling="content"):
+        return ({i: np.zeros((len(X), D), np.float32) for i in range(NUM_LAYERS)}, y)
+
+    SENTINEL = {"probe": "sentinel"}
+    calls = {"explicit": 0, "legacy": 0}
+
+    def explicit_ok(*a, **k):
+        calls["explicit"] += 1
+        return SENTINEL
+
+    def legacy_ok(*a, **k):
+        calls["legacy"] += 1
+        return SENTINEL
+
+    def must_not_run(*a, **k):
+        raise AssertionError("wrong fit path for the active dataset set")
+
+    orig_set = config.DATASET_SET
+    saved = {name: getattr(R, name) for name in
+             ("build_windows", "extract_window_features", "load_checkpoints",
+              "save_checkpoints", "fit_quantile_probe", "fit_quantile_probe_explicit_val")}
+    try:
+        R.build_windows = fake_windows
+        R.extract_window_features = fake_extract
+        R.load_checkpoints = lambda *a, **k: None       # force the fit branch (no resume)
+        R.save_checkpoints = lambda *a, **k: "<unsaved>"
+
+        config.set_dataset_set("extended_v3_rolling")
+        R.fit_quantile_probe_explicit_val, R.fit_quantile_probe = explicit_ok, must_not_run
+        fitted, _ = R.get_source_probe("m4_hourly", "q9", Q9, SEED, "cpu")
+        assert fitted is SENTINEL and calls == {"explicit": 1, "legacy": 0}, \
+            "rolling set must fit via fit_quantile_probe_explicit_val (no 80/20 carve)"
+
+        config.set_dataset_set("extended_v2")
+        R.fit_quantile_probe_explicit_val, R.fit_quantile_probe = must_not_run, legacy_ok
+        fitted, _ = R.get_source_probe("m4_hourly", "q9", Q9, SEED, "cpu")
+        assert fitted is SENTINEL and calls == {"explicit": 1, "legacy": 1}, \
+            "non-rolling set must keep the legacy 80/20-carve fit path"
+    finally:
+        for name, fn in saved.items():
+            setattr(R, name, fn)
+        config.set_dataset_set(orig_set)
+        R._derive_dirs()
+        R._derive_datasets()
+
+
 TESTS = [test_fit_predict_reproduces_quantile_probe,
          test_frozen_probe_reused_across_targets_not_mutated,
          test_training_signature_has_no_target_or_val,
@@ -255,6 +321,7 @@ TESTS = [test_fit_predict_reproduces_quantile_probe,
          test_matrix_order_is_per_set,
          test_budget_and_cache_namespacing,
          test_extended_v2_windows_split_and_budget,
+         test_rolling_dispatch_uses_explicit_val_fit,
          test_smoke_real_cache]
 
 if __name__ == "__main__":

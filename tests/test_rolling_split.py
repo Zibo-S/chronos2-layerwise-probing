@@ -9,6 +9,9 @@ split CONTRACT the design locked:
   * every selected val/test series keeps >= 1 retained training window;
   * origins are deterministic under seed 0;
   * the canonical MASE denominator uses history STRICTLY BEFORE the test target;
+  * windows whose context OR target contains a NaN are rejected (and a series left with < 3
+    valid origins becomes ineligible);
+  * constant contexts are rejected under the same sigma_eps rule as _make_examples;
   * the real (1394, 262, 262) budget resolves;
   * extended_v2 is unchanged (still cross_series for short M4, 1500/650, no val split).
 
@@ -121,6 +124,44 @@ def test_mase_history_excludes_test_target():
     # would blow it up if the denominator wrongly included the test target region.
     assert np.allclose(w["test_denominator"], 24.0)
     assert w["meta"]["mase_canonical"] is True
+
+
+def _origins_for(w, sid):
+    """(train_origins, val_origin, test_origin) recorded for series `sid` (val/test None if absent)."""
+    m = w["meta"]
+    tr = [m["origins"]["train"][j] for j in range(len(w["series_train"])) if w["series_train"][j] == sid]
+    va = [m["origins"]["val"][j] for j in range(len(w["series_val"])) if w["series_val"][j] == sid]
+    te = [m["origins"]["test"][j] for j in range(len(w["series_test"])) if w["series_test"][j] == sid]
+    return tr, (va[0] if va else None), (te[0] if te else None)
+
+
+def test_nan_windows_rejected():
+    # len-800 series -> valid ctx-starts {0,64,128,192}, targets at {512,576,640,704}.
+    series = _series(8, 800)
+    series[0][600] = np.nan     # kills origin 576 (target) AND 640/704 (contexts) -> 1 valid -> OUT
+    series[1][0] = np.nan       # kills only origin 512 (context) -> 3 valid -> still eligible
+    with _active(series, "extended_v3_rolling", (20, 7, 7)):     # all 7 eligible selected
+        w = id_data.build_windows("m4_hourly")
+    m = w["meta"]
+    assert m["excluded_series"]["insufficient_valid"] == 1
+    assert 0 not in set(w["series_train"].tolist()) and 0 not in set(m["selected_series"])
+    tr, va, te = _origins_for(w, 1)                              # NaN dropped 512 leakage-free:
+    assert (tr, va, te) == ([576], 640, 704)
+    for X in (w["X_train"], w["X_val"], w["X_test"], w["Y_train_traj"], w["Y_val_traj"], w["Y_test_traj"]):
+        assert np.isfinite(X).all(), "a NaN-bearing window leaked into a split"
+
+
+def test_constant_context_rejected():
+    series = _series(8, 800)
+    series[0][:] = 5.0          # fully constant -> zero valid origins -> ineligible
+    series[1][:512] = 7.0       # constant FIRST context only -> origin 512 invalid, 576/640/704 keep
+    with _active(series, "extended_v3_rolling", (20, 7, 7)):
+        w = id_data.build_windows("m4_hourly")
+    m = w["meta"]
+    assert m["excluded_series"]["insufficient_valid"] == 1
+    assert 0 not in set(w["series_train"].tolist()) and 0 not in set(m["selected_series"])
+    tr, va, te = _origins_for(w, 1)
+    assert (tr, va, te) == ([576], 640, 704)                     # same rule as _make_examples
 
 
 def test_real_budget_resolves():
