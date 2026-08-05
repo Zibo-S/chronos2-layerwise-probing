@@ -450,7 +450,8 @@
   "L9",
   "L10",
   "L11",
-  "L12"
+  "L12",
+  "L12_postln"
  ],
  "per_layer": [
   {
@@ -634,6 +635,22 @@
    "dataset_effrank": 23.009592726747943,
    "dataset_exp_S1": 1.2988278784261789,
    "prompt_exp_S1_mean": 2.062707560636936
+  },
+  {
+   "layer": "L12_postln",
+   "prompt_entropy_mean": 1.5280801634330556,
+   "prompt_entropy_std": 0.20255828223994943,
+   "prompt_entropy_norm_mean": 0.44091073477313325,
+   "prompt_entropy_norm_std": 0.0584459658557124,
+   "prompt_effrank_mean": 15.439438075588336,
+   "prompt_effrank_std": 2.1838190384590552,
+   "dataset_entropy": 1.7568229454771935,
+   "dataset_entropy_norm": 0.3315812972188565,
+   "dataset_effrank": 69.12033873564296,
+   "dataset_exp_S1": 5.794000267277428,
+   "prompt_exp_S1_mean": 4.713659636520498,
+   "note": "post final-layer-norm encoder output (the tensor the head consumes); L12 above is the same block output PRE final norm",
+   "hook_module": "encoder.final_layer_norm"
   }
  ]
 }
