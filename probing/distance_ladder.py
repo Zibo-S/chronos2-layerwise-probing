@@ -275,6 +275,25 @@ def _panel(ax, df, title):
     return rho
 
 
+def make_single_panel(version: str) -> float:
+    """One full-width single-panel figure for ONE gain version, read from its join CSV alone.
+
+    Same encoding as the two-panel figure (it reuses ``_panel``): circles = near 4x4,
+    triangles = far 4x3, colored by source, Spearman rho in the title. The existing
+    two-panel file is not touched.
+    """
+    df = pd.read_csv(LADDER_DIR / f"join_{version}.csv")
+    fig, ax = plt.subplots(figsize=(10.5, 6.5))
+    rho = _panel(ax, df, version)
+    ax.legend(fontsize=8, ncol=2, loc="best")
+    fig.tight_layout()
+    out = LADDER_DIR / f"fig_distance_vs_gain_{'v3' if 'v3' in version else 'v2'}.png"
+    fig.savefig(out, dpi=140, bbox_inches="tight")
+    plt.close(fig)
+    print(f"  [saved] {out.relative_to(OUT_DIR)}  (n={len(df)}, rho={rho:+.3f})")
+    return rho
+
+
 def make_figure(joins: dict[str, pd.DataFrame], path: Path, suptitle: str) -> dict:
     fig, axes = plt.subplots(1, 2, figsize=(14.5, 6.0), sharey=False)
     rhos = {}
