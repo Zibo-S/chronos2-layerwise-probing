@@ -1,0 +1,122 @@
+{
+ "provenance": {
+  "dataset": "electricity",
+  "probe_tag": "monash_electricity_hourly",
+  "accuracy_source": "results/phase0_trio/id_probing_summary.json",
+  "accuracy_field": "id_datasets[tag].poolings.content.binned_accuracy",
+  "rank_source": "results/repr_metrics/electricity/metrics.json",
+  "rank_field": "per_layer[*].dataset_effrank",
+  "layer_mapping": "probe layer_k -> repr L(k+1); Embed has no probe point; L12_postln is rank-only",
+  "thresholds": [
+   0.95,
+   0.98
+  ],
+  "criterion": "Masarczyk et al. 2023: tunnel starts at the first layer whose ID probe accuracy >= t * acc(final layer); inside the tunnel rank should collapse while accuracy stays flat",
+  "note_postprocessing_only": "no probe training, no forward passes"
+ },
+ "probe_axis": [
+  "L1",
+  "L2",
+  "L3",
+  "L4",
+  "L5",
+  "L6",
+  "L7",
+  "L8",
+  "L9",
+  "L10",
+  "L11",
+  "L12"
+ ],
+ "accuracy_by_layer": {
+  "L1": 0.378,
+  "L2": 0.39866666666666667,
+  "L3": 0.37866666666666665,
+  "L4": 0.37733333333333335,
+  "L5": 0.3913333333333333,
+  "L6": 0.4126666666666667,
+  "L7": 0.41333333333333333,
+  "L8": 0.4086666666666667,
+  "L9": 0.36466666666666664,
+  "L10": 0.37866666666666665,
+  "L11": 0.3993333333333333,
+  "L12": 0.388
+ },
+ "accuracy_final_L12": 0.388,
+ "rank_by_layer": {
+  "L1": 24.65880442095248,
+  "L2": 33.33154898467933,
+  "L3": 40.34474081164446,
+  "L4": 49.763512967742166,
+  "L5": 57.01535684854818,
+  "L6": 62.5997113399086,
+  "L7": 67.06682455784498,
+  "L8": 75.69264586856907,
+  "L9": 74.51215660311931,
+  "L10": 76.04620082022348,
+  "L11": 86.30049172904893,
+  "L12": 23.009592726747943
+ },
+ "rank_L12_postln": 69.12033873564296,
+ "thresholds": {
+  "0.95": {
+   "threshold": 0.95,
+   "target_accuracy": 0.3686,
+   "tunnel_start": "L1",
+   "tunnel_start_probe_index": 0,
+   "nominal_tunnel_region": [
+    "L1",
+    "L12"
+   ],
+   "region_layers": [
+    "L1",
+    "L2",
+    "L3",
+    "L4",
+    "L5",
+    "L6",
+    "L7",
+    "L8",
+    "L9",
+    "L10",
+    "L11",
+    "L12"
+   ],
+   "accuracy_at_start": 0.378,
+   "rank_at_tunnel_start": 24.65880442095248,
+   "rank_max_within_region": 86.30049172904893,
+   "rank_max_layer": "L11",
+   "rank_at_L11": 86.30049172904893,
+   "ratio_rank_L11_over_start": 3.4997841037142807
+  },
+  "0.98": {
+   "threshold": 0.98,
+   "target_accuracy": 0.38024,
+   "tunnel_start": "L2",
+   "tunnel_start_probe_index": 1,
+   "nominal_tunnel_region": [
+    "L2",
+    "L12"
+   ],
+   "region_layers": [
+    "L2",
+    "L3",
+    "L4",
+    "L5",
+    "L6",
+    "L7",
+    "L8",
+    "L9",
+    "L10",
+    "L11",
+    "L12"
+   ],
+   "accuracy_at_start": 0.39866666666666667,
+   "rank_at_tunnel_start": 33.33154898467933,
+   "rank_max_within_region": 86.30049172904893,
+   "rank_max_layer": "L11",
+   "rank_at_L11": 86.30049172904893,
+   "ratio_rank_L11_over_start": 2.589153350440344
+  }
+ }
+}
