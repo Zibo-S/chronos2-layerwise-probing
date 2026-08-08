@@ -1,0 +1,723 @@
+{
+ "provenance": {
+  "run": "electricity",
+  "kind": "pretrained",
+  "tag": "monash_electricity_hourly",
+  "B": 5000,
+  "seed": 0,
+  "n_series": 200,
+  "resample_unit": "series",
+  "schemes": {
+   "bootstrap_with_replacement": {
+    "m": 200,
+    "used_for": [
+     "prompt_entropy_norm_mean",
+     "prompt_effrank_mean"
+    ],
+    "validity": "plain sample means -> unbiased -> genuine 95% CIs",
+    "index_sha256_16": "c8086644b0c09f34"
+   },
+   "subsampling_without_replacement": {
+    "m": 126,
+    "fraction": 0.632,
+    "used_for": [
+     "dataset_effrank",
+     "dataset_entropy",
+     "all derived comparisons"
+    ],
+    "validity": "fixed distinct-n -> shared offset cancels in cross-layer comparisons; NOT a CI for the n=200 value",
+    "index_sha256_16": "d2cc2a218af8cab5"
+   }
+  },
+  "dtype": "float64",
+  "method": "dataset-level spectra via eigenvalues of the resampled Gram submatrix; verified equal to the committed metric functions on every layer",
+  "cache_files": [
+   "results/repr_metrics/pretrained_cache/monash_electricity_hourly__seed0__C512.npz",
+   "results/repr_metrics/pretrained_cache/monash_electricity_hourly__seed0__C512__postln.npz"
+  ],
+  "postprocessing_only": "no forward passes, no probe training",
+  "B_reduced": false,
+  "BIAS_NOTE": "Spectral statistics of the dataset-level matrix (effective rank, matrix entropy) are NOT smooth functionals of the empirical distribution at fixed n: they grow with the number of DISTINCT sampling units. A classical bootstrap draw (n=200 with replacement) retains only ~63.2% distinct series (~126.5 of 200 observed), so the resampled statistic sits systematically BELOW the full-sample value. The compression is layer-dependent, scaling with the layer's rank: on pretrained electricity we measured -11.2% at Embed (point effrank 17.4), -26.1% at L12 (23.0), -29.9% at L6 (62.6) and -32.3% at L11 (86.3). Because high-rank layers are compressed more than low-rank ones, a naive bootstrap does not merely widen these curves, it distorts their SHAPE and drags the argmax toward lower layers. Controls confirm this is an estimator property, not a pipeline error: an identity index (all 200 series, each once) reproduces the point estimate exactly, and evaluating only the DISTINCT rows of a draw (no duplicates) recovers most of the gap (e.g. L11: 60.4 distinct-only vs 58.4 with duplicates vs 86.3 full-n) \u2014 i.e. the effect is driven by distinct-unit coverage, with duplication a smaller second-order term. We therefore report the full-n point estimate as primary for spectral statistics, use m-out-of-n subsampling WITHOUT replacement (m=126) for every cross-layer comparison so the shared offset cancels, and reserve true bootstrap CIs for the prompt-level means, which are unbiased sample means."
+ },
+ "layer_axis": [
+  "Embed",
+  "L1",
+  "L2",
+  "L3",
+  "L4",
+  "L5",
+  "L6",
+  "L7",
+  "L8",
+  "L9",
+  "L10",
+  "L11",
+  "L12",
+  "L12_postln"
+ ],
+ "point_estimates_full_n": {
+  "Embed": {
+   "dataset_effrank": 17.394238950511546,
+   "dataset_entropy": 0.7292050195767379,
+   "prompt_entropy_norm_mean": 0.4263707052317852,
+   "prompt_effrank_mean": 11.742268778664538
+  },
+  "L1": {
+   "dataset_effrank": 24.65880451258715,
+   "dataset_entropy": 0.6696388439703017,
+   "prompt_entropy_norm_mean": 0.4777031258643422,
+   "prompt_effrank_mean": 15.096709021484576
+  },
+  "L2": {
+   "dataset_effrank": 33.33154914498386,
+   "dataset_entropy": 0.7392173991881765,
+   "prompt_entropy_norm_mean": 0.514619349447994,
+   "prompt_effrank_mean": 17.001315318841826
+  },
+  "L3": {
+   "dataset_effrank": 40.34474076387378,
+   "dataset_entropy": 0.8041508586466295,
+   "prompt_entropy_norm_mean": 0.5736419867703844,
+   "prompt_effrank_mean": 19.73051108868354
+  },
+  "L4": {
+   "dataset_effrank": 49.76351311180346,
+   "dataset_entropy": 0.8764677909862898,
+   "prompt_entropy_norm_mean": 0.6114575162379089,
+   "prompt_effrank_mean": 21.47117167924687
+  },
+  "L5": {
+   "dataset_effrank": 57.015356917829365,
+   "dataset_entropy": 0.944145992539564,
+   "prompt_entropy_norm_mean": 0.6395751347951014,
+   "prompt_effrank_mean": 22.604016395105944
+  },
+  "L6": {
+   "dataset_effrank": 62.59971138026215,
+   "dataset_entropy": 1.0028707608409098,
+   "prompt_entropy_norm_mean": 0.6745393070377361,
+   "prompt_effrank_mean": 23.846539201803452
+  },
+  "L7": {
+   "dataset_effrank": 67.06682458723138,
+   "dataset_entropy": 0.9990195569142591,
+   "prompt_entropy_norm_mean": 0.6738105509297244,
+   "prompt_effrank_mean": 23.910387351434032
+  },
+  "L8": {
+   "dataset_effrank": 75.69264591086855,
+   "dataset_entropy": 1.1301690480516136,
+   "prompt_entropy_norm_mean": 0.6543987247442974,
+   "prompt_effrank_mean": 23.66436794117749
+  },
+  "L9": {
+   "dataset_effrank": 74.51215659264068,
+   "dataset_entropy": 1.068522924528256,
+   "prompt_entropy_norm_mean": 0.6224588525305381,
+   "prompt_effrank_mean": 22.856062506994313
+  },
+  "L10": {
+   "dataset_effrank": 76.04620084001373,
+   "dataset_entropy": 1.1141715658664029,
+   "prompt_entropy_norm_mean": 0.608936267852556,
+   "prompt_effrank_mean": 22.606740414534343
+  },
+  "L11": {
+   "dataset_effrank": 86.30049183280967,
+   "dataset_entropy": 1.5539053826843616,
+   "prompt_entropy_norm_mean": 0.6393794186230434,
+   "prompt_effrank_mean": 22.830666323770302
+  },
+  "L12": {
+   "dataset_effrank": 23.009592527638517,
+   "dataset_entropy": 0.26146222424854715,
+   "prompt_entropy_norm_mean": 0.20797476267364057,
+   "prompt_effrank_mean": 9.730858164040068
+  },
+  "L12_postln": {
+   "dataset_effrank": 69.12033859805351,
+   "dataset_entropy": 1.7568229438656786,
+   "prompt_entropy_norm_mean": 0.44091073477313325,
+   "prompt_effrank_mean": 15.439438075588336
+  }
+ },
+ "prompt_level_bootstrap_ci": {
+  "Embed": {
+   "prompt_entropy_norm_mean": {
+    "point": 0.4263707052317852,
+    "boot_mean": 0.4263270110455038,
+    "lo": 0.41930693021422905,
+    "hi": 0.4335404057912025
+   },
+   "prompt_effrank_mean": {
+    "point": 11.742268778664538,
+    "boot_mean": 11.739046087046386,
+    "lo": 11.476822804755718,
+    "hi": 12.011736238150208
+   }
+  },
+  "L1": {
+   "prompt_entropy_norm_mean": {
+    "point": 0.4777031258643422,
+    "boot_mean": 0.4776498301824843,
+    "lo": 0.47059869245458585,
+    "hi": 0.4848223749427721
+   },
+   "prompt_effrank_mean": {
+    "point": 15.096709021484576,
+    "boot_mean": 15.093240970349317,
+    "lo": 14.801703675755755,
+    "hi": 15.392114375051834
+   }
+  },
+  "L2": {
+   "prompt_entropy_norm_mean": {
+    "point": 0.514619349447994,
+    "boot_mean": 0.5145679039809287,
+    "lo": 0.507807885923539,
+    "hi": 0.5213872740080432
+   },
+   "prompt_effrank_mean": {
+    "point": 17.001315318841826,
+    "boot_mean": 16.998213202356954,
+    "lo": 16.724534097427078,
+    "hi": 17.277861559379488
+   }
+  },
+  "L3": {
+   "prompt_entropy_norm_mean": {
+    "point": 0.5736419867703844,
+    "boot_mean": 0.5735948877176057,
+    "lo": 0.5668785767218167,
+    "hi": 0.5803517333173698
+   },
+   "prompt_effrank_mean": {
+    "point": 19.73051108868354,
+    "boot_mean": 19.727880431218914,
+    "lo": 19.473012527543915,
+    "hi": 19.98280170856515
+   }
+  },
+  "L4": {
+   "prompt_entropy_norm_mean": {
+    "point": 0.6114575162379089,
+    "boot_mean": 0.6114095388603532,
+    "lo": 0.6046889998623096,
+    "hi": 0.6182906645670218
+   },
+   "prompt_effrank_mean": {
+    "point": 21.47117167924687,
+    "boot_mean": 21.468637287636298,
+    "lo": 21.22482224773721,
+    "hi": 21.71344907227274
+   }
+  },
+  "L5": {
+   "prompt_entropy_norm_mean": {
+    "point": 0.6395751347951014,
+    "boot_mean": 0.6395317983154128,
+    "lo": 0.6331506193323863,
+    "hi": 0.645914113229606
+   },
+   "prompt_effrank_mean": {
+    "point": 22.604016395105944,
+    "boot_mean": 22.60182074623064,
+    "lo": 22.373852339373833,
+    "hi": 22.831019568875124
+   }
+  },
+  "L6": {
+   "prompt_entropy_norm_mean": {
+    "point": 0.6745393070377361,
+    "boot_mean": 0.6744984196533733,
+    "lo": 0.6678481795160687,
+    "hi": 0.6811814569755191
+   },
+   "prompt_effrank_mean": {
+    "point": 23.846539201803452,
+    "boot_mean": 23.84460970630932,
+    "lo": 23.630114349432173,
+    "hi": 24.0635671006256
+   }
+  },
+  "L7": {
+   "prompt_entropy_norm_mean": {
+    "point": 0.6738105509297244,
+    "boot_mean": 0.6737596658663053,
+    "lo": 0.6674391263440969,
+    "hi": 0.6800982411207176
+   },
+   "prompt_effrank_mean": {
+    "point": 23.910387351434032,
+    "boot_mean": 23.90828209586314,
+    "lo": 23.699336791437336,
+    "hi": 24.120875219743183
+   }
+  },
+  "L8": {
+   "prompt_entropy_norm_mean": {
+    "point": 0.6543987247442974,
+    "boot_mean": 0.6543459374252413,
+    "lo": 0.6478458160921043,
+    "hi": 0.6610588752666534
+   },
+   "prompt_effrank_mean": {
+    "point": 23.66436794117749,
+    "boot_mean": 23.66220162984184,
+    "lo": 23.45113389791251,
+    "hi": 23.87799318150759
+   }
+  },
+  "L9": {
+   "prompt_entropy_norm_mean": {
+    "point": 0.6224588525305381,
+    "boot_mean": 0.6224031433472834,
+    "lo": 0.615397996932914,
+    "hi": 0.6297825415633694
+   },
+   "prompt_effrank_mean": {
+    "point": 22.856062506994313,
+    "boot_mean": 22.853976328575214,
+    "lo": 22.633978337229085,
+    "hi": 23.079951572690355
+   }
+  },
+  "L10": {
+   "prompt_entropy_norm_mean": {
+    "point": 0.608936267852556,
+    "boot_mean": 0.6088817113856579,
+    "lo": 0.6022767501892564,
+    "hi": 0.615613859922311
+   },
+   "prompt_effrank_mean": {
+    "point": 22.606740414534343,
+    "boot_mean": 22.604559610443054,
+    "lo": 22.388248084366666,
+    "hi": 22.826610201601927
+   }
+  },
+  "L11": {
+   "prompt_entropy_norm_mean": {
+    "point": 0.6393794186230434,
+    "boot_mean": 0.6393624615917961,
+    "lo": 0.6335135824721623,
+    "hi": 0.6449583818369562
+   },
+   "prompt_effrank_mean": {
+    "point": 22.830666323770302,
+    "boot_mean": 22.829126621558483,
+    "lo": 22.6339457892995,
+    "hi": 23.027686296345497
+   }
+  },
+  "L12": {
+   "prompt_entropy_norm_mean": {
+    "point": 0.20797476267364057,
+    "boot_mean": 0.20799426498773438,
+    "lo": 0.20457515234093,
+    "hi": 0.21121504579751993
+   },
+   "prompt_effrank_mean": {
+    "point": 9.730858164040068,
+    "boot_mean": 9.730091753524746,
+    "lo": 9.53975251546347,
+    "hi": 9.921966821308054
+   }
+  },
+  "L12_postln": {
+   "prompt_entropy_norm_mean": {
+    "point": 0.44091073477313325,
+    "boot_mean": 0.44093947948847945,
+    "lo": 0.43284138926312876,
+    "hi": 0.4492456839743361
+   },
+   "prompt_effrank_mean": {
+    "point": 15.439438075588336,
+    "boot_mean": 15.438194469557324,
+    "lo": 15.136387646457408,
+    "hi": 15.74597114322915
+   }
+  }
+ },
+ "dataset_level_subsampling_band": {
+  "Embed": {
+   "dataset_effrank": {
+    "point_full_n": 17.394238950511546,
+    "sub_mean": 15.783539956800587,
+    "lo": 15.10384318696817,
+    "hi": 16.340375306825113,
+    "signed_offset_vs_full_n": -0.09259956691945932
+   },
+   "dataset_entropy": {
+    "point_full_n": 0.7292050195767379,
+    "sub_mean": 0.722591913355862,
+    "lo": 0.672787294410865,
+    "hi": 0.7668874201808666,
+    "signed_offset_vs_full_n": -0.009068925807332463
+   }
+  },
+  "L1": {
+   "dataset_effrank": {
+    "point_full_n": 24.65880451258715,
+    "sub_mean": 20.61624110702218,
+    "lo": 19.61496419960918,
+    "hi": 21.49817909071985,
+    "signed_offset_vs_full_n": -0.1639399591939436
+   },
+   "dataset_entropy": {
+    "point_full_n": 0.6696388439703017,
+    "sub_mean": 0.6623585786071667,
+    "lo": 0.6152608067696719,
+    "hi": 0.7046858270881126,
+    "signed_offset_vs_full_n": -0.010871928097793939
+   }
+  },
+  "L2": {
+   "dataset_effrank": {
+    "point_full_n": 33.33154914498386,
+    "sub_mean": 26.50165444343281,
+    "lo": 25.271014950574457,
+    "hi": 27.613076637391135,
+    "signed_offset_vs_full_n": -0.20490780887029061
+   },
+   "dataset_entropy": {
+    "point_full_n": 0.7392173991881765,
+    "sub_mean": 0.7294582100912245,
+    "lo": 0.6786657551860186,
+    "hi": 0.7740608921798374,
+    "signed_offset_vs_full_n": -0.01320205545441679
+   }
+  },
+  "L3": {
+   "dataset_effrank": {
+    "point_full_n": 40.34474076387378,
+    "sub_mean": 30.968156432843454,
+    "lo": 29.627397594507222,
+    "hi": 32.184539465920345,
+    "signed_offset_vs_full_n": -0.23241156476649064
+   },
+   "dataset_entropy": {
+    "point_full_n": 0.8041508586466295,
+    "sub_mean": 0.7920152347467955,
+    "lo": 0.7379338561006866,
+    "hi": 0.8402586555548963,
+    "signed_offset_vs_full_n": -0.015091227932353448
+   }
+  },
+  "L4": {
+   "dataset_effrank": {
+    "point_full_n": 49.76351311180346,
+    "sub_mean": 37.076872505244694,
+    "lo": 35.704318310566066,
+    "hi": 38.35363545243667,
+    "signed_offset_vs_full_n": -0.2549386048781514
+   },
+   "dataset_entropy": {
+    "point_full_n": 0.8764677909862898,
+    "sub_mean": 0.8609331775196246,
+    "lo": 0.8036584947757309,
+    "hi": 0.9126607845116808,
+    "signed_offset_vs_full_n": -0.01772411219947292
+   }
+  },
+  "L5": {
+   "dataset_effrank": {
+    "point_full_n": 57.015356917829365,
+    "sub_mean": 41.64099020101876,
+    "lo": 40.24119047474595,
+    "hi": 42.955661383644824,
+    "signed_offset_vs_full_n": -0.26965308204538946
+   },
+   "dataset_entropy": {
+    "point_full_n": 0.944145992539564,
+    "sub_mean": 0.9253726495997217,
+    "lo": 0.8659481585938897,
+    "hi": 0.9787669751187363,
+    "signed_offset_vs_full_n": -0.01988394071275545
+   }
+  },
+  "L6": {
+   "dataset_effrank": {
+    "point_full_n": 62.59971138026215,
+    "sub_mean": 45.07109421369101,
+    "lo": 43.65723831760756,
+    "hi": 46.397838141525696,
+    "signed_offset_vs_full_n": -0.2800111498932239
+   },
+   "dataset_entropy": {
+    "point_full_n": 1.0028707608409098,
+    "sub_mean": 0.9817301460254936,
+    "lo": 0.9198526478617343,
+    "hi": 1.0374322484653948,
+    "signed_offset_vs_full_n": -0.021080098892991676
+   }
+  },
+  "L7": {
+   "dataset_effrank": {
+    "point_full_n": 67.06682458723138,
+    "sub_mean": 47.431219033576596,
+    "lo": 46.01467283454242,
+    "hi": 48.76558412326555,
+    "signed_offset_vs_full_n": -0.29277672939644644
+   },
+   "dataset_entropy": {
+    "point_full_n": 0.9990195569142591,
+    "sub_mean": 0.9764620398341173,
+    "lo": 0.9159869559658714,
+    "hi": 1.0305472408280607,
+    "signed_offset_vs_full_n": -0.022579655146909065
+   }
+  },
+  "L8": {
+   "dataset_effrank": {
+    "point_full_n": 75.69264591086855,
+    "sub_mean": 53.30641061958472,
+    "lo": 51.890408025849545,
+    "hi": 54.676225943264676,
+    "signed_offset_vs_full_n": -0.2957517870051024
+   },
+   "dataset_entropy": {
+    "point_full_n": 1.1301690480516136,
+    "sub_mean": 1.1024097094486638,
+    "lo": 1.0396729368358437,
+    "hi": 1.1611413288698205,
+    "signed_offset_vs_full_n": -0.024562111881232505
+   }
+  },
+  "L9": {
+   "dataset_effrank": {
+    "point_full_n": 74.51215659264068,
+    "sub_mean": 52.230593706282335,
+    "lo": 50.76352231835631,
+    "hi": 53.67170268711488,
+    "signed_offset_vs_full_n": -0.29903258616137035
+   },
+   "dataset_entropy": {
+    "point_full_n": 1.068522924528256,
+    "sub_mean": 1.0425015972193192,
+    "lo": 0.9773645063112861,
+    "hi": 1.1035495065917524,
+    "signed_offset_vs_full_n": -0.02435261491504723
+   }
+  },
+  "L10": {
+   "dataset_effrank": {
+    "point_full_n": 76.04620084001373,
+    "sub_mean": 53.13505296521555,
+    "lo": 51.64010784449345,
+    "hi": 54.581215634192255,
+    "signed_offset_vs_full_n": -0.3012793225923111
+   },
+   "dataset_entropy": {
+    "point_full_n": 1.1141715658664029,
+    "sub_mean": 1.0862921907353136,
+    "lo": 1.0144213984240766,
+    "hi": 1.1522105492358303,
+    "signed_offset_vs_full_n": -0.025022515369443762
+   }
+  },
+  "L11": {
+   "dataset_effrank": {
+    "point_full_n": 86.30049183280967,
+    "sub_mean": 60.03248263601351,
+    "lo": 58.6609986908947,
+    "hi": 61.336797180114345,
+    "signed_offset_vs_full_n": -0.30437844140778814
+   },
+   "dataset_entropy": {
+    "point_full_n": 1.5539053826843616,
+    "sub_mean": 1.5124141483832472,
+    "lo": 1.4311165464311417,
+    "hi": 1.5851380863649107,
+    "signed_offset_vs_full_n": -0.026701261713527637
+   }
+  },
+  "L12": {
+   "dataset_effrank": {
+    "point_full_n": 23.009592527638517,
+    "sub_mean": 17.42658031840883,
+    "lo": 16.610708922071222,
+    "hi": 18.180181212488257,
+    "signed_offset_vs_full_n": -0.24263846491516608
+   },
+   "dataset_entropy": {
+    "point_full_n": 0.26146222424854715,
+    "sub_mean": 0.2581803792194996,
+    "lo": 0.2331794698891551,
+    "hi": 0.28024928841492014,
+    "signed_offset_vs_full_n": -0.012551889813068411
+   }
+  },
+  "L12_postln": {
+   "dataset_effrank": {
+    "point_full_n": 69.12033859805351,
+    "sub_mean": 50.56433519687447,
+    "lo": 49.43533222949071,
+    "hi": 51.61372535310777,
+    "signed_offset_vs_full_n": -0.2684593822533965
+   },
+   "dataset_entropy": {
+    "point_full_n": 1.7568229438656786,
+    "sub_mean": 1.7175890722187928,
+    "lo": 1.6276601974856548,
+    "hi": 1.7929616964174002,
+    "signed_offset_vs_full_n": -0.022332285552098048
+   }
+  }
+ },
+ "dataset_level_band_label": "subsampling spread at m=126, not a CI for the n=200 value",
+ "gates": {
+  "near_full_subsample_m199": {
+   "Embed": {
+    "m": 199,
+    "sub_mean": 17.37712760123705,
+    "point_full_n": 17.394238950511546,
+    "signed_deviation": -0.0009837365879117104
+   },
+   "L1": {
+    "m": 199,
+    "sub_mean": 24.61295964206785,
+    "point_full_n": 24.65880451258715,
+    "signed_deviation": -0.001859168415723412
+   },
+   "L2": {
+    "m": 199,
+    "sub_mean": 33.25131145336675,
+    "point_full_n": 33.33154914498386,
+    "signed_deviation": -0.002407259598649113
+   },
+   "L3": {
+    "m": 199,
+    "sub_mean": 40.2317493960573,
+    "point_full_n": 40.34474076387378,
+    "signed_deviation": -0.002800646767760463
+   },
+   "L4": {
+    "m": 199,
+    "sub_mean": 49.608756824134545,
+    "point_full_n": 49.76351311180346,
+    "signed_deviation": -0.0031098344548389652
+   },
+   "L5": {
+    "m": 199,
+    "sub_mean": 56.82686995546144,
+    "point_full_n": 57.015356917829365,
+    "signed_deviation": -0.0033058981396814338
+   },
+   "L6": {
+    "m": 199,
+    "sub_mean": 62.38320686511834,
+    "point_full_n": 62.59971138026215,
+    "signed_deviation": -0.003458554526372388
+   },
+   "L7": {
+    "m": 199,
+    "sub_mean": 66.82179248399281,
+    "point_full_n": 67.06682458723138,
+    "signed_deviation": -0.003653551584507587
+   },
+   "L8": {
+    "m": 199,
+    "sub_mean": 75.41437064109988,
+    "point_full_n": 75.69264591086855,
+    "signed_deviation": -0.003676384494424357
+   },
+   "L9": {
+    "m": 199,
+    "sub_mean": 74.2336524631689,
+    "point_full_n": 74.51215659264068,
+    "signed_deviation": -0.0037377005606530947
+   },
+   "L10": {
+    "m": 199,
+    "sub_mean": 75.75899436314782,
+    "point_full_n": 76.04620084001373,
+    "signed_deviation": -0.0037767366902408503
+   },
+   "L11": {
+    "m": 199,
+    "sub_mean": 85.9701305519467,
+    "point_full_n": 86.30049183280967,
+    "signed_deviation": -0.0038280347405549447
+   },
+   "L12": {
+    "m": 199,
+    "sub_mean": 22.941763083989756,
+    "point_full_n": 23.009592527638517,
+    "signed_deviation": -0.002947876785183698
+   },
+   "L12_postln": {
+    "m": 199,
+    "sub_mean": 68.89198827166933,
+    "point_full_n": 69.12033859805351,
+    "signed_deviation": -0.0033036633068606568
+   }
+  },
+  "offset_monotone_in_rank": {
+   "spearman_rho": -0.9428571428571428,
+   "rank_spread_ratio": 4.961441088531882,
+   "asserted": true
+  }
+ },
+ "derived": {
+  "resampling_scheme": "subsampling (m=126/200, no replacement), B=5000, paired",
+  "argmax_axis": [
+   "Embed",
+   "L1",
+   "L2",
+   "L3",
+   "L4",
+   "L5",
+   "L6",
+   "L7",
+   "L8",
+   "L9",
+   "L10",
+   "L11",
+   "L12"
+  ],
+  "argmax_axis_note": "L12_postln excluded from argmax (representation variant of L12, not a depth position)",
+  "dip_L11_minus_L12postln": {
+   "metric": "dataset_effrank",
+   "scheme": "subsampling m=126, no replacement (shared offset cancels)",
+   "point_full_n": 17.180153234756162,
+   "sub_mean": 9.468147439139045,
+   "lo": 8.902986656132251,
+   "hi": 10.036421885056184,
+   "excludes_0": true
+  },
+  "argmax_prompt_entropy_norm_mean": {
+   "mode_layer": "L6",
+   "mode_fraction": 0.9784,
+   "distribution": {
+    "L6": 0.9784,
+    "L7": 0.0216
+   },
+   "band": [
+    "L6",
+    "L7"
+   ],
+   "fraction_in_band": 1.0
+  },
+  "argmax_dataset_effrank": {
+   "mode_layer": "L11",
+   "mode_fraction": 1.0,
+   "distribution": {
+    "L11": 1.0
+   },
+   "band": [
+    "L10",
+    "L11"
+   ],
+   "fraction_in_band": 1.0
+  },
+  "effrank_range_across_layers": {
+   "metric": "max-min dataset_effrank over Embed..L12",
+   "scheme": "subsampling m=126, no replacement",
+   "point_full_n": 68.90625288229812,
+   "sub_mean": 44.24894267921293,
+   "lo": 43.2292424141763,
+   "hi": 45.27077818805858
+  }
+ }
+}
