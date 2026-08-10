@@ -1,4 +1,11 @@
-"""PT-OOD layerwise probing under PT-ID tunnels — SHARED FORECAST-TOKEN readout (v4 future tokens).
+"""PT-OOD / Probe-ID (fresh target probe) DIAGNOSTIC — SHARED FORECAST-TOKEN readout (v4 future tokens).
+
+DIAGNOSTIC, NOT A TRANSFER EXPERIMENT: the per-layer probes here are re-fit ON each PT-OOD target
+(its own rolling train/val), so this measures how linearly accessible the forecast is on an
+unseen-pretraining dataset — the "Probe-ID" (fresh target probe) quadrant. The genuine cross-dataset
+transfer experiments (PT-ID/Probe-OOD 4×4 and PT-OOD/Probe-OOD) live in experiments/run_fslot_transfer.py
+and reuse the FROZEN PT-ID source probes + sustained tunnels this driver produces. This module also
+remains the producer of those shared inputs (--fit-ptid / --tunnels-only).
 
 Sibling of experiments/run_ptood_probing.py. Same 2023 protocol and same PT-ID/PT-OOD tunnel
 framing (probing.tunnel), but the headline readout is the **shared-head future-token probe**
@@ -56,6 +63,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
+from sklearn.preprocessing import StandardScaler
 
 from probing import config
 from probing.config import NUM_LAYERS, SEED, OUTPUT_PATCH_SIZE   # last index is data-driven (post-LN=13)
@@ -78,6 +86,11 @@ WD_GRID = (1e-5, 1e-4, 1e-3, 1e-2, 1e-1)
 RUN_SEEDS = (0, 1, 2)              # 3 independent probe-init runs; ALL fit fresh (no legacy seed 0)
 RUN_TYPE = "probe_seed"
 RUNS_TAG = "runs" + "-".join(str(s) for s in RUN_SEEDS)
+# This driver's target eval is the PT-OOD / Probe-ID (fresh target probe) DIAGNOSTIC — the probe is
+# re-fit ON the target, so it measures representation accessibility on an unseen-pretraining dataset,
+# NOT cross-dataset probe transfer. The transfer experiments (PT-ID/Probe-OOD 4×4 + PT-OOD/Probe-OOD)
+# live in experiments/run_fslot_transfer.py, which reuses this module's frozen PT-ID probes + tunnels.
+PROBE_ID_DIAG = "PT-OOD / Probe-ID (fresh target probe)"
 
 # The shared-head fslot line adds ONE readout point beyond the 13 block states (Emb, L1..L12):
 # index NUM_LAYERS (=13) = the POST-final-LayerNorm forecast slots (the native head's ACTUAL input,
@@ -131,6 +144,53 @@ def _save_ckpt(ckdir, fitted):
                     "in_features": f["in_features"], "out_features": f["out_features"],
                     "output_patch_size": f["output_patch_size"], "K": f["K"],
                     "family": f["family"]}, ckdir / f"L{i:02d}.pt")
+
+
+def _ptid_ckpt_dir(src, qset, seed):
+    """Path of a frozen PT-ID source probe. Mirrors fit_ptid's save path but is built from the
+    OUT_ROOT constant (not the _derive_dirs() global), so a SIBLING driver can resolve it without
+    running this module's main()."""
+    return (OUT_ROOT / "ptood_probing" / "ptid_checkpoints"
+            / f"{src}__{READOUT}__C{C}_H{H}__{qset}__seed{seed}")
+
+
+def _scaler_from_arrays(mean, scale):
+    """Rebuild the frozen slot StandardScaler from its stored mean_/scale_ (the fslot checkpoint
+    saves the arrays, not the pickled object). Setting mean_/scale_/var_/n_features_in_ makes
+    .transform reproduce the original scaler exactly."""
+    sc = StandardScaler()
+    sc.mean_ = np.asarray(mean, dtype=np.float64)
+    sc.scale_ = np.asarray(scale, dtype=np.float64)
+    sc.var_ = sc.scale_ ** 2
+    sc.n_features_in_ = int(sc.mean_.shape[0])
+    return sc
+
+
+def load_ptid_ckpt(src, qset, seed, device="cpu"):
+    """Reload a frozen PT-ID source probe (saved by _save_ckpt) as a fitted dict that
+    predict_shared_forecast_probe consumes directly — the FROZEN source probe reused across the
+    transfer row. Rebuilds each layer's StandardScaler (from mean/scale) and nn.Linear (from
+    state_dict, eval mode); NEVER trains. Keys = the 14 fslot readout points (L0..L12 + post-LN).
+    Fail-loud on a missing / short checkpoint dir."""
+    d = _ptid_ckpt_dir(src, qset, seed)
+    paths = sorted(d.glob("L*.pt"))
+    if not paths:
+        raise FileNotFoundError(f"no checkpoints in {d} — run run_ptood_probing_ftok --fit-ptid first")
+    fitted = {}
+    for p in paths:
+        i = int(p.stem[1:])                                  # "L07" -> 7
+        ck = torch.load(p, map_location=device, weights_only=False)
+        lin = torch.nn.Linear(ck["in_features"], ck["out_features"])
+        lin.load_state_dict(ck["state_dict"])
+        lin.to(device)
+        lin.eval()
+        fitted[i] = {"linear": lin,
+                     "scaler": _scaler_from_arrays(ck["scaler_mean"], ck["scaler_scale"]),
+                     "wd": float(ck["wd"]), "selection": ck["selection"],
+                     "in_features": int(ck["in_features"]), "out_features": int(ck["out_features"]),
+                     "output_patch_size": int(ck["output_patch_size"]), "K": int(ck["K"]),
+                     "family": ck["family"], "device": str(device)}
+    return fitted
 
 
 # --------------------------------------------------------------------------- #
@@ -274,7 +334,7 @@ def _tunnel_figure(rec):
 def eval_target(tag, qset, quantiles, seed, device):
     """Rolling split on the PT-OOD target; shared-forecast probes trained on target-train, wd on
     target-VAL, scored on target-test. The target's test set never tunes anything."""
-    print(f"\n[eval PT-OOD {READOUT}] {SHORT.get(tag, tag)} ({qset}, run seed {seed})")
+    print(f"\n[eval {PROBE_ID_DIAG} — {READOUT}] {SHORT.get(tag, tag)} ({qset}, run seed {seed})")
     w = build_ood_rolling_windows(tag, C=C, H=H, seed=SEED)     # window seed FIXED across runs
     m = w["meta"]
     if m["n_test"] == 0 or m["n_train"] == 0:
@@ -302,6 +362,8 @@ def eval_target(tag, qset, quantiles, seed, device):
                                          num_layers=len(fitted))
     payload = {
         "dataset": tag, "domain_status": domain_status(tag), "quantile_set": qset,
+        "pt_status": ("PT-ID" if domain_status(tag)["pretraining"] == "pt_id" else "PT-OOD"),
+        "probe_status": "Probe-ID", "quadrant": PROBE_ID_DIAG,
         "run_seed": int(seed), "run_type": RUN_TYPE, "readout": READOUT,
         "pooling_or_token_type": "forecast_slot",
         "protocol": "fresh_probe_2023", "val_split_kind": "temporal_rolling",
@@ -428,8 +490,8 @@ def _target_overlay_figure(tgt, runs, tunnels, qset):
     x = np.arange(T.shape[1])              # 14 for fslot
     ax.set_xticks(x); ax.set_xticklabels(LAYER_LABELS[:T.shape[1]])
     ax.set_xlabel("layer"); ax.set_ylabel("Chronos-2 quantile loss")
-    ax.set_title(f"{SHORT.get(tgt, tgt)} (PT-OOD, shared forecast-token): fresh layerwise probes "
-                 "under the four PT-ID mean-validation tunnels", fontsize=9)
+    ax.set_title(f"{SHORT.get(tgt, tgt)} [{PROBE_ID_DIAG}, shared forecast-token]: fresh layerwise "
+                 "probes under the four PT-ID mean-validation tunnels", fontsize=9)
     ax.legend(fontsize=7)
     fig.tight_layout()
     out = FIG_DIR / f"ptood_curve_with_tunnels__{tgt}__{READOUT}__{qset}__{RUNS_TAG}.png"
@@ -454,9 +516,9 @@ def _delta_heatmap(rows, qset):
     ax.set_xticks(range(len(tgts))); ax.set_xticklabels([SHORT.get(t, t) for t in tgts])
     ax.set_yticks(range(len(PT_ID_TAGS)))
     ax.set_yticklabels([SHORT[s] for s in PT_ID_TAGS])
-    ax.set_xlabel("PT-OOD target (fresh probes)"); ax.set_ylabel("PT-ID source (tunnel)")
+    ax.set_xlabel("PT-OOD target (Probe-ID: fresh target probe)"); ax.set_ylabel("PT-ID source (tunnel)")
     ax.set_title(f"Delta(s,t) = D_OOD - D_ID at the source tunnel start  "
-                 f"[shared forecast-token, {qset}, {RUNS_TAG}]\n"
+                 f"[{PROBE_ID_DIAG}, shared forecast-token, {qset}, {RUNS_TAG}]\n"
                  "positive = late-layer degradation stronger PT-OOD; * = 95% CI excludes 0",
                  fontsize=9)
     fig.colorbar(im, ax=ax, label="Delta (pct points)")
@@ -467,8 +529,8 @@ def _delta_heatmap(rows, qset):
 
 
 def _print_summary(rows):
-    print("\n  == tunnel-effect summary (shared forecast-token, 3-run means; D > 0: final layer "
-          "worse than tunnel entrance) ==")
+    print(f"\n  == tunnel-effect summary [{PROBE_ID_DIAG}, shared forecast-token, 3-run means; "
+          "D > 0: final layer worse than tunnel entrance] ==")
     for r in rows:
         print(f"    {SHORT[r['source_dataset']]:>12} ({LAYER_LABELS[r['l_start']]}) -> "
               f"{SHORT.get(r['target_dataset'], r['target_dataset']):<12} "
