@@ -719,3 +719,112 @@ def build_ood_windows(tag, C: int = 512, H: int = 64, stride: int = 64,
             "Y_train_traj": np.zeros((0, H), np.float32), "Y_test_traj": Y_test_traj,
             "series_train": np.zeros((0,), np.int64), "series_test": series_test,
             "test_denominator": test_denominator, "meta": meta}
+
+
+def build_ood_rolling_windows(tag, C: int = 512, H: int = 64, sigma_eps: float = 1e-6,
+                              m_season: int = 24, seed: int = SEED,
+                              target_train: int | None = 1394,
+                              target_val: int | None = None,
+                              target_test: int | None = None):
+    """Rolling-origin train/val/test windows for a pretraining-OOD target — the 2023-protocol
+    split for training FRESH per-layer probes ON the PT-OOD dataset itself.
+
+    Same per-series protocol as ``_build_rolling_windows`` (H-spaced non-overlapping targets;
+    per eligible series with >= 3 valid origins: LAST origin -> test, 2nd-last -> val, earlier
+    -> train), applied to the OOD loaders' univariate series. Validation is therefore built
+    from data temporally BEFORE the test target — the test split never tunes anything.
+
+    Differences from the PT-ID rolling builder, all forced by the OOD rosters:
+      * the bootstrap/balancing unit is the PARENT CLUSTER (carpark / station / metric-query),
+        which the ``series_*`` arrays carry — coastal has 2 series per station, so a per-series
+        unit would understate the correlation the cluster bootstrap must respect;
+      * ``target_val``/``target_test`` default to None = EVERY eligible series contributes its
+        one val + one test window (rosters are small; no 262-series cap to copy);
+      * the fail-loud train-coverage check is per CLUSTER (every val/test cluster keeps >= 1
+        retained train window), matching the balancing unit;
+      * ``target_train`` defaults to 1394 — the PT-ID rolling train budget — for rough
+        comparability, cluster-balanced round-robin as everywhere else.
+
+    Returns the ``_build_rolling_windows`` dict shape (X_val/y_val/Y_val_traj/series_val
+    included); ``test_denominator`` = per-series seasonal-naive scale of the history strictly
+    before the test target (``mase_canonical`` True)."""
+    loaded = load_ood_target_series(tag)
+    rng = np.random.default_rng(seed)
+
+    eligible = []                                        # (series_idx, cluster_id, starts)
+    excl = {"too_short": 0, "insufficient_valid": 0}
+    for i, (s, cid) in enumerate(zip(loaded["series"], loaded["cluster_ids"])):
+        s = np.asarray(s, dtype=np.float64)
+        if len(s) < C + 3 * H:
+            excl["too_short"] += 1
+            continue
+        starts = _rolling_valid_starts(s, C, H, sigma_eps)
+        if len(starts) < 3:
+            excl["insufficient_valid"] += 1
+            continue
+        eligible.append((i, int(cid), starts))
+    if not eligible:
+        raise RuntimeError(f"{tag}: no eligible series for the rolling split")
+    if target_val is not None or target_test is not None:
+        if target_val != target_test:
+            raise ValueError("rolling split uses the SAME series for val and test; "
+                             f"target_val ({target_val}) must equal target_test ({target_test})")
+        idx = rng.permutation(len(eligible))[:target_val]
+        sel_set = {eligible[j][0] for j in idx}
+    else:
+        sel_set = {e[0] for e in eligible}               # every eligible series carries val+test
+
+    tr_ctx, tr_yv, tr_y, tr_cid = [], [], [], []
+    va_ctx, va_yv, va_y, va_cid = [], [], [], []
+    te_ctx, te_yv, te_y, te_cid, te_den = [], [], [], [], []
+    for i, cid, starts in eligible:
+        s = np.asarray(loaded["series"][i], dtype=np.float64)
+        c, y, v, _ = _make_examples(s, starts[:-2], C, H, sigma_eps)
+        tr_ctx += c; tr_y += y; tr_yv += v; tr_cid += [cid] * len(c)
+        if i in sel_set:
+            c, y, v, _ = _make_examples(s, [starts[-2]], C, H, sigma_eps)
+            va_ctx += c; va_y += y; va_yv += v; va_cid += [cid] * len(c)
+            c, y, v, _ = _make_examples(s, [starts[-1]], C, H, sigma_eps)
+            te_ctx += c; te_y += y; te_yv += v; te_cid += [cid] * len(c)
+            te_den += [_seasonal_naive_scale(s[:starts[-1] + C], m_season)] * len(c)
+
+    n_tr_full = len(tr_y)
+    order = _cluster_balanced_order(np.asarray(tr_cid, np.int64), target_train, rng)
+    tr_ctx = [tr_ctx[j] for j in order]; tr_y = [tr_y[j] for j in order]
+    tr_yv = [tr_yv[j] for j in order]; tr_cid = [tr_cid[j] for j in order]
+
+    missing = set(te_cid) - set(tr_cid)
+    if missing:
+        raise RuntimeError(f"{tag}: {len(missing)} val/test clusters kept no train window after "
+                           f"the cluster-balanced subsample (e.g. {sorted(missing)[:5]}) — raise "
+                           f"target_train ({target_train})")
+
+    def _stack(ctxs, dim):
+        return np.stack(ctxs).astype(np.float32) if ctxs else np.zeros((0, dim), np.float32)
+
+    series_val = np.asarray(va_cid, np.int64)
+    series_test = np.asarray(te_cid, np.int64)
+    meta = {
+        "tag": tag, "ood_target": True, "split_mode": "rolling_origin_within_series_ood",
+        "cluster_unit": loaded["cluster_unit"], "C": C, "H": H, "stride": H,
+        "target_train": target_train, "target_val": target_val, "target_test": target_test,
+        "sigma_eps": sigma_eps, "seed": seed, "m_season": m_season,
+        "mase_denominator": "per_series_history_before_test_seasonal_naive",
+        "mase_canonical": True,
+        "n_series_total": len(loaded["series"]), "n_eligible_series": len(eligible),
+        "excluded_series": excl,
+        "n_train_windows_before_subsample": n_tr_full,
+        "n_train": int(len(tr_y)), "n_val": int(len(va_y)), "n_test": int(len(te_y)),
+        "n_val_clusters": int(np.unique(series_val).size) if series_val.size else 0,
+        "n_test_clusters": int(np.unique(series_test).size) if series_test.size else 0,
+        "n_denominator_invalid": int((~np.isfinite(np.asarray(te_den))).sum()),
+        "notes": loaded["notes"],
+    }
+    return {"X_train": _stack(tr_ctx, C), "y_train": np.asarray(tr_y, np.float32),
+            "X_val": _stack(va_ctx, C), "y_val": np.asarray(va_y, np.float32),
+            "X_test": _stack(te_ctx, C), "y_test": np.asarray(te_y, np.float32),
+            "Y_train_traj": _stack(tr_yv, H), "Y_val_traj": _stack(va_yv, H),
+            "Y_test_traj": _stack(te_yv, H),
+            "series_train": np.asarray(tr_cid, np.int64), "series_val": series_val,
+            "series_test": series_test,
+            "test_denominator": np.asarray(te_den, np.float64), "meta": meta}

@@ -46,15 +46,17 @@ import torch
 
 from probing import config, id_data
 from probing.config import NUM_LAYERS, LAST_LAYER, SEED, OUTPUT_PATCH_SIZE
-from probing.id_data import build_windows
+from probing.id_data import build_windows, ROLLING_SETS
 from probing.extraction import extract_window_features, extract_kout_features
 from probing.heads import NATIVE_D_FF
 from probing.probes import (QUANTILE_SETS, median_index,
-                            fit_content_mlp_head, predict_content_mlp_head,
+                            fit_content_mlp_head, fit_content_mlp_head_explicit_val,
+                            predict_content_mlp_head,
                             fit_forecast_slot_native_head, predict_forecast_slot_native_head)
 # reuse the linear pilot's frame + pure helpers (importing only defines things; no main() runs)
 from experiments import run_ood_transfer as ood
-from experiments.run_ood_transfer import _paired_delta_bootstrap, _mae_median_raw
+from experiments.run_ood_transfer import (_paired_delta_bootstrap, _mae_median_raw,
+                                          _relative_gain_cell)
 from experiments.run_id_forecasting import compute_mase, ID_STYLE
 from experiments.run_ood_baselines import target_baselines
 
@@ -63,22 +65,43 @@ C, H = ood.C, ood.H                        # 512 / 64
 QUANTILE_EPOCHS = ood.QUANTILE_EPOCHS      # 300 — same budget, NO early stopping
 WD_GRID = ood.WD_GRID                      # (1e-5..1e-1) — same per-layer weight-decay grid
 BOOT_B, CI_LO, CI_HI = ood.BOOT_B, ood.CI_LO, ood.CI_HI
-DATASET_ORDER, SHORT = ood.DATASET_ORDER, ood.SHORT
 P = OUTPUT_PATCH_SIZE                       # native output patch size (16)
 
 # capacity-head hyperparameters (recorded in every checkpoint's meta)
 HIDDEN_DIM = NATIVE_D_FF                    # native d_ff = 3072
 DROPOUT = 0.0                              # deterministic probe (native head uses 0.1)
 
+# |z| threshold (arcsinh-normalized target space) above which a median prediction is flagged
+# EXTREME. z is the context-standardized + arcsinh label space: typical |z| is O(1-3), so |z|>10
+# (≈ sinh(10) ≈ 1.1e4 context sigmas once un-transformed) is an unambiguous explosion. Fixed and
+# documented — nothing is clipped or dropped; only counted.
+EXTREME_NORM_THRESH = 10.0
+
 FAMILIES = {
     "content_mlp_head": {
-        "fit": fit_content_mlp_head, "predict": predict_content_mlp_head,
+        "fit": fit_content_mlp_head, "fit_explicit_val": fit_content_mlp_head_explicit_val,
+        "predict": predict_content_mlp_head,
         "feature_kind": "content", "pooling_or_token_type": "content"},
     "forecast_slot_native_head": {
         "fit": fit_forecast_slot_native_head, "predict": predict_forecast_slot_native_head,
         "feature_kind": "fslot", "pooling_or_token_type": "forecast_slot"},
 }
 LINEAR = "linear_content"                   # label for the committed linear pilot in comparisons
+
+
+def _derive_datasets():
+    """(Re)derive the source/target roster + matrix side length NDATA for the ACTIVE dataset set,
+    tracking run_ood_transfer so extended_v3_rolling gets its uniform 4-dataset order instead of the
+    import-time default (extended_v1's 3). Called at import and again after a --dataset-set override
+    in main(); also re-derives ood's output dirs so the committed-linear reads resolve to this set."""
+    global DATASET_ORDER, SHORT, NDATA
+    ood._derive_datasets()
+    ood._derive_dirs()
+    DATASET_ORDER, SHORT = ood.DATASET_ORDER, ood.SHORT
+    NDATA = len(DATASET_ORDER)
+
+
+_derive_datasets()
 
 
 # --------------------------------------------------------------------------- #
@@ -190,8 +213,10 @@ def load_checkpoints(source, family, qset, seed, quantiles, device):
 # --------------------------------------------------------------------------- #
 
 def _extract(family, tag, split, w):
-    """Return {layer: features} for one dataset split, in the shape the family's head consumes."""
-    Xkey, ykey = (("X_train", "y_train") if split == "train" else ("X_test", "y_test"))
+    """Return {layer: features} for one dataset split, in the shape the family's head consumes.
+    split ∈ {train, val, test}; 'val' is the rolling sets' explicit temporal validation split."""
+    Xkey, ykey = {"train": ("X_train", "y_train"), "val": ("X_val", "y_val"),
+                  "test": ("X_test", "y_test")}[split]
     if FAMILIES[family]["feature_kind"] == "content":
         f, _y = extract_window_features(tag, split, w[Xkey], w[ykey], pooling="content")
         return f
@@ -211,9 +236,25 @@ def get_source_probe(source, family, qset, quantiles, seed, device):
     print(f"  [fit] training {family} source probe on {source} (seed {seed}, {qset})")
     w = build_windows(source)
     f_tr = _extract(family, source, "train", w)
-    fit_fn = FAMILIES[family]["fit"]
-    fitted = fit_fn(f_tr, w["Y_train_traj"], quantiles=quantiles, epochs=QUANTILE_EPOCHS,
-                    wd_grid=WD_GRID, device=device, hidden_dim=HIDDEN_DIM, dropout=DROPOUT)
+    if config.DATASET_SET in ROLLING_SETS:
+        # rolling sets: weight-decay AND the downstream source-selected layer are chosen on the
+        # EXPLICIT temporal val split (no 80/20 carve); the head stays trained on FULL train only.
+        fit_ev = FAMILIES[family].get("fit_explicit_val")
+        if fit_ev is None:
+            raise SystemExit(
+                f"{family} has no explicit-temporal-val fit — rolling sets {sorted(ROLLING_SETS)} "
+                "require it; only content_mlp_head is supported under extended_v3_rolling")
+        f_va = _extract(family, source, "val", w)
+        print(f"    [rolling] explicit temporal val: {w['meta']['n_val']} windows / "
+              f"{w['meta']['n_val_series']} series (no 80/20 carve)")
+        fitted = fit_ev(f_tr, w["Y_train_traj"], f_va, w["Y_val_traj"], quantiles=quantiles,
+                        epochs=QUANTILE_EPOCHS, wd_grid=WD_GRID, device=device,
+                        hidden_dim=HIDDEN_DIM, dropout=DROPOUT)
+        del f_va
+    else:
+        fit_fn = FAMILIES[family]["fit"]
+        fitted = fit_fn(f_tr, w["Y_train_traj"], quantiles=quantiles, epochs=QUANTILE_EPOCHS,
+                        wd_grid=WD_GRID, device=device, hidden_dim=HIDDEN_DIM, dropout=DROPOUT)
     ckpt = save_checkpoints(fitted, source, family, qset, seed, quantiles)
     del w, f_tr
     gc.collect()
@@ -241,8 +282,10 @@ def evaluate_target(fitted, ckpt_dir, source, target, family, qset, quantiles, s
     out, diag = predict_fn(fitted, f_te, w["Y_test_traj"], quantiles=quantiles, device=device,
                            collect_test_median=True, collect_test_window_loss=True)
     # MASE via the per-dataset pipeline (target seasonal-naive denom + cached target native).
-    mase_entry, _mase_pw = compute_mase(target, w, {family: diag})
+    # mase_pw[family] is (NUM_LAYERS, n) per-window MASE -> robust raw-scale summaries below.
+    mase_entry, mase_pw = compute_mase(target, w, {family: diag})
     mae = _mae_median_raw(w, diag)
+    pw_by_layer = mase_pw[family]                          # (NUM_LAYERS, n)
 
     sid = np.asarray(w["series_test"], np.int64)
     n_test, n_series = int(w["meta"]["n_test"]), int(len(np.unique(sid)))
@@ -251,6 +294,8 @@ def evaluate_target(fitted, ckpt_dir, source, target, family, qset, quantiles, s
     run_id = _probe_run_id(source, family, qset, seed)
     rows = []
     for i in range(NUM_LAYERS):
+        pw = np.asarray(pw_by_layer[i], np.float64)        # per-window MASE for this layer
+        zmed = np.asarray(diag["test_median"][i], np.float64)   # (n, H) median pred, arcsinh space
         rows.append({
             "source_dataset": source, "target_dataset": target, "layer": i, "seed": int(seed),
             "split": "test", "is_ood": is_ood, "probe_family": family, "pooling": ptt,
@@ -261,8 +306,15 @@ def evaluate_target(fitted, ckpt_dir, source, target, family, qset, quantiles, s
                 {"weight_decay": fitted[i]["wd"], "hidden_dim": HIDDEN_DIM, "dropout": DROPOUT}),
             "quantile_loss": float(out[i]),
             "mean_pinball_loss": float(diag["test_mean_pinball"][i]),
-            "mase": float(mase_entry["poolings"][family][i]),
+            "mase": float(mase_entry["poolings"][family][i]),         # == mase_mean (window mean)
+            "mase_median": float(np.median(pw)),
+            "mase_p95": float(np.percentile(pw, 95)),
+            "mase_max": float(pw.max()),
             "mae_median_raw": float(mae[i]),
+            "pred_norm_max": float(np.abs(zmed).max()),
+            "n_extreme_norm_pred": int((np.abs(zmed) > EXTREME_NORM_THRESH).sum()),
+            "n_pred_elements": int(zmed.size),
+            "extreme_norm_threshold": EXTREME_NORM_THRESH,
             "n_test_windows": n_test, "n_test_series": n_series})
 
     ql = np.array([out[i] for i in range(NUM_LAYERS)], float)
@@ -355,7 +407,9 @@ def aggregate(family, qset, seed):
               "probe_family", "pooling", "parameter_count", "quantile_config", "quantile_set",
               "context_length", "prediction_length", "probe_run_id", "probe_checkpoint",
               "selected_source_hyperparameters", "quantile_loss", "mean_pinball_loss", "mase",
-              "mae_median_raw", "n_test_windows", "n_test_series"]
+              "mase_median", "mase_p95", "mase_max", "mae_median_raw", "pred_norm_max",
+              "n_extreme_norm_pred", "n_pred_elements", "extreme_norm_threshold",
+              "n_test_windows", "n_test_series"]
     with open(fam["base"] / f"ood_capacity_results__{family}__{qset}.csv", "w", newline="") as f:
         wr = csv.DictWriter(f, fieldnames=fields)
         wr.writeheader()
@@ -373,6 +427,12 @@ def aggregate(family, qset, seed):
     _write_summary(family, summ, boot_cells, qset, seed)
     _write_param_count(family, payloads, qset, seed)
     _write_selected_layers(family, payloads, qset, seed)
+    # normalized improvement over L12 (relative_gain_pct + paired-bootstrap CI), both layer views:
+    #   source_val = source-validation-selected layer (PRIMARY, one per source row, no target data)
+    #   oracle     = target-test argmin (DIAGNOSTIC, optimistically biased)
+    _write_relative_gain_table(family, boot_cells, summ, qset, seed, "source_val")
+    _write_relative_gain_table(family, boot_cells, summ, qset, seed, "oracle")
+    _write_linear_comparison(family, boot_cells, summ, qset, seed)
     _make_matrix_figure(family, summ, boot_cells, qset, seed)
     _make_baseline_bars_figure(family, summ, rows, qset, seed)
     print(f"  [saved] {family} tables + figure under {fam['base']} ({len(rows)} rows)")
@@ -483,13 +543,117 @@ def _write_selected_layers(family, payloads, qset, seed):
     json.dump(rows, open(base / f"ood_capacity_selected_layers__{family}__{qset}.json", "w"), indent=2)
 
 
+def _write_relative_gain_table(family, boot_cells, summ, qset, seed, mode):
+    """Normalized improvement over L12 per source->target cell for one layer-selection view.
+
+    mode='source_val' (PRIMARY): layer = source-validation-selected (one per source row, NO target
+      data). mode='oracle' (DIAGNOSTIC): layer = target-test argmin (optimistically biased).
+    relative_gain_pct = 100*(loss[L12]-loss[L])/loss[L12], with the paired series-cluster-bootstrap
+    ratio CI (layer fixed BEFORE resampling -> descriptive, not selection-adjusted). Gains may be
+    negative. Writes <mode>_relative_gain__<family>__<qset>.csv/json."""
+    base = _fam_dirs(family)["base"]
+    rows = []
+    for (src, tgt), bc in sorted(boot_cells.items()):
+        s = summ[(src, tgt)]
+        oracle_best = int(s["oracle_best_layer"])
+        ss = s.get("source_selected_layer")
+        if mode == "source_val" and ss is None:
+            continue
+        L = int(ss) if mode == "source_val" else oracle_best
+        rg = _relative_gain_cell(bc, L)
+        rows.append({
+            "source_dataset": src, "target_dataset": tgt,
+            "id_or_ood": ("ID" if src == tgt else "OOD"),
+            "probe_family": family, "layer_selection": mode, "selected_layer": L,
+            "selected_layer_test_q9_loss": round(float(bc["point"][L]), 6),
+            "last_layer_test_q9_loss": round(float(bc["point"][LAST_LAYER]), 6),
+            "raw_gain": round(float(bc["delta_vs_last"][L]), 6),
+            "raw_ci_lo": round(float(bc["delta_ci_lo"][L]), 6),
+            "raw_ci_hi": round(float(bc["delta_ci_hi"][L]), 6),
+            "relative_gain_pct": round(rg["relative_gain_pct"], 4),
+            "relative_ci_lo": round(rg["ci_lo"], 4), "relative_ci_hi": round(rg["ci_hi"], 4),
+            "relative_ci_excludes_zero": rg["excludes_zero"],
+            "oracle_best_layer": oracle_best,
+            "n_test_windows": int(bc["n_windows"]), "n_bootstrap_clusters": int(bc["n_series"])})
+    stem = f"{mode}_relative_gain__{family}__{qset}"
+    fields = list(rows[0].keys()) if rows else []
+    with open(base / f"{stem}.csv", "w", newline="") as f:
+        wr = csv.DictWriter(f, fieldnames=fields)
+        wr.writeheader()
+        wr.writerows(rows)
+    json.dump(rows, open(base / f"{stem}.json", "w"), indent=2)
+    print(f"  [saved] {mode} relative-gain table ({len(rows)} cells) -> {base / (stem + '.csv')}")
+    return rows
+
+
+def _committed_linear_source_val(qset):
+    """Linear source-val relative-gain per (src,tgt) from run_ood_transfer's committed seen-matrix
+    table (ood.OOD_DIR is re-derived to the active set in _derive_datasets), or {} if absent."""
+    p = ood.OOD_DIR / f"source_val_relative_gain_summary_{qset}.json"
+    if not p.exists():
+        return {}
+    return {(r["source_dataset"], r["target_dataset"]): r for r in json.load(open(p))}
+
+
+def _write_linear_comparison(family, boot_cells, summ, qset, seed):
+    """Per-cell nonlinear-vs-linear comparison at each head's OWN source-validation-selected layer
+    (normalized quantile loss primary). Joins this family's source_val gain with the committed LINEAR
+    source_val table (run_ood_transfer). nonlinear_minus_linear_* = nonlinear − linear (negative loss
+    delta / positive gain delta => the nonlinear head helps). Linear absent -> linear_* = null."""
+    base = _fam_dirs(family)["base"]
+    lin = _committed_linear_source_val(qset)
+    rows = []
+    for (src, tgt), bc in sorted(boot_cells.items()):
+        ss = summ[(src, tgt)].get("source_selected_layer")
+        if ss is None:
+            continue
+        L = int(ss)
+        rg = _relative_gain_cell(bc, L)
+        nl_sel_loss, nl_l12 = float(bc["point"][L]), float(bc["point"][LAST_LAYER])
+        lr = lin.get((src, tgt))
+        lin_layer = int(lr["source_val_selected_layer"]) if lr else None
+        lin_sel_loss = float(lr["selected_layer_test_q9_loss"]) if lr else None
+        lin_l12 = float(lr["last_layer_test_q9_loss"]) if lr else None
+        lin_rg = float(lr["relative_gain_pct"]) if lr else None
+        rows.append({
+            "source_dataset": src, "target_dataset": tgt,
+            "id_or_ood": ("ID" if src == tgt else "OOD"), "probe_family": family,
+            "nonlinear_source_selected_layer": L,
+            "nonlinear_sel_q9_loss": round(nl_sel_loss, 6),
+            "nonlinear_l12_q9_loss": round(nl_l12, 6),
+            "nonlinear_relative_gain_pct": round(rg["relative_gain_pct"], 4),
+            "nonlinear_relative_ci_lo": round(rg["ci_lo"], 4),
+            "nonlinear_relative_ci_hi": round(rg["ci_hi"], 4),
+            "nonlinear_relative_ci_excludes_zero": rg["excludes_zero"],
+            "linear_source_selected_layer": lin_layer,
+            "linear_sel_q9_loss": (None if lin_sel_loss is None else round(lin_sel_loss, 6)),
+            "linear_l12_q9_loss": (None if lin_l12 is None else round(lin_l12, 6)),
+            "linear_relative_gain_pct": (None if lin_rg is None else round(lin_rg, 4)),
+            "nonlinear_minus_linear_sel_q9_loss": (None if lin_sel_loss is None
+                                                   else round(nl_sel_loss - lin_sel_loss, 6)),
+            "nonlinear_minus_linear_relative_gain_pct": (None if lin_rg is None
+                                                         else round(rg["relative_gain_pct"] - lin_rg, 4))})
+    stem = f"capacity_vs_linear__{family}__{qset}"
+    fields = list(rows[0].keys()) if rows else []
+    with open(base / f"{stem}.csv", "w", newline="") as f:
+        wr = csv.DictWriter(f, fieldnames=fields)
+        wr.writeheader()
+        wr.writerows(rows)
+    json.dump(rows, open(base / f"{stem}.json", "w"), indent=2)
+    n_lin = sum(1 for r in rows if r["linear_relative_gain_pct"] is not None)
+    print(f"  [saved] nonlinear-vs-linear comparison ({len(rows)} cells, {n_lin} with linear) -> "
+          f"{base / (stem + '.csv')}")
+    return rows
+
+
 def _make_matrix_figure(family, summ, boot_cells, qset, seed):
-    """Per-family 3x3 transfer grid: Chronos-2 q loss by depth, cluster-bootstrap band, ★ at the
+    """Per-family transfer grid: Chronos-2 q loss by depth, cluster-bootstrap band, ★ at the
     oracle-best layer, ◆ at the source-selected layer, filled markers where paired Δ-vs-last CI>0,
     dotted line at the final layer. Diagonal (ID) tinted; y shared within a column."""
     xs = np.arange(NUM_LAYERS)
     xlabels = ["Embed"] + [str(i) for i in range(1, NUM_LAYERS)]
-    fig, axes = plt.subplots(3, 3, figsize=(16, 13), sharex=True, sharey="col")
+    fig, axes = plt.subplots(NDATA, NDATA, figsize=(5.3 * NDATA, 4.3 * NDATA),
+                             sharex=True, sharey="col")
     for ri, src in enumerate(DATASET_ORDER):
         color = ID_STYLE.get(src, {}).get("color", "#333333")
         for ci, tgt in enumerate(DATASET_ORDER):
@@ -536,13 +700,13 @@ def _make_matrix_figure(family, summ, boot_cells, qset, seed):
     for ri, src in enumerate(DATASET_ORDER):
         axes[ri, 0].set_ylabel(f"probe trained on {SHORT[src]}\nChronos-2 q loss (test)")
     pc = summ[next(iter(summ))]["parameter_count"]
-    fig.suptitle(f"{family} — cross-dataset transfer (3×3), Chronos-2 quantile loss by layer  "
+    fig.suptitle(f"{family} — cross-dataset transfer ({NDATA}×{NDATA}), Chronos-2 quantile loss by layer  "
                  f"[{qset}, {pc:,} head params, seed {seed}]\n"
                  "★ = oracle-best (target test) · ◆ = source-selected (source val) · "
                  "filled dot = paired Δ-vs-last CI excludes 0 · y shared within a column",
                  fontsize=12, y=0.996)
     fig.tight_layout(rect=[0, 0, 1, 0.965])
-    out = _fam_dirs(family)["fig"] / f"transfer_matrix_3x3__{family}__{qset}.png"
+    out = _fam_dirs(family)["fig"] / f"transfer_matrix_{NDATA}x{NDATA}__{family}__{qset}.png"
     fig.savefig(out, dpi=140, bbox_inches="tight")
     plt.close(fig)
     print(f"  [saved] {out}")
@@ -560,7 +724,7 @@ def _make_baseline_bars_figure(family, summ, rows, qset, seed):
                 for t in DATASET_ORDER if any(tt == t for (_s, tt) in summ)}
     lin = _committed_linear_curves(qset) or {}     # {(src,tgt): {layer: {quantile_loss, mase}}}
     labels = ["cap\nbest", "lin\nbest", "cap\nfinal", "lin\nfinal", "native", "seasonal", "last"]
-    fig, axes = plt.subplots(3, 3, figsize=(17, 12), sharex=True)
+    fig, axes = plt.subplots(NDATA, NDATA, figsize=(5.6 * NDATA, 4.0 * NDATA), sharex=True)
     for ri, src in enumerate(DATASET_ORDER):
         color = ID_STYLE.get(src, {}).get("color", "#333333")
         for ci, tgt in enumerate(DATASET_ORDER):
@@ -736,8 +900,8 @@ def _committed_family_curves(family, qset):
 
 
 def _make_family_bars(rows, families, color, qset, seed, cmp):
-    """3x3 grid of grouped bars: source-selected MASE per family, native line for reference."""
-    fig, axes = plt.subplots(3, 3, figsize=(15, 12), sharex=True)
+    """N×N grid of grouped bars: source-selected MASE per family, native line for reference."""
+    fig, axes = plt.subplots(NDATA, NDATA, figsize=(5.0 * NDATA, 4.0 * NDATA), sharex=True)
     idx = {f: k for k, f in enumerate(families)}
     for ri, src in enumerate(DATASET_ORDER):
         for ci, tgt in enumerate(DATASET_ORDER):
@@ -768,15 +932,15 @@ def _make_family_bars(rows, families, color, qset, seed, cmp):
 
 
 def _make_gap_figure(rows, qset, seed, cmp):
-    """3x3 heatmap-style grid: fraction of the linear→native MASE gap closed by each capacity head
+    """N×N heatmap-style grid: fraction of the linear→native MASE gap closed by each capacity head
     at the source-selected layer. Invalid cells (denominator ≤ ~0) are hatched + labeled."""
     caps = [f for f in FAMILIES]
     fig, axes = plt.subplots(1, len(caps), figsize=(7.5 * len(caps), 6.2))
     if len(caps) == 1:
         axes = [axes]
     for ax, fam in zip(axes, caps):
-        M = np.full((3, 3), np.nan)
-        valid = np.zeros((3, 3), bool)
+        M = np.full((NDATA, NDATA), np.nan)
+        valid = np.zeros((NDATA, NDATA), bool)
         for r in rows:
             if r["probe_family"] != fam:
                 continue
@@ -785,16 +949,16 @@ def _make_gap_figure(rows, qset, seed, cmp):
                 M[si, ti] = r["gap_closed_vs_native"]
                 valid[si, ti] = True
         im = ax.imshow(M, cmap="RdYlGn", vmin=-1.0, vmax=1.0)
-        for si in range(3):
-            for ti in range(3):
+        for si in range(NDATA):
+            for ti in range(NDATA):
                 if valid[si, ti]:
                     ax.text(ti, si, f"{M[si, ti]:+.0%}", ha="center", va="center", fontsize=10)
                 else:
                     ax.text(ti, si, "n/a", ha="center", va="center", fontsize=9, color="0.4")
                     ax.add_patch(plt.Rectangle((ti - 0.5, si - 0.5), 1, 1, fill=False, hatch="///",
                                                ec="0.6", lw=0))
-        ax.set_xticks(range(3)); ax.set_xticklabels([SHORT[d] for d in DATASET_ORDER])
-        ax.set_yticks(range(3)); ax.set_yticklabels([SHORT[d] for d in DATASET_ORDER])
+        ax.set_xticks(range(NDATA)); ax.set_xticklabels([SHORT[d] for d in DATASET_ORDER])
+        ax.set_yticks(range(NDATA)); ax.set_yticklabels([SHORT[d] for d in DATASET_ORDER])
         ax.set_xlabel("target"); ax.set_ylabel("source")
         ax.set_title(fam, fontsize=11)
         fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04, label="gap to native closed")
@@ -821,7 +985,9 @@ def _parse_args(argv=None):
     ap.add_argument("--probe-family", choices=sorted(FAMILIES), default=None,
                     help="which capacity head to fit/evaluate.")
     ap.add_argument("--source-dataset", default=None, help="the dataset the head is TRAINED on.")
-    ap.add_argument("--target-datasets", nargs="+", default=DATASET_ORDER)
+    ap.add_argument("--target-datasets", nargs="+", default=None,
+                    help="targets to score the frozen source head on (default: the active set's "
+                         "full roster, resolved AFTER --dataset-set).")
     ap.add_argument("--quantile-set", choices=sorted(QUANTILE_SETS), default="q9")
     ap.add_argument("--device", default=None, help="torch device (default: cuda if available).")
     ap.add_argument("--figure-only", action="store_true",
@@ -836,6 +1002,7 @@ def main():
     args = _parse_args()
     if args.dataset_set:
         config.set_dataset_set(args.dataset_set)
+    _derive_datasets()          # re-derive roster + ood dirs for the active set (4x4 under rolling)
     qset = args.quantile_set
     quantiles = QUANTILE_SETS[qset]
     if median_index(quantiles) is None:
@@ -864,18 +1031,19 @@ def main():
         return
 
     known = set(id_data.ID_DATASETS)
+    targets = args.target_datasets or list(DATASET_ORDER)   # resolved AFTER the set override
     if not args.source_dataset:
         raise SystemExit("--source-dataset is required (one source per job); or --figure-only.")
     if args.source_dataset not in known:
         raise SystemExit(f"unknown --source-dataset {args.source_dataset!r}; known: {sorted(known)}")
-    bad = [t for t in args.target_datasets if t not in known]
+    bad = [t for t in targets if t not in known]
     if bad:
         raise SystemExit(f"unknown --target-datasets {bad}; known: {sorted(known)}")
 
-    run_source(args.source_dataset, args.target_datasets, family, qset, quantiles, seed, device)
+    run_source(args.source_dataset, targets, family, qset, quantiles, seed, device)
     aggregate(family, qset, seed)
     print(f"\n{'=' * 70}\nDONE — {family} source {args.source_dataset}. Run the other sources, then "
-          f"`--figure-only` per family and `--compare`.\n{'=' * 70}")
+          f"`--figure-only` per family.\n{'=' * 70}")
 
 
 if __name__ == "__main__":

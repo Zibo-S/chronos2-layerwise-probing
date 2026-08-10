@@ -234,9 +234,12 @@ def mean_pinball_loss(pred, target, q):
 
 
 def _fit_quantile_linear(Xtr, ytr, q, weight_decay, epochs, lr, device,
-                         Xval=None, yval=None, history=None):
+                         Xval=None, yval=None, history=None, init_seed=SEED):
     """Fit one strictly-linear map (d -> Q*H) with Chronos-2 loss; return the trained module.
     Re-seeded each call so every layer / weight_decay candidate starts from the same init.
+    `init_seed` selects that init (the ONLY randomness in the full-batch deterministic fit) —
+    it is what makes "3 independent probe runs" independent; default SEED keeps every existing
+    call byte-identical.
 
     AdamW with decay on the WEIGHT only: the pinball-optimal bias is the target's quantile
     vector itself, so decaying the bias would shrink every predicted quantile toward 0 (and
@@ -248,7 +251,7 @@ def _fit_quantile_linear(Xtr, ytr, q, weight_decay, epochs, lr, device,
     loop -> length epochs+1 (init ... converged), for the training-curve diagnostic.
     history=None leaves the original loop exactly unchanged (behavior-preserving)."""
     Q, H = len(q), ytr.shape[1]
-    torch.manual_seed(SEED)
+    torch.manual_seed(init_seed)
     lin = torch.nn.Linear(Xtr.shape[1], Q * H).to(device)
     opt = torch.optim.AdamW(
         [{"params": [lin.weight], "weight_decay": weight_decay},
@@ -480,7 +483,8 @@ def fit_quantile_probe(train_feats, train_labels, quantiles=CHRONOS2_QUANTILES,
 
 def fit_quantile_probe_explicit_val(train_feats, train_labels, val_feats, val_labels,
                                     quantiles=CHRONOS2_QUANTILES, epochs=300, lr=1e-2,
-                                    weight_decay=1e-3, wd_grid=None, device=None):
+                                    weight_decay=1e-3, wd_grid=None, device=None,
+                                    init_seed=SEED):
     """Like fit_quantile_probe, but weight-decay selection uses an EXPLICIT, temporally held-out
     validation set (val_feats/val_labels) instead of the seed-based 80/20 carve of train.
 
@@ -511,11 +515,12 @@ def fit_quantile_probe_explicit_val(train_feats, train_labels, val_feats, val_la
         Xva = torch.as_tensor(sc.transform(val_feats[i]), dtype=torch.float32, device=device)
         if wd_grid is None:
             wd, selection = weight_decay, None
-            m = _fit_quantile_linear(Xtr, ytr, q, wd, epochs, lr, device)
+            m = _fit_quantile_linear(Xtr, ytr, q, wd, epochs, lr, device, init_seed=init_seed)
         else:
             best_wd, best_val, best_m, sel = wd_grid[0], float("inf"), None, {}
             for cand in wd_grid:
-                cm = _fit_quantile_linear(Xtr, ytr, q, cand, epochs, lr, device)   # FULL train
+                cm = _fit_quantile_linear(Xtr, ytr, q, cand, epochs, lr, device,   # FULL train
+                                          init_seed=init_seed)
                 with torch.no_grad():
                     v = chronos2_quantile_loss(cm(Xva).view(-1, Q, H), yva, q).item()
                 sel[cand] = v
@@ -611,12 +616,15 @@ def _slot_transform(sc, X):
 
 
 def _fit_shared_forecast_linear(Xtr, ytr, q, P, weight_decay, epochs, lr, device,
-                                Xval=None, yval=None, history=None):
+                                Xval=None, yval=None, history=None, init_seed=SEED):
     """Fit the shared-slot linear head with Chronos-2's quantile loss. Same optimizer convention
     as _fit_quantile_linear (AdamW, decay on weight only; re-seeded each call). The head predicts
-    K whole P-step patches; loss is computed on the first H = ytr.shape[1] steps (trimmed)."""
+    K whole P-step patches; loss is computed on the first H = ytr.shape[1] steps (trimmed).
+    `init_seed` selects the Linear init (the ONLY randomness in this deterministic full-batch fit) —
+    threaded so the 3-independent-runs protocol can vary it; default SEED keeps every existing call
+    byte-identical."""
     Q, H = len(q), ytr.shape[1]
-    torch.manual_seed(SEED)
+    torch.manual_seed(init_seed)
     lin = torch.nn.Linear(Xtr.shape[-1], Q * P).to(device)
     opt = torch.optim.AdamW(
         [{"params": [lin.weight], "weight_decay": weight_decay},
@@ -757,6 +765,147 @@ def shared_forecast_token_probe(train_feats, train_labels, test_feats, test_labe
     return (out, diag) if diag is not None else out
 
 
+# ---- Frozen fit/predict split of the shared forecast-token probe (tunnel / PT-OOD) ---- #
+# shared_forecast_token_probe() trains AND scores in one call, so a probe can't be re-applied to a
+# DIFFERENT dataset (PT-OOD transfer) or fit with an explicit temporal-val split (rolling tunnel).
+# These two functions split it the way fit_quantile_probe_explicit_val / predict_quantile_probe split
+# the pooled linear probe — SAME wd-selection-on-explicit-val logic, SAME slot mechanics as
+# shared_forecast_token_probe (_fit_slot_scaler shared across slots, _apply_shared_head, the
+# K=ceil(H/P) contract). They are the LINEAR-shared-head twin of fit_forecast_slot_native_head /
+# predict_forecast_slot_native_head (which do this for the NONLINEAR ResidualBlock head). The
+# selection dict shape matches fit_quantile_probe_explicit_val so source_selected_layer /
+# save_checkpoints are unchanged; predict never trains, so one frozen probe scores many targets.
+
+def fit_shared_forecast_probe_explicit_val(train_feats, train_labels, val_feats, val_labels,
+                                           quantiles=CHRONOS2_QUANTILES, epochs=300, lr=1e-2,
+                                           weight_decay=1e-3, wd_grid=None, device=None,
+                                           init_seed=SEED, output_patch_size=OUTPUT_PATCH_SIZE):
+    """Train the per-layer shared forecast-token probe with wd selected on an EXPLICIT temporal
+    validation split, and RETURN the frozen fitted probe (not scores) — the shared-head twin of
+    fit_quantile_probe_explicit_val.
+
+    train_feats / val_feats  : {layer: (n, K, 768)} forecast-slot states (extract_kout_features),
+                               3-D, K = ceil(H / output_patch_size). ONE StandardScaler shared
+                               across all slots, fit on FULL train only.
+    train_labels / val_labels: (n, H) arcsinh trajectory labels — raises on 1-D / on 2-D feats.
+    Per layer: the slot-scaler AND the Linear are fit on FULL train (validation NEVER touches the
+    scaler or the weights); each wd candidate is scored on val; the chosen-wd full-train model is
+    kept (already trained on all of train — no refit). Returns
+    {layer: {"scaler", "linear" (nn.Linear, eval mode), "wd", "selection": {val_loss_by_wd,
+             chosen_wd} | None, "in_features", "out_features", "output_patch_size", "K",
+             "family": "shared_forecast", "pooling_or_token_type": "forecast_slot", "device"}}.
+    The selection dict shape matches fit_quantile_probe_explicit_val, so source_selected_layer /
+    save_checkpoints / predict_shared_forecast_probe are unchanged."""
+    device = device or ("cuda" if torch.cuda.is_available() else "cpu")
+    quantiles = validate_quantiles(quantiles)
+    Ytr = np.asarray(train_labels, dtype=np.float32)
+    Yva = np.asarray(val_labels, dtype=np.float32)
+    if Ytr.ndim != 2 or Yva.ndim != 2:
+        raise ValueError("fit_shared_forecast_probe_explicit_val needs (n, H) trajectory labels for "
+                         f"BOTH train and val -- got {Ytr.shape} / {Yva.shape}")
+    f0 = train_feats[0]
+    if np.ndim(f0) != 3:
+        raise ValueError(f"needs (n, K, 768) forecast-slot features, got {np.shape(f0)} "
+                         "— use extract_kout_features, not extract_window_features")
+    K = f0.shape[1]
+    Q, H = len(quantiles), Ytr.shape[1]
+    P = int(output_patch_size)
+    if K != math.ceil(H / P):
+        raise ValueError(f"features carry K={K} slots, but H={H}, P={P} needs K=ceil(H/P)="
+                         f"{math.ceil(H / P)} — re-extract with the matching horizon")
+    q = torch.as_tensor(quantiles, dtype=torch.float32, device=device)
+    ytr = torch.as_tensor(Ytr, device=device)
+    yva = torch.as_tensor(Yva, device=device)
+
+    fitted = {}
+    for i in sorted(train_feats):          # iterate the feature-dict keys, not range(NUM_LAYERS): the
+        # fslot line appends a 14th point (post-final-LN slots) as an extra key beyond L12
+        sc = _fit_slot_scaler(train_feats[i])                          # slot-scaler on FULL train only
+        Xtr = torch.as_tensor(_slot_transform(sc, train_feats[i]), dtype=torch.float32, device=device)
+        Xva = torch.as_tensor(_slot_transform(sc, val_feats[i]), dtype=torch.float32, device=device)
+        if wd_grid is None:
+            wd, selection = weight_decay, None
+            m = _fit_shared_forecast_linear(Xtr, ytr, q, P, wd, epochs, lr, device, init_seed=init_seed)
+        else:
+            best_wd, best_val, best_m, sel = wd_grid[0], float("inf"), None, {}
+            for cand in wd_grid:
+                cm = _fit_shared_forecast_linear(Xtr, ytr, q, P, cand, epochs, lr, device,  # FULL train
+                                                 init_seed=init_seed)
+                with torch.no_grad():
+                    v = chronos2_quantile_loss(_apply_shared_head(cm, Xva, Q, P, H), yva, q).item()
+                sel[cand] = v
+                if v < best_val:
+                    best_val, best_wd, best_m = v, cand, cm
+            wd, m = best_wd, best_m                              # keep the chosen-wd full-train model
+            selection = {"val_loss_by_wd": {float(k): float(v) for k, v in sel.items()},
+                         "chosen_wd": float(best_wd)}
+        m.eval()
+        fitted[i] = {"scaler": sc, "linear": m, "wd": float(wd), "selection": selection,
+                     "in_features": int(m.in_features), "out_features": int(m.out_features),
+                     "output_patch_size": P, "K": int(K),
+                     "family": "shared_forecast", "pooling_or_token_type": "forecast_slot",
+                     "device": str(device)}
+        print(f"    [fit-explicit-val fslot] L{i:>2}  wd={wd:g}  out_dim={m.out_features}")
+    return fitted
+
+
+def predict_shared_forecast_probe(fitted, feats, labels, quantiles=CHRONOS2_QUANTILES, device=None,
+                                  collect_test_median=False, collect_test_window_loss=False,
+                                  output_patch_size=OUTPUT_PATCH_SIZE):
+    """Apply a FROZEN shared forecast-token probe (from fit_shared_forecast_probe_explicit_val) to
+    `feats`/`labels`; NEVER trains — the shared-head twin of predict_quantile_probe.
+
+    feats  : {layer: (n, K, 768)} forecast-slot states from ANY dataset (a PT-OOD target under
+             transfer, or this dataset's own test split).
+    labels : (n, H) arcsinh trajectory labels for those windows.
+    Returns {layer: loss} (Chronos-2 quantile loss, lower=better). When any collect_* flag is set
+    returns (out, diag) with the SAME diag keys predict_quantile_probe uses — test_mean_pinball
+    always, test_median / test_window_loss on request — so the driver's MASE + cluster-bootstrap
+    machinery works on a transferred shared-head probe unchanged. Deterministic and side-effect-free:
+    the frozen weights are not mutated, so one probe can be reused across many targets."""
+    quantiles = validate_quantiles(quantiles)
+    Yte = np.asarray(labels, dtype=np.float32)
+    if Yte.ndim != 2:
+        raise ValueError(f"predict_shared_forecast_probe needs (n, H) trajectory labels, got {Yte.shape}")
+    f0 = feats[0]
+    if np.ndim(f0) != 3:
+        raise ValueError(f"needs (n, K, 768) forecast-slot features, got {np.shape(f0)} "
+                         "— use extract_kout_features, not extract_window_features")
+    K = f0.shape[1]
+    Q, H = len(quantiles), Yte.shape[1]
+    P = int(output_patch_size)
+    if K != math.ceil(H / P):
+        raise ValueError(f"features carry K={K} slots, but H={H}, P={P} needs K=ceil(H/P)="
+                         f"{math.ceil(H / P)}")
+    q_mid = median_index(quantiles)
+    if collect_test_median and q_mid is None:
+        raise ValueError(
+            f"collect_test_median needs the 0.5 level in the quantile set, got {quantiles.tolist()} "
+            "— median/MASE metrics are unavailable for this set; skip them, don't substitute")
+    out = {}
+    diag = ({"test_mean_pinball": {}, "test_median": {}, "test_window_loss": {}}
+            if (collect_test_median or collect_test_window_loss) else None)
+    for i in sorted(feats):                # iterate feature-dict keys (14 for fslot: L0..L12 + post-LN)
+        dev = device or fitted[i]["device"]
+        m = fitted[i]["linear"].to(dev)
+        m.eval()
+        sc = fitted[i]["scaler"]
+        q_t = torch.as_tensor(quantiles, dtype=torch.float32, device=dev)
+        yte = torch.as_tensor(Yte, device=dev)
+        Xte = torch.as_tensor(_slot_transform(sc, feats[i]), dtype=torch.float32, device=dev)
+        with torch.no_grad():
+            pred = _apply_shared_head(m, Xte, Q, P, H)
+            out[i] = float(chronos2_quantile_loss(pred, yte, q_t).item())
+            if diag is not None:
+                diag["test_mean_pinball"][i] = float(mean_pinball_loss(pred, yte, q_t).item())
+            if collect_test_median:
+                diag["test_median"][i] = pred[:, q_mid, :].cpu().numpy().astype(np.float32)
+            if collect_test_window_loss:
+                diag["test_window_loss"][i] = chronos2_quantile_loss_per_window(
+                    pred, yte, q_t).cpu().numpy().astype(np.float64)
+    return (out, diag) if diag is not None else out
+
+
 # ========== Higher-capacity forecasting probes (capacity controls) ================ #
 # Nonlinear ResidualBlock heads (probing.heads) trained FROM SCRATCH — capacity controls
 # for the linear quantile probe. They are NOT linear-accessibility measures: they quantify
@@ -862,6 +1011,75 @@ def fit_content_mlp_head(train_feats, train_labels, quantiles=CHRONOS2_QUANTILES
                      "family": "content_mlp_head", "pooling_or_token_type": "content",
                      "param_count": head_param_count(m), "device": str(device)}
         print(f"    [fit content_mlp] L{i:>2}  wd={wd:g}  params={fitted[i]['param_count']:,}")
+    return fitted
+
+
+def fit_content_mlp_head_explicit_val(train_feats, train_labels, val_feats, val_labels,
+                                      quantiles=CHRONOS2_QUANTILES, epochs=300, lr=1e-2,
+                                      weight_decay=1e-3, wd_grid=None, device=None,
+                                      hidden_dim=NATIVE_D_FF, dropout=0.0):
+    """Like fit_content_mlp_head, but weight-decay selection uses an EXPLICIT, temporally
+    held-out validation split (val_feats/val_labels) instead of the seed-based 80/20 carve of
+    train — the nonlinear analogue of fit_quantile_probe_explicit_val.
+
+    Used by the rolling-origin sets (id_data.ROLLING_SETS): the val split is a dedicated LATER
+    forecast origin per series, so wd — and the downstream source-selected layer — are chosen on
+    genuine out-of-time data. Per layer: the StandardScaler AND the ResidualBlock head are fit on
+    the FULL train split (validation NEVER touches the scaler or the weights); each wd candidate is
+    scored on val; the chosen-wd full-train head is kept (already trained on all of train — no
+    refit). The returned dict shape, selection.{val_loss_by_wd, chosen_wd} and source_val_loss match
+    fit_content_mlp_head exactly, so save_checkpoints / _source_selected_layer /
+    predict_content_mlp_head are unchanged. selection additionally carries train_loss_by_wd and the
+    fitted dict carries source_train_loss (train-loss diagnostics; the checkpoint keeps them in
+    selection). NO random 80/20 carve is ever constructed here."""
+    device = device or ("cuda" if torch.cuda.is_available() else "cpu")
+    quantiles = validate_quantiles(quantiles)
+    Ytr = np.asarray(train_labels, dtype=np.float32)
+    Yva = np.asarray(val_labels, dtype=np.float32)
+    if Ytr.ndim != 2 or Yva.ndim != 2:
+        raise ValueError("fit_content_mlp_head_explicit_val needs (n, H) trajectory labels for BOTH "
+                         f"train and val -- got {Ytr.shape} / {Yva.shape}")
+    q = torch.as_tensor(quantiles, dtype=torch.float32, device=device)
+    Q, H = len(quantiles), Ytr.shape[1]
+    ytr = torch.as_tensor(Ytr, device=device)
+    yva = torch.as_tensor(Yva, device=device)
+
+    fitted = {}
+    for i in range(NUM_LAYERS):
+        sc = StandardScaler().fit(train_feats[i])                       # scaler on FULL train only
+        Xtr = torch.as_tensor(sc.transform(train_feats[i]), dtype=torch.float32, device=device)
+        Xva = torch.as_tensor(sc.transform(val_feats[i]), dtype=torch.float32, device=device)
+        if wd_grid is None:
+            wd, selection, src_val = weight_decay, None, None
+            m = _fit_content_mlp(Xtr, ytr, q, H, hidden_dim, dropout, wd, epochs, lr, device)
+            with torch.no_grad():
+                tr_loss = chronos2_quantile_loss(m(Xtr).view(-1, Q, H), ytr, q).item()
+        else:
+            best_wd, best_val, best_m, sel, trl = wd_grid[0], float("inf"), None, {}, {}
+            for cand in wd_grid:
+                cm = _fit_content_mlp(Xtr, ytr, q, H, hidden_dim, dropout, cand, epochs, lr, device)
+                with torch.no_grad():                                   # FULL-train head, val-only score
+                    v = chronos2_quantile_loss(cm(Xva).view(-1, Q, H), yva, q).item()
+                    t = chronos2_quantile_loss(cm(Xtr).view(-1, Q, H), ytr, q).item()
+                sel[cand], trl[cand] = v, t
+                if v < best_val:
+                    best_val, best_wd, best_m = v, cand, cm
+            wd, src_val, m = best_wd, best_val, best_m                  # keep the chosen-wd full-train head
+            tr_loss = trl[best_wd]
+            selection = {"val_loss_by_wd": {float(k): float(v) for k, v in sel.items()},
+                         "train_loss_by_wd": {float(k): float(v) for k, v in trl.items()},
+                         "chosen_wd": float(best_wd)}
+        m.eval()
+        fitted[i] = {"scaler": sc, "head": m, "wd": float(wd), "selection": selection,
+                     "source_val_loss": (None if src_val is None else float(src_val)),
+                     "source_train_loss": float(tr_loss),
+                     "in_features": int(m.hidden_layer.in_features), "out_features": Q * H,
+                     "hidden_dim": int(hidden_dim), "dropout": float(dropout),
+                     "family": "content_mlp_head", "pooling_or_token_type": "content",
+                     "param_count": head_param_count(m), "device": str(device)}
+        vtxt = "n/a" if src_val is None else f"{src_val:.3f}"
+        print(f"    [fit-explicit-val content_mlp] L{i:>2}  wd={wd:g}  train={tr_loss:.3f}  "
+              f"val={vtxt}  params={fitted[i]['param_count']:,}")
     return fitted
 
 
