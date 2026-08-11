@@ -1,0 +1,87 @@
+{
+  "dataset": "m4_hourly",
+  "domain_status": {
+    "pretraining": "pt_id",
+    "adaptation": null
+  },
+  "tolerance": 0.05,
+  "val_split_kind": "temporal_rolling",
+  "last_layer": 12,
+  "val_loss_by_layer": [
+    3.2072348594665527,
+    2.338263988494873,
+    2.3113837242126465,
+    2.370811700820923,
+    2.4883110523223877,
+    2.5513882637023926,
+    2.633049488067627,
+    2.6815032958984375,
+    2.76477313041687,
+    2.7110276222229004,
+    2.639989137649536,
+    2.552480459213257,
+    2.5078957080841064
+  ],
+  "test_loss_by_layer": [
+    3.1021847160717915,
+    2.4625998908326827,
+    2.4561787236282844,
+    2.591179823602429,
+    2.6201588566066656,
+    2.632883251623343,
+    2.703280716224481,
+    2.745706681759303,
+    2.8273277037016307,
+    2.800646348308971,
+    2.6937830843998274,
+    2.691937426346859,
+    2.613055097237798
+  ],
+  "final_layer_val_loss": 2.5078957080841064,
+  "l_start": 1,
+  "tunnel": [
+    1,
+    12
+  ],
+  "l_start_sustained": 11,
+  "tunnel_sustained": [
+    11,
+    12
+  ],
+  "max_excursion_val": 0.10242747395943508,
+  "max_excursion_test": 0.08200079925231418,
+  "test_criterion_holds": false,
+  "test_criterion_holds_sustained": true,
+  "test_margins": [
+    0.18718687537474477,
+    -0.057578275545800084,
+    -0.060035616461108665,
+    -0.008371531721046765,
+    0.0027185647085576914,
+    0.007588111864347935,
+    0.03452878551319438,
+    0.05076493972963991,
+    0.08200079925231418,
+    0.07179000981244954,
+    0.03089410064386522,
+    0.03018777873931766,
+    0.0
+  ],
+  "quantile_set": "q9",
+  "seed": 0,
+  "pooling": "content",
+  "dataset_set": "extended_v3_rolling",
+  "provenance": {
+    "checkpoints": "/home/eserebri/repos/chronos2-layerwise-probing/results/extended_v3_rolling/ood_transfer/checkpoints",
+    "diagonal_npz": "/home/eserebri/repos/chronos2-layerwise-probing/results/extended_v3_rolling/ood_transfer/bootstrap_inputs"
+  },
+  "d_id": {
+    "point": 0.061096082626009365,
+    "ci": [
+      0.024486716903602383,
+      0.09934409407106017
+    ],
+    "n_clusters": 262,
+    "n_windows": 262
+  }
+}

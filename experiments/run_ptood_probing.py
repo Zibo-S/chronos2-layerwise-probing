@@ -17,8 +17,8 @@ indices); individual run curves are retained in every record for variability plo
     seeds 1 and 2 (seed 0 = the committed extended_v3_rolling checkpoints, reused as run 1)
     and score their own test split — per-seed val/test curves + per-window losses.
   Stage 1b (--tunnels-only; CPU): per PT-ID source, average the 3 temporal-validation curves;
-    sustained-plateau tunnel l_start = min{l : mean_val(j) <= 1.05*mean_val(last) for all j>=l}
-    (saturated AND stays saturated), excursion
+    first-crossing (95%) tunnel l_start = min{l : mean_val(l) <= 1.05*mean_val(last)}
+    (first layer within 5% of final-layer quality), excursion
     M = max_{j>=l_start}(mean_loss(j)/mean_loss(last) - 1) (<= tol on val; informative on test).
     Each dataset defines its OWN tunnel; the boundary is frozen, checked on the mean test
     curve, and D_ID(s) = (mean_test(last) - mean_test(l_s))/mean_test(l_s) gets a
@@ -200,7 +200,7 @@ def compute_ptid_tunnels(qset):
         out = _tunnel_path(src, qset)
         json.dump(rec, open(out, "w"), indent=2)
         print(f"  [{SHORT[src]:>12}] tunnel [L{rec['l_start']}, L{LAST_LAYER}]  "
-              f"(sustained plateau)  M_test={rec['M_test']:+.3f}  "
+              f"(first crossing 95%)  M_test={rec['M_test']:+.3f}  "
               f"D_ID={rec['D_ID']:+.3f} [{d_id['ci'][0]:+.3f}, {d_id['ci'][1]:+.3f}] "
               f"per-run {['%+.3f' % d for d in rec['d_id_by_run']]} -> {out.name}")
         _tunnel_figure(rec)
@@ -217,13 +217,13 @@ def _plot_runs(ax, curves_by_run, mean, std, color, label):
 
 
 def _tunnel_figure(rec):
-    """PT-ID mean val + test curves (3-run mean +- std, faint per-run); sustained-plateau tunnel
+    """PT-ID mean val + test curves (3-run mean +- std, faint per-run); first-crossing (95%) tunnel
     shaded, excursion M in the title."""
     src, ls = rec["dataset"], rec["l_start"]
     fig, ax = plt.subplots(figsize=(7, 4.2))
     x = np.arange(NUM_LAYERS)
     ax.axvspan(ls - 0.25, LAST_LAYER + 0.25, color="tab:green", alpha=0.12,
-               label=f"tunnel (sustained plateau) [L{ls}, L{LAST_LAYER}]")
+               label=f"tunnel (first crossing 95%) [L{ls}, L{LAST_LAYER}]")
     _plot_runs(ax, rec["val_loss_by_run"], rec["mean_val_loss_by_layer"],
                rec["std_val_loss_by_layer"], "tab:blue",
                f"validation, mean of {len(rec['run_seeds'])} runs (defines tunnel)")
@@ -231,10 +231,10 @@ def _tunnel_figure(rec):
                rec["std_test_loss_by_layer"], "tab:orange",
                f"test, mean of {len(rec['run_seeds'])} runs (tunnel frozen)")
     ax.axhline((1 + rec["tolerance"]) * rec["mean_val_loss_by_layer"][-1], color="tab:blue",
-               ls=":", lw=1, label="1.05 x final-layer mean val loss")
+               ls=":", lw=1, label=f"{1 + rec['tolerance']:.2f} x final-layer mean val loss")
     ax.set_xticks(x); ax.set_xticklabels(["Emb"] + [f"L{i}" for i in range(1, NUM_LAYERS)])
     ax.set_xlabel("layer"); ax.set_ylabel("Chronos-2 quantile loss")
-    ax.set_title(f"{SHORT[src]} (PT-ID): sustained-plateau tunnel from MEAN validation curve  "
+    ax.set_title(f"{SHORT[src]} (PT-ID): first-crossing (95%) tunnel from MEAN validation curve  "
                  f"(M_test={rec['M_test']:+.2f}, D_ID={rec['D_ID']:+.3f})", fontsize=10)
     ax.legend(fontsize=7)
     fig.tight_layout()

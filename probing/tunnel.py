@@ -8,18 +8,18 @@ An orthogonal "adaptation" axis (ft_id / ft_ood, relative to a later fine-tuned 
 reserved in the record but unused until the adaptation block exists — a dataset can be pt_id
 yet ft_ood, so the two axes are never collapsed.
 
-Tunnel criterion (per dataset, ON VALIDATION ONLY). A tunnel is a region where performance
-has SATURATED and STAYS saturated, so the boundary is the sustained-plateau definition:
-      l_start = min { l : L_val(j) <= (1 + tol) * L_val(last)  for EVERY j >= l }
-    "when does performance enter a final-layer-quality plateau and never leave it?" The
-    criterion is one-sided (a layer that BEATS the last layer satisfies it) and never sees
-    the test split. On U-shaped curves (mid-layers best, late-middle hump) it correctly
-    refuses to open the tunnel before the hump — a single early crossing that later rises
-    back above (1+tol)*L(last) does NOT count as saturation.
+Tunnel criterion (per dataset, ON VALIDATION ONLY). A tunnel starts at the FIRST layer that
+reaches 95% of the last layer's performance (first-crossing definition, tol=0.05):
+      l_start = min { l : L_val(l) <= (1 + tol) * L_val(last) }
+    "when does performance FIRST reach within tol of final-layer quality?" The criterion is
+    one-sided (a layer that BEATS the last layer satisfies it) and never sees the test split.
+    Unlike the earlier sustained-plateau rule, a single early crossing is enough: on U-shaped
+    curves (mid-layers best, late-middle hump) the tunnel opens at the first dip and MAY then
+    contain a hump that rises back above (1+tol)*L(last).
 Post-hoc, the EXCURSION statistic M = max_{j >= l_start} (L(j)/L(last) - 1) reports the worst
-saturation violation inside the tunnel; on VALIDATION it is <= tol by construction (the
-criterion forces the val suffix flat), so M is informative on the TEST curve — where it
-measures whether the validation-defined plateau actually holds out of sample.
+saturation violation inside the tunnel. Under first-crossing it is NOT bounded by tol on either
+split — it is informative on BOTH the validation curve (does the plateau hold after entrance?)
+and the test curve (does the val-defined plateau hold out of sample?).
 
 Tunnel-effect statistics (all on TEST loss, tunnel boundary frozen from validation):
     D(dataset; l_s)  = (L_test(last) - L_test(l_s)) / L_test(l_s)     # >0: last layer worse
@@ -37,7 +37,7 @@ import numpy as np
 from probing.config import BOOT_B, LAST_LAYER, NUM_LAYERS, SEED
 from probing.stats import ci_bounds, cluster_bootstrap_apply, cluster_bootstrap_counts
 
-TUNNEL_TOL = 0.05
+TUNNEL_TOL = 0.05   # first-crossing threshold: 95% performance = loss within 5% of the last layer
 
 PT_ID_TAGS = ("monash_electricity_hourly", "uber_tlc_hourly", "m4_hourly", "wind_farms_hourly")
 PT_OOD_TAGS = ("sg_carpark", "coastal_ts", "boom_hourly")
@@ -62,22 +62,24 @@ def _validate_curve(losses):
 
 
 def tunnel_start(val_losses, tol=TUNNEL_TOL):
-    """Tunnel boundary = the SUSTAINED-PLATEAU start: earliest layer l such that EVERY j >= l
-    has val[j] <= (1+tol)*val[last]. Backward scan from the last layer, stopping at the first
-    (deepest) violation — the suffix (saturated-and-stays-saturated) requirement is enforced by
-    construction. VALIDATION losses only; the last layer always satisfies it, so l is well-defined."""
+    """Tunnel boundary = FIRST-CROSSING: the earliest layer l that reaches 95% of the last
+    layer's performance, i.e. val[l] <= (1+tol)*val[last]. Forward scan from the input embedding,
+    returning the first qualifying layer. VALIDATION losses only; the last layer always satisfies
+    it, so l is well-defined. NOTE (vs the old sustained rule): a later hump may rise back above
+    threshold, so the tunnel can be non-monotonic and max_excursion() is now informative on the
+    VALIDATION curve too, not just on test."""
     v = _validate_curve(val_losses)
     thr = (1.0 + tol) * v[-1]
-    l = v.size - 1
-    while l - 1 >= 0 and v[l - 1] <= thr:
-        l -= 1
-    return int(l)
+    for l in range(v.size):
+        if v[l] <= thr:
+            return int(l)
+    return int(v.size - 1)   # unreachable: v[last] <= (1+tol)*v[last] always holds
 
 
 def max_excursion(losses, l_start):
     """M = max_{j >= l_start} (loss[j]/loss[last] - 1): the worst violation of saturation
-    inside the (primary) tunnel. <= tol means the sustained criterion also holds from
-    l_start; large M = the tunnel is non-monotonic after its entrance."""
+    inside the tunnel. Under first-crossing it is NOT bounded by tol on either split; small M =
+    a genuine plateau after entrance, large M = the tunnel is non-monotonic (a post-entrance hump)."""
     t = _validate_curve(losses)
     return float((t[l_start:] / t[-1] - 1.0).max())
 
@@ -94,7 +96,7 @@ def check_tunnel_on_test(test_losses, l_start, tol=TUNNEL_TOL):
 
 def tunnel_record(tag, val_losses, test_losses, tol=TUNNEL_TOL, val_split_kind=None,
                   extra=None):
-    """Assemble the portable per-dataset tunnel record (JSON-serializable). The sustained-plateau
+    """Assemble the portable per-dataset tunnel record (JSON-serializable). The first-crossing
     boundary is computed from `val_losses` only; `test_losses` enter only the generalization check
     + excursion stat. `l_start`/`tunnel` are the boundary — downstream D statistics key off them."""
     v = np.asarray(val_losses, dtype=np.float64)
@@ -103,14 +105,14 @@ def tunnel_record(tag, val_losses, test_losses, tol=TUNNEL_TOL, val_split_kind=N
     holds, margins = check_tunnel_on_test(t, ls, tol)
     rec = {
         "dataset": tag, "domain_status": domain_status(tag),
-        "tolerance": float(tol), "tunnel_definition": "sustained_plateau",
+        "tolerance": float(tol), "tunnel_definition": "first_crossing_95",
         "val_split_kind": val_split_kind,
         "last_layer": int(v.size - 1),
         "val_loss_by_layer": [float(x) for x in v],
         "test_loss_by_layer": [float(x) for x in t],
         "final_layer_val_loss": float(v[-1]),
-        "l_start": ls, "tunnel": [ls, int(v.size - 1)],           # sustained-plateau boundary
-        "max_excursion_val": max_excursion(v, ls),                # <= tol by construction on val
+        "l_start": ls, "tunnel": [ls, int(v.size - 1)],           # first-crossing boundary
+        "max_excursion_val": max_excursion(v, ls),                # NOT bounded by tol under first-crossing
         "max_excursion_test": max_excursion(t, ls),               # M where D is measured (informative)
         "test_criterion_holds": holds,                            # does the val plateau hold on test?
         "test_margins": [float(x) for x in margins],
@@ -135,7 +137,7 @@ def tunnel_record_multi(tag, val_by_run, test_by_run, run_seeds, run_type="probe
         raise ValueError(f"need matching (n_runs, n_layers) curves per split with one seed per "
                          f"run — got val {V.shape}, test {T.shape}, seeds {list(run_seeds)}")
     mv, mt = V.mean(axis=0), T.mean(axis=0)
-    ls = tunnel_start(mv, tol)                       # MEAN val curve defines the sustained boundary
+    ls = tunnel_start(mv, tol)                       # MEAN val curve defines the first-crossing boundary
     holds, margins = check_tunnel_on_test(mt, ls, tol)
     rec = {
         "dataset": tag, "domain_status": domain_status(tag),
@@ -143,12 +145,12 @@ def tunnel_record_multi(tag, val_by_run, test_by_run, run_seeds, run_type="probe
         "val_loss_by_run": V.tolist(), "test_loss_by_run": T.tolist(),
         "mean_val_loss_by_layer": mv.tolist(), "std_val_loss_by_layer": V.std(axis=0).tolist(),
         "mean_test_loss_by_layer": mt.tolist(), "std_test_loss_by_layer": T.std(axis=0).tolist(),
-        "tolerance": float(tol), "tunnel_definition": "sustained_plateau",
+        "tolerance": float(tol), "tunnel_definition": "first_crossing_95",
         "last_layer": int(mv.size - 1),
-        "l_start": ls, "tunnel": [ls, int(mv.size - 1)],          # sustained-plateau boundary
+        "l_start": ls, "tunnel": [ls, int(mv.size - 1)],          # first-crossing boundary
         "D_ID": float((mt[-1] - mt[ls]) / mt[ls]),
         "M_test": max_excursion(mt, ls),                          # informative (test not forced flat)
-        "max_excursion_val": max_excursion(mv, ls),               # <= tol by construction on val
+        "max_excursion_val": max_excursion(mv, ls),               # NOT bounded by tol under first-crossing
         "test_criterion_holds": holds,                            # does the val plateau hold on test?
         "test_margins": [float(x) for x in margins],
         "val_split_kind": val_split_kind,

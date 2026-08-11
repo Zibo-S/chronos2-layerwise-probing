@@ -11,7 +11,7 @@ status (was the frozen probe fit on the same dataset it is scored on?). The four
 
 `pt_status` describes the TARGET (never the source). This driver is PREDICT-ONLY: it reuses the
 frozen PT-ID source probes already trained + checkpointed by `run_ptood_probing_ftok --fit-ptid`
-(source-fit slot-scaler + Linear + source-validation-selected wd) and the sustained tunnels from
+(source-fit slot-scaler + Linear + source-validation-selected wd) and the first-crossing tunnels from
 `--tunnels-only`. Nothing is trained here — `predict_shared_forecast_probe` applies the frozen
 source scaler + weights to each target's test split; no target scaler / wd / layer selection ever
 runs off-diagonal. The shared forecast-token curve has 14 points (Emb, L1..L12, L12+LN); L12+LN
@@ -22,8 +22,9 @@ Two modes:
                              off-diagonal = PT-ID/Probe-OOD. Headline summary = transfer gap
                              L_{s→t}(ℓ_s) / L_{t→t}(ℓ_t) − 1, ℓ_s / ℓ_t both from source/target
                              VALIDATION (never test); diagonal cells are 0 by construction.
-  --experiment pt_ood        : Electricity source only → {sg_carpark, coastal_ts, boom_hourly}
-                             targets. All cells PT-OOD/Probe-OOD.
+  --experiment pt_ood        : all 4 PT-ID sources → {sg_carpark, coastal_ts, boom_hourly} targets
+                             (4×3). Every cell is PT-OOD/Probe-OOD. Each source row shades ONLY its
+                             own source-validation tunnel entrance (never the other sources').
 
 Metrics per cell (both modes): raw Chronos-2 quantile loss, in-context seasonal-naive MASE (m=24,
 mase_context — the project-wide definition), and (4×4 only) the transfer gap. Min-over-test
@@ -54,20 +55,22 @@ import torch
 
 from probing import config
 from probing.config import NUM_LAYERS
+from probing.extraction import _cache_path, _idf_prefix       # for the §4 shared-cache preflight
 from probing.id_data import build_ood_rolling_windows, build_windows
-from probing.probes import QUANTILE_SETS, predict_shared_forecast_probe, validate_quantiles
+from probing.probes import QUANTILE_SETS, validate_quantiles
 from probing.tunnel import PT_ID_TAGS, PT_OOD_TAGS, domain_status
 # reuse the per-dataset pipeline's in-context MASE pieces (import only defines functions)
 from experiments.run_id_forecasting import M_SEASON, _ctx_stats, _mase_denominator
 # frozen-probe loader + shared fslot frame from the diagnostic driver (constants are module-level,
-# so importing does not run its main(); _fslot_feats uses that module's H/K/NUM_LAYERS globals)
-from experiments.run_ptood_probing_ftok import (C, H, K, LAYER_LABELS, OUT_ROOT, READOUT, RUN_SEEDS,
-                                                RUNS_TAG, SHORT, _fslot_feats, _ptid_ckpt_dir,
-                                                load_ptid_ckpt)
+# so importing does not run its main(); _fslot_feats uses that module's H/K/NUM_LAYERS globals).
+# PROBE_FAMILIES routes the readout head (shared_linear default | native_mlp) — same features/windows/
+# tunnels, family-specific checkpoints/predict/output namespace.
+from experiments.run_ptood_probing_ftok import (C, H, K, LAYER_LABELS, OUT_ROOT, PROBE_FAMILIES,
+                                                RUN_SEEDS, RUNS_TAG, SHORT, _fslot_feats)
 
 REF_LABEL = LAYER_LABELS[-1]                                # "L12+LN" — the final reference point
 N_POINTS = NUM_LAYERS + 1                                   # 14 fslot readout points
-PT_OOD_SOURCE = "monash_electricity_hourly"                # fixed probe source for experiment 2
+FAMILY = PROBE_FAMILIES["shared_linear"]                   # module default; main() sets from --probe-family
 
 
 # --------------------------------------------------------------------------- #
@@ -88,7 +91,10 @@ def _quadrant(source, target):
 
 def _derive_dirs(experiment):
     global OUT_DIR, BOOT_IN_DIR, FIG_DIR, TAB_DIR
-    OUT_DIR = OUT_ROOT / ("fslot_transfer" if experiment == "transfer_4x4" else "fslot_pt_ood")
+    if FAMILY.name == "native_mlp":                     # fslot_mlp/{transfer_4x4,ptood_transfer}/
+        OUT_DIR = FAMILY.out_root / ("transfer_4x4" if experiment == "transfer_4x4" else "ptood_transfer")
+    else:                                               # linear: unchanged fslot_transfer / fslot_pt_ood
+        OUT_DIR = OUT_ROOT / ("fslot_transfer" if experiment == "transfer_4x4" else "fslot_pt_ood")
     BOOT_IN_DIR = OUT_DIR / "bootstrap_inputs"
     FIG_DIR = OUT_DIR / "figures"
     TAB_DIR = OUT_DIR / "tables"
@@ -97,7 +103,7 @@ def _derive_dirs(experiment):
 
 
 def _tunnel_path(src, qset):
-    return OUT_ROOT / "tunnels" / f"{src}__{READOUT}__{qset}__{RUNS_TAG}.json"
+    return FAMILY.tunnel_path(src, qset)     # linear -> OUT_ROOT/tunnels/... (unchanged); mlp -> fslot_mlp/
 
 
 def _load_tunnel(src, qset):
@@ -118,24 +124,41 @@ def _val_selected_layer(rec):
 # preflight — fail loud BEFORE any warm-cache predict (correction 8)
 # --------------------------------------------------------------------------- #
 def preflight_checkpoints(sources, qset):
-    """Every source×seed checkpoint has all 14 heads + scalers with consistent dims."""
+    """Every source×seed checkpoint has all 14 heads + scalers with consistent dims (family-aware:
+    the MLP checkpoint stores head_state_dict, the linear one state_dict)."""
+    sd_key = "head_state_dict" if FAMILY.name == "native_mlp" else "state_dict"
     for src in sources:
         for seed in RUN_SEEDS:
-            d = _ptid_ckpt_dir(src, qset, seed)
+            d = FAMILY.ckpt_dir(src, qset, seed)
             paths = sorted(d.glob("L*.pt"))
             if len(paths) != N_POINTS:
                 raise RuntimeError(f"[preflight] {d}: {len(paths)} layer files, expected {N_POINTS} "
                                    "(L00..L13 = Emb..L12 + post-LN) — re-run --fit-ptid")
             for p in paths:
                 ck = torch.load(p, map_location="cpu", weights_only=False)
-                for kk in ("state_dict", "scaler_mean", "scaler_scale", "in_features", "out_features"):
+                for kk in (sd_key, "scaler_mean", "scaler_scale", "in_features", "out_features"):
                     if kk not in ck:
                         raise RuntimeError(f"[preflight] {p}: checkpoint missing '{kk}'")
                 if int(np.asarray(ck["scaler_mean"]).shape[0]) != int(ck["in_features"]):
                     raise RuntimeError(f"[preflight] {p}: scaler dim {np.asarray(ck['scaler_mean']).shape} "
                                        f"!= in_features {ck['in_features']}")
-    print(f"  [preflight] {len(sources)}×{len(RUN_SEEDS)} source probes OK "
+    print(f"  [preflight] {len(sources)}×{len(RUN_SEEDS)} {FAMILY.name} source probes OK "
           f"({N_POINTS} heads+scalers each)")
+
+
+def preflight_feature_cache(targets, rolling_ood):
+    """§4: the MLP run MUST resolve the SAME fslot feature caches as the linear run — feature_kind is
+    unchanged, only the readout head differs, so there is no re-extraction. The kout cache path depends
+    solely on (tag, split, K, H) (extraction._cache_path), never on the probe family, so assert the
+    resolved path keeps its K/H key and NEVER embeds the artifact tag (fslot / fslot_mlp)."""
+    split = "test_rolling" if rolling_ood else "test"
+    for tgt in targets:
+        name = _cache_path(_idf_prefix(tgt), split, None, f"K{K}_H{H}").name
+        assert f"K{K}_H{H}" in name, f"feature cache {name} lost its K/H key"
+        assert FAMILY.artifact_tag not in name and "fslot" not in name, (
+            f"feature cache {name} embeds a probe-family artifact tag — caches must be family-shared")
+    print(f"  [preflight] fslot feature caches are family-independent "
+          f"(K{K}_H{H}; {FAMILY.name} shares the linear cache)")
 
 
 def _check_features(tag, feats, w):
@@ -186,9 +209,9 @@ def eval_cell(source, target, w, feats, fitted, qset, seed, quantiles, device):
     """Score a FROZEN source probe on the target's test windows. Returns 14-point quantile-loss and
     MASE curves; writes per-window loss + series ids for the cluster bootstrap. No fit / no scaler
     fit / no layer selection touches the target."""
-    out, diag = predict_shared_forecast_probe(fitted, feats, w["Y_test_traj"], quantiles=quantiles,
-                                              device=device, collect_test_median=True,
-                                              collect_test_window_loss=True)
+    out, diag = FAMILY.predict(fitted, feats, w["Y_test_traj"], quantiles=quantiles,
+                               device=device, collect_test_median=True,
+                               collect_test_window_loss=True)
     layers = sorted(out)
     mase = _fslot_mase(target, w, diag)
     wl = np.stack([diag["test_window_loss"][i] for i in layers]).astype(np.float64)   # (14, n)
@@ -224,6 +247,7 @@ def run_4x4(qset, quantiles, device):
     sources = list(PT_ID_TAGS)
     targets = list(PT_ID_TAGS)
     preflight_checkpoints(sources, qset)
+    preflight_feature_cache(targets, rolling_ood=False)
     tunnels = {s: _load_tunnel(s, qset) for s in sources}
     ell = {s: _val_selected_layer(tunnels[s]) for s in sources}     # source-VAL-selected layer
     print("  source-validation-selected layers: "
@@ -236,7 +260,7 @@ def run_4x4(qset, quantiles, device):
     meta_cell = {}
     for src in sources:
         for seed in RUN_SEEDS:
-            fitted = load_ptid_ckpt(src, qset, seed, device=device)
+            fitted = FAMILY.load_ckpt(src, qset, seed, device=device)
             for tgt in targets:
                 w, feats = tgt_wf[tgt]
                 res = eval_cell(src, tgt, w, feats, fitted, qset, seed, quantiles, device)
@@ -262,36 +286,39 @@ def run_4x4(qset, quantiles, device):
 
 
 # --------------------------------------------------------------------------- #
-# Experiment 2 — Electricity → 3 PT-OOD targets, all PT-OOD/Probe-OOD
+# Experiment 2 — 4 PT-ID sources → 3 PT-OOD targets, all PT-OOD/Probe-OOD
 # --------------------------------------------------------------------------- #
 def run_pt_ood(qset, quantiles, device):
-    src = PT_OOD_SOURCE
+    sources = list(PT_ID_TAGS)                                       # all 4 pretrained probe sources
     targets = list(PT_OOD_TAGS)
-    preflight_checkpoints([src], qset)
-    tunnel = _load_tunnel(src, qset)
-    ell_s = _val_selected_layer(tunnel)
-    print(f"  source = {SHORT[src]}; source-validation-selected layer = {LAYER_LABELS[ell_s]}")
+    preflight_checkpoints(sources, qset)
+    preflight_feature_cache(targets, rolling_ood=True)
+    tunnels = {s: _load_tunnel(s, qset) for s in sources}
+    ell = {s: _val_selected_layer(tunnels[s]) for s in sources}     # source-VAL-selected layer, per source
+    print("  source-validation-selected layers: "
+          + ", ".join(f"{SHORT[s]}={LAYER_LABELS[ell[s]]}" for s in sources))
 
     cells, meta_cell = {}, {}
-    for tgt in targets:
+    for tgt in targets:                                              # build each OOD target's windows+feats ONCE
         w, feats = _target_windows_and_feats(tgt, rolling_ood=True)
-        for seed in RUN_SEEDS:
-            fitted = load_ptid_ckpt(src, qset, seed, device=device)
-            res = eval_cell(src, tgt, w, feats, fitted, qset, seed, quantiles, device)
-            c = cells.setdefault((src, tgt), {"ql": [], "mase": []})
-            c["ql"].append(res["quantile_loss"])
-            c["mase"].append(res["mase"])
-            meta_cell[(src, tgt)] = {"n_test": res["n_test"], "n_clusters": res["n_clusters"]}
-            del fitted
-            gc.collect()
+        for src in sources:
+            for seed in RUN_SEEDS:
+                fitted = FAMILY.load_ckpt(src, qset, seed, device=device)
+                res = eval_cell(src, tgt, w, feats, fitted, qset, seed, quantiles, device)
+                c = cells.setdefault((src, tgt), {"ql": [], "mase": []})
+                c["ql"].append(res["quantile_loss"])
+                c["mase"].append(res["mase"])
+                meta_cell[(src, tgt)] = {"n_test": res["n_test"], "n_clusters": res["n_clusters"]}
+                del fitted
+                gc.collect()
         del w, feats
         gc.collect()
 
     mean_ql = {k: np.mean(v["ql"], axis=0) for k, v in cells.items()}
     mean_mase = {k: np.mean(v["mase"], axis=0) for k, v in cells.items()}
-    _write_records([src], targets, cells, mean_ql, mean_mase, {src: ell_s},
-                   {src: tunnel}, gap=None, qset=qset, meta_cell=meta_cell)
-    make_pt_ood_figure(src, targets, cells, ell_s, tunnel, qset)
+    _write_records(sources, targets, cells, mean_ql, mean_mase, ell,
+                   tunnels, gap=None, qset=qset, meta_cell=meta_cell)
+    make_pt_ood_figure(sources, targets, cells, ell, tunnels, qset)
 
 
 # --------------------------------------------------------------------------- #
@@ -318,7 +345,7 @@ def _write_records(sources, targets, cells, mean_ql, mean_mase, ell, tunnels, ga
                 "tunnel_defined_on": f"{src}:validation",
                 "l_start_sustained": ls_sustained,
                 "val_selected_layer": sel, "final_reference": REF_LABEL,
-                "quantile_set": qset, "readout": READOUT,
+                "quantile_set": qset, "readout": FAMILY.artifact_tag, "probe_family": FAMILY.name,
             }
             summary.append({**base,
                             "val_selected_layer_label": LAYER_LABELS[sel],
@@ -384,7 +411,7 @@ def _plot_cell(ax, seeds, ls, sel, color):
 
 def make_4x4_figure(sources, targets, cells, ell, tunnels, gap, qset):
     """rows = probe-training source, cols = evaluation target. Mean-over-seed target-test loss +
-    seed band; the row's source-validation sustained tunnel shaded; ◆ at the source-val-selected
+    seed band; the row's source-validation first-crossing tunnel shaded; ◆ at the source-val-selected
     layer. Y-LIMITS SHARED DOWN EACH TARGET COLUMN (correction 7) so catastrophic transfer cannot
     be hidden by per-panel autoscaling. Diagonal titles PT-ID/Probe-ID (bold), off-diagonal
     PT-ID/Probe-OOD."""
@@ -414,38 +441,50 @@ def make_4x4_figure(sources, targets, cells, ell, tunnels, gap, qset):
                 ax.set_xticks(np.arange(N_POINTS))
                 ax.set_xticklabels(LAYER_LABELS, rotation=90, fontsize=6)
         axes[ri, 0].set_ylabel(f"probe: {SHORT[src]}\nquantile loss (test)")
-    fig.suptitle("4×4 shared forecast-token transfer — rows = probe source, cols = eval target  "
+    fig.suptitle(f"4×4 {FAMILY.label} transfer — rows = probe source, cols = eval target  "
                  f"[{qset}, {RUNS_TAG}]\n◆ = source-validation-selected layer;  green = source-"
-                 "validation sustained tunnel;  y shared down each column;  gap = L_{s→t}(ℓ_s)/"
+                 "validation first-crossing tunnel;  y shared down each column;  gap = L_{s→t}(ℓ_s)/"
                  "L_{t→t}(ℓ_t) − 1", fontsize=11, y=0.997)
     fig.tight_layout(rect=[0, 0, 1, 0.965])
-    out = FIG_DIR / f"transfer_4x4__{READOUT}__{qset}__{RUNS_TAG}.png"
+    out = FIG_DIR / f"transfer_4x4__{FAMILY.artifact_tag}__{qset}__{RUNS_TAG}.png"
     fig.savefig(out, dpi=140, bbox_inches="tight")
     plt.close(fig)
     print(f"  [saved] {out.name}")
 
 
-def make_pt_ood_figure(src, targets, cells, ell_s, tunnel, qset):
-    """1×3 PT-OOD/Probe-OOD: the frozen Electricity probe on each PT-OOD target, with the
-    Electricity source-validation tunnel entrance + shading overlaid."""
-    ncol = len(targets)
-    fig, axes = plt.subplots(1, ncol, figsize=(4.6 * ncol, 4.0), squeeze=False)
-    ls = int(tunnel["l_start"])
-    for ci, tgt in enumerate(targets):
-        ax = axes[0, ci]
-        _plot_cell(ax, np.asarray(cells[(src, tgt)]["ql"]), ls, int(ell_s), "tab:purple")
-        ax.set_title(f"{SHORT[src]} → {SHORT.get(tgt, tgt)}   [{_quadrant(src, tgt)}]\n"
-                     f"Electricity tunnel [{LAYER_LABELS[ls]}, {REF_LABEL}], ℓ_s = {LAYER_LABELS[int(ell_s)]}",
-                     fontsize=8.5)
-        ax.set_xticks(np.arange(N_POINTS))
-        ax.set_xticklabels(LAYER_LABELS, rotation=90, fontsize=6)
-        ax.set_xlabel("layer")
-        ax.grid(alpha=0.25)
-    axes[0, 0].set_ylabel("Chronos-2 quantile loss (test)")
-    fig.suptitle("Genuine pretraining-OOD transfer (PT-OOD / Probe-OOD): frozen Electricity shared "
-                 f"forecast-token probe  [{qset}, {RUNS_TAG}]", fontsize=11, y=1.02)
-    fig.tight_layout()
-    out = FIG_DIR / f"transfer_pt_ood__{READOUT}__{qset}__{RUNS_TAG}.png"
+def make_pt_ood_figure(sources, targets, cells, ell, tunnels, qset):
+    """rows = probe-training PT-ID source, cols = PT-OOD eval target (4×3). Every cell is PT-OOD/
+    Probe-OOD: the frozen source probe scored on the target's test split. Each source row shades
+    ONLY its OWN source-validation first-crossing tunnel entrance (never the other sources'), and
+    marks its own source-val-selected layer with ◆. Y-LIMITS SHARED DOWN EACH TARGET COLUMN so
+    catastrophic transfer cannot be hidden by per-panel autoscaling."""
+    nrow, ncol = len(sources), len(targets)
+    fig, axes = plt.subplots(nrow, ncol, figsize=(4.6 * ncol, 3.9 * nrow), sharex=True, squeeze=False)
+    col_lim = {}
+    for tgt in targets:
+        allv = np.concatenate([np.asarray(cells[(s, tgt)]["ql"]).ravel() for s in sources])
+        pad = 0.04 * (allv.max() - allv.min() or 1.0)
+        col_lim[tgt] = (allv.min() - pad, allv.max() + pad)
+    for ri, src in enumerate(sources):
+        ls = int(tunnels[src]["l_start"])                            # ONLY this source's tunnel entrance
+        for ci, tgt in enumerate(targets):
+            ax = axes[ri, ci]
+            _plot_cell(ax, np.asarray(cells[(src, tgt)]["ql"]), ls, int(ell[src]), "tab:purple")
+            ax.set_ylim(col_lim[tgt])                                 # shared per target column
+            ax.set_title(f"{SHORT[src]} → {SHORT.get(tgt, tgt)}   [{_quadrant(src, tgt)}]\n"
+                         f"{SHORT[src]} tunnel [{LAYER_LABELS[ls]}, {REF_LABEL}], ℓ_s = {LAYER_LABELS[int(ell[src])]}",
+                         fontsize=8.5)
+            ax.grid(alpha=0.25)
+            if ri == nrow - 1:
+                ax.set_xticks(np.arange(N_POINTS))
+                ax.set_xticklabels(LAYER_LABELS, rotation=90, fontsize=6)
+        axes[ri, 0].set_ylabel(f"probe: {SHORT[src]}\nquantile loss (test)")
+    fig.suptitle(f"Genuine pretraining-OOD transfer (PT-OOD / Probe-OOD): 4 frozen PT-ID "
+                 f"{FAMILY.label} probes → 3 PT-OOD targets  [{qset}, {RUNS_TAG}]\n"
+                 "◆ = source-validation-selected layer;  green = each row's OWN source-validation "
+                 "first-crossing tunnel;  y shared down each column", fontsize=10, y=0.998)
+    fig.tight_layout(rect=[0, 0, 1, 0.965])
+    out = FIG_DIR / f"transfer_pt_ood__{FAMILY.artifact_tag}__{qset}__{RUNS_TAG}.png"
     fig.savefig(out, dpi=140, bbox_inches="tight")
     plt.close(fig)
     print(f"  [saved] {out.name}")
@@ -455,18 +494,23 @@ def make_pt_ood_figure(src, targets, cells, ell_s, tunnel, qset):
 def _parse_args(argv=None):
     p = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     p.add_argument("--experiment", default="transfer_4x4", choices=("transfer_4x4", "pt_ood"))
+    p.add_argument("--probe-family", default="shared_linear", choices=sorted(PROBE_FAMILIES),
+                   help="frozen source probe head: shared_linear (default) or native_mlp (loads the "
+                        "fslot_mlp/ checkpoints + tunnels; outputs -> fslot_mlp/{transfer_4x4,ptood_transfer})")
     p.add_argument("--quantile-set", default="q9", choices=sorted(QUANTILE_SETS))
     return p.parse_args(argv)
 
 
 def main():
+    global FAMILY
     args = _parse_args()
+    FAMILY = PROBE_FAMILIES[args.probe_family]
     config.set_dataset_set("extended_v3_rolling")     # roster + rolling windows + cache namespace
     _derive_dirs(args.experiment)
     quantiles = validate_quantiles(QUANTILE_SETS[args.quantile_set])
     device = "cpu"                                    # predict-only over cached features
-    print(f"[run_fslot_transfer] experiment={args.experiment}  readout={READOUT}  "
-          f"qset={args.quantile_set}  {RUNS_TAG}  K={K}  out={OUT_DIR.name}")
+    print(f"[run_fslot_transfer] experiment={args.experiment}  family={FAMILY.name}  "
+          f"readout={FAMILY.artifact_tag}  qset={args.quantile_set}  {RUNS_TAG}  K={K}  out={OUT_DIR.name}")
     if args.experiment == "transfer_4x4":
         run_4x4(args.quantile_set, quantiles, device)
     else:

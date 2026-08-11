@@ -4,7 +4,7 @@ DIAGNOSTIC, NOT A TRANSFER EXPERIMENT: the per-layer probes here are re-fit ON e
 (its own rolling train/val), so this measures how linearly accessible the forecast is on an
 unseen-pretraining dataset — the "Probe-ID" (fresh target probe) quadrant. The genuine cross-dataset
 transfer experiments (PT-ID/Probe-OOD 4×4 and PT-OOD/Probe-OOD) live in experiments/run_fslot_transfer.py
-and reuse the FROZEN PT-ID source probes + sustained tunnels this driver produces. This module also
+and reuse the FROZEN PT-ID source probes + first-crossing tunnels this driver produces. This module also
 remains the producer of those shared inputs (--fit-ptid / --tunnels-only).
 
 Sibling of experiments/run_ptood_probing.py. Same 2023 protocol and same PT-ID/PT-OOD tunnel
@@ -34,8 +34,8 @@ Stages (mirrors the content driver):
   --fit-ptid    (GPU): fit the PT-ID rolling probes for ALL run seeds, score their own test split,
                        write per-seed val/test curves + per-window losses. Idempotent (skips seeds
                        already fit). The no-flag full run does this first if artifacts are missing.
-  --tunnels-only (CPU): per PT-ID source, average the 3 temporal-val curves -> sustained-plateau
-                       tunnel l_start = min{l : mean_val(j) <= 1.05*mean_val(last) for all j>=l};
+  --tunnels-only (CPU): per PT-ID source, average the 3 temporal-val curves -> first-crossing (95%)
+                       tunnel l_start = min{l : mean_val(l) <= 1.05*mean_val(last)};
                        excursion M; D_ID with
                        a series-cluster-bootstrap CI on the seed-averaged window losses.
   (default, GPU): per PT-OOD target x run seed, rolling split ON the target, fresh per-layer probes
@@ -57,6 +57,8 @@ import csv
 import gc
 import json
 import math
+from dataclasses import dataclass
+from typing import Callable
 
 import matplotlib
 matplotlib.use("Agg")
@@ -69,8 +71,11 @@ from probing import config
 from probing.config import NUM_LAYERS, SEED, OUTPUT_PATCH_SIZE   # last index is data-driven (post-LN=13)
 from probing.extraction import extract_kout_features
 from probing.id_data import build_ood_rolling_windows, build_windows
-from probing.probes import (QUANTILE_SETS, fit_shared_forecast_probe_explicit_val,
-                            predict_shared_forecast_probe, validate_quantiles)
+from probing.heads import build_head
+from probing.probes import (QUANTILE_SETS, fit_forecast_slot_native_head_explicit_val,
+                            fit_shared_forecast_probe_explicit_val,
+                            predict_forecast_slot_native_head, predict_shared_forecast_probe,
+                            validate_quantiles)
 from probing.tunnel import (PT_ID_TAGS, PT_OOD_TAGS, TUNNEL_TOL, d_stat_boot, delta_stat,
                             domain_status, max_excursion, tunnel_record_multi,
                             val_curve_from_selection)
@@ -86,6 +91,14 @@ WD_GRID = (1e-5, 1e-4, 1e-3, 1e-2, 1e-1)
 RUN_SEEDS = (0, 1, 2)              # 3 independent probe-init runs; ALL fit fresh (no legacy seed 0)
 RUN_TYPE = "probe_seed"
 RUNS_TAG = "runs" + "-".join(str(s) for s in RUN_SEEDS)
+# NATIVE-MLP capacity control (--probe-family native_mlp): the nonlinear ResidualBlock forecast-slot
+# head (probing.heads), a freshly-trained structural copy of Chronos-2's native output head. It reads
+# the SAME cached fslot forecast-slot states as the linear probe (feature_kind is unchanged), so this
+# is purely a readout swap — no re-extraction. Artifacts land in a PARALLEL fslot_mlp/ namespace so
+# nothing linear is touched. dropout is the native 0.1 (recorded in every checkpoint/record).
+MLP_TAG = "fslot_mlp"
+MLP_DROPOUT = 0.1
+MLP_ROOT = OUT_ROOT / MLP_TAG      # results/ext_v4_future_tokens/fslot_mlp/{ptid_checkpoints,tunnels,ptid_runs,figures}
 # This driver's target eval is the PT-OOD / Probe-ID (fresh target probe) DIAGNOSTIC — the probe is
 # re-fit ON the target, so it measures representation accessibility on an unseen-pretraining dataset,
 # NOT cross-dataset probe transfer. The transfer experiments (PT-ID/Probe-OOD 4×4 + PT-OOD/Probe-OOD)
@@ -107,14 +120,23 @@ SHORT = {"monash_electricity_hourly": "Electricity", "uber_tlc_hourly": "Uber",
 def _derive_dirs():
     global OUT_DIR, TUNNEL_DIR, PER_TARGET_DIR, BOOT_IN_DIR, CKPT_DIR, FIG_DIR, \
         PTID_RUN_DIR, PTID_CKPT_DIR
-    OUT_DIR = OUT_ROOT / "ptood_probing"
-    TUNNEL_DIR = OUT_ROOT / "tunnels"                   # PT-ID artifact, portable by source tag
+    if FAMILY.name == "native_mlp":
+        # flat fslot_mlp/ layout — matches _mlp_ckpt_dir / _mlp_tunnel_path; only --fit-ptid /
+        # --tunnels-only run here (no per-target diagnostic), so per_target/bootstrap dirs go unused
+        OUT_DIR = MLP_ROOT / "ptood_probing"
+        TUNNEL_DIR = MLP_ROOT / "tunnels"
+        PTID_RUN_DIR = MLP_ROOT / "ptid_runs"
+        PTID_CKPT_DIR = MLP_ROOT / "ptid_checkpoints"    # == _mlp_ckpt_dir(...).parent
+        FIG_DIR = MLP_ROOT / "figures"
+    else:
+        OUT_DIR = OUT_ROOT / "ptood_probing"
+        TUNNEL_DIR = OUT_ROOT / "tunnels"                # PT-ID artifact, portable by source tag
+        PTID_RUN_DIR = OUT_DIR / "ptid_runs"             # per-seed PT-ID val/test curves + windows
+        PTID_CKPT_DIR = OUT_DIR / "ptid_checkpoints"     # per-source frozen PT-ID probes (all seeds)
+        FIG_DIR = OUT_DIR / "figures"
     PER_TARGET_DIR = OUT_DIR / "per_target"
     BOOT_IN_DIR = OUT_DIR / "bootstrap_inputs"
-    CKPT_DIR = OUT_DIR / "checkpoints"                  # per-PT-OOD-target frozen probes
-    FIG_DIR = OUT_DIR / "figures"
-    PTID_RUN_DIR = OUT_DIR / "ptid_runs"                # per-seed PT-ID val/test curves + windows
-    PTID_CKPT_DIR = OUT_DIR / "ptid_checkpoints"        # per-source frozen PT-ID probes (all seeds)
+    CKPT_DIR = OUT_DIR / "checkpoints"                   # per-PT-OOD-target frozen probes (linear only)
     for d in (OUT_DIR, TUNNEL_DIR, PER_TARGET_DIR, BOOT_IN_DIR, CKPT_DIR, FIG_DIR,
               PTID_RUN_DIR, PTID_CKPT_DIR):
         d.mkdir(parents=True, exist_ok=True)
@@ -194,12 +216,120 @@ def load_ptid_ckpt(src, qset, seed, device="cpu"):
 
 
 # --------------------------------------------------------------------------- #
+# Native-MLP family: same fslot features + cache, nonlinear head, PARALLEL artifact namespace
+# --------------------------------------------------------------------------- #
+def _linear_tunnel_path(src, qset):
+    return OUT_ROOT / "tunnels" / f"{src}__{READOUT}__{qset}__{RUNS_TAG}.json"
+
+
+def _mlp_ckpt_dir(src, qset, seed):
+    """Path of a frozen native-MLP PT-ID source probe — a fslot_mlp/ sibling of _ptid_ckpt_dir, built
+    from constants so run_fslot_transfer can resolve it without running this module's main()."""
+    return MLP_ROOT / "ptid_checkpoints" / f"{src}__{MLP_TAG}__C{C}_H{H}__{qset}__seed{seed}"
+
+
+def _mlp_tunnel_path(src, qset):
+    return MLP_ROOT / "tunnels" / f"{src}__{MLP_TAG}__{qset}__{RUNS_TAG}.json"
+
+
+def _save_ckpt_mlp(ckdir, fitted):
+    """Freeze a native-MLP forecast-slot probe (per layer): ResidualBlock head state_dict + slot-scaler
+    arrays + the shape / patch / regularization / provenance metadata (§6) needed to rebuild the head
+    (build_head) and re-apply predict_forecast_slot_native_head. Mirrors _save_ckpt for the nonlinear
+    head. The head is a from-scratch probe — its weights are the fit's, never Chronos-2's native head."""
+    ckdir.mkdir(parents=True, exist_ok=True)
+    for i, f in fitted.items():
+        torch.save({"family": f["family"], "head_state_dict": f["head"].state_dict(),
+                    "scaler_mean": f["scaler"].mean_, "scaler_scale": f["scaler"].scale_,
+                    "wd": f["wd"], "selection": f["selection"],
+                    "in_features": f["in_features"], "out_features": f["out_features"],
+                    "hidden_dim": f["hidden_dim"], "dropout": f["dropout"], "K": f["K"],
+                    "output_patch_size": f["output_patch_size"], "lr": f["lr"],
+                    "epochs": f["epochs"], "selected_epoch": f["selected_epoch"],
+                    "init_seed": f["init_seed"], "param_count": f["param_count"],
+                    "final_train_loss": f["final_train_loss"], "final_val_loss": f["final_val_loss"],
+                    "converged": f["converged"], "layer": int(i),
+                    "layer_label": LAYER_LABELS[i]}, ckdir / f"L{i:02d}.pt")
+
+
+def load_mlp_ckpt(src, qset, seed, device="cpu"):
+    """Reload a frozen native-MLP PT-ID source probe (saved by _save_ckpt_mlp) as a fitted dict that
+    predict_forecast_slot_native_head consumes directly — the FROZEN source probe reused across a
+    transfer row. Rebuilds each layer's StandardScaler (mean/scale) and ResidualBlock head (build_head
+    + load_state_dict, eval mode so dropout is OFF); NEVER trains. Keys = the 14 fslot readout points.
+    Fail-loud on a missing / short checkpoint dir."""
+    d = _mlp_ckpt_dir(src, qset, seed)
+    paths = sorted(d.glob("L*.pt"))
+    if not paths:
+        raise FileNotFoundError(f"no MLP checkpoints in {d} — run "
+                                "`run_ptood_probing_ftok --probe-family native_mlp --fit-ptid` first")
+    fitted = {}
+    for p in paths:
+        i = int(p.stem[1:])                                  # "L07" -> 7
+        ck = torch.load(p, map_location=device, weights_only=False)
+        head = build_head(ck["in_features"], ck["out_features"], hidden_dim=ck["hidden_dim"],
+                          dropout=ck["dropout"], device=device)
+        head.load_state_dict(ck["head_state_dict"])
+        head.eval()                                          # dropout off -> deterministic predict
+        fitted[i] = {"head": head,
+                     "scaler": _scaler_from_arrays(ck["scaler_mean"], ck["scaler_scale"]),
+                     "wd": float(ck["wd"]), "selection": ck["selection"],
+                     "in_features": int(ck["in_features"]), "out_features": int(ck["out_features"]),
+                     "hidden_dim": int(ck["hidden_dim"]), "dropout": float(ck["dropout"]),
+                     "output_patch_size": int(ck["output_patch_size"]), "K": int(ck["K"]),
+                     "family": ck["family"], "param_count": int(ck["param_count"]),
+                     "init_seed": int(ck["init_seed"]), "device": str(device)}
+    return fitted
+
+
+def _fit_mlp_explicit_val(f_tr, y_tr, f_va, y_va, *, quantiles, epochs, wd_grid, device, init_seed):
+    """Uniform-signature wrapper injecting the native-faithful dropout (hidden_dim defaults to the
+    native d_ff inside the probe), so FAMILY.fit is called identically for both families."""
+    return fit_forecast_slot_native_head_explicit_val(
+        f_tr, y_tr, f_va, y_va, quantiles=quantiles, epochs=epochs, wd_grid=wd_grid, device=device,
+        init_seed=init_seed, dropout=MLP_DROPOUT)
+
+
+@dataclass(frozen=True)
+class ProbeFamily:
+    """A readout family: same fslot features + windows + tunnel semantics, different head + a disjoint
+    artifact namespace. shared_linear's callables ARE the existing functions, so the default run is
+    byte-identical; native_mlp routes to fslot_mlp/."""
+    name: str                    # CLI value + record 'probe_family'
+    artifact_tag: str            # filename / checkpoint-dir stem ("fslot" | "fslot_mlp")
+    label: str                   # human label for figure titles
+    out_root: object             # base dir for ptid_runs / tunnels / figures (Path)
+    ckpt_dir: Callable           # (src, qset, seed) -> Path
+    tunnel_path: Callable        # (src, qset) -> Path
+    fit: Callable                # (f_tr, y_tr, f_va, y_va, *, quantiles, epochs, wd_grid, device, init_seed)
+    predict: Callable            # (fitted, feats, labels, *, quantiles, device, collect_*) -> (out, diag)
+    save_ckpt: Callable          # (ckdir, fitted) -> None
+    load_ckpt: Callable          # (src, qset, seed, device) -> fitted
+
+
+PROBE_FAMILIES = {
+    "shared_linear": ProbeFamily(
+        name="shared_linear", artifact_tag=READOUT, label="shared forecast-token", out_root=OUT_ROOT,
+        ckpt_dir=_ptid_ckpt_dir, tunnel_path=_linear_tunnel_path,
+        fit=fit_shared_forecast_probe_explicit_val, predict=predict_shared_forecast_probe,
+        save_ckpt=_save_ckpt, load_ckpt=load_ptid_ckpt),
+    "native_mlp": ProbeFamily(
+        name="native_mlp", artifact_tag=MLP_TAG, label="native-MLP forecast-token", out_root=MLP_ROOT,
+        ckpt_dir=_mlp_ckpt_dir, tunnel_path=_mlp_tunnel_path,
+        fit=_fit_mlp_explicit_val, predict=predict_forecast_slot_native_head,
+        save_ckpt=_save_ckpt_mlp, load_ckpt=load_mlp_ckpt),
+}
+FAMILY = PROBE_FAMILIES["shared_linear"]     # module default; main() overrides from --probe-family
+
+
+# --------------------------------------------------------------------------- #
 # Stage 1a — PT-ID rolling probes, ALL run seeds fit fresh (GPU)
 # --------------------------------------------------------------------------- #
 def fit_ptid(qset, quantiles, device):
-    """Fit the PT-ID shared-forecast rolling probes for every run seed (idempotent — skips seeds
-    already on disk). Features are extracted once per source (run-seed-independent) and reused
-    across seeds; only the probe init differs by seed."""
+    """Fit the PT-ID rolling probes (FAMILY's readout) for every run seed (idempotent — skips seeds
+    already on disk). Features are extracted once per source from the SAME fslot cache for both
+    families (run-seed- AND readout-independent) and reused across seeds; only the head + init differ.
+    For native_mlp additionally writes a per-seed training-history JSON (§3 overfitting audit)."""
     for src in PT_ID_TAGS:
         pending = [s for s in RUN_SEEDS
                    if not (PTID_RUN_DIR / f"{src}__{qset}__seed{s}.json").exists()]
@@ -211,27 +341,52 @@ def fit_ptid(qset, quantiles, device):
         f_va = _fslot_feats(src, "val", w["X_val"], w["y_val"])
         f_te = _fslot_feats(src, "test", w["X_test"], w["y_test"])
         for seed in pending:
-            print(f"\n[fit PT-ID {READOUT}] {SHORT[src]} run seed {seed} ({qset})")
-            fitted = fit_shared_forecast_probe_explicit_val(
-                f_tr, w["Y_train_traj"], f_va, w["Y_val_traj"], quantiles=quantiles,
-                epochs=QUANTILE_EPOCHS, wd_grid=WD_GRID, device=device, init_seed=seed)
-            _save_ckpt(PTID_CKPT_DIR / f"{src}__{READOUT}__C{C}_H{H}__{qset}__seed{seed}", fitted)
-            out, diag = predict_shared_forecast_probe(fitted, f_te, w["Y_test_traj"],
-                                                      quantiles=quantiles, device=device,
-                                                      collect_test_window_loss=True)
+            print(f"\n[fit PT-ID {FAMILY.artifact_tag}] {SHORT[src]} run seed {seed} ({qset})")
+            fitted = FAMILY.fit(f_tr, w["Y_train_traj"], f_va, w["Y_val_traj"], quantiles=quantiles,
+                                epochs=QUANTILE_EPOCHS, wd_grid=WD_GRID, device=device, init_seed=seed)
+            FAMILY.save_ckpt(FAMILY.ckpt_dir(src, qset, seed), fitted)
+            out, diag = FAMILY.predict(fitted, f_te, w["Y_test_traj"], quantiles=quantiles,
+                                       device=device, collect_test_window_loss=True)
             wl = np.stack([diag["test_window_loss"][i]
                            for i in sorted(diag["test_window_loss"])]).astype(np.float64)  # 14 rows (fslot)
             np.savez(PTID_RUN_DIR / f"{src}__{qset}__seed{seed}.npz", window_loss=wl,
                      series_test=np.asarray(w["series_test"], np.int64))
             json.dump({"dataset": src, "quantile_set": qset, "run_seed": int(seed),
-                       "run_type": RUN_TYPE, "readout": READOUT, "pooling_or_token_type": "forecast_slot",
+                       "run_type": RUN_TYPE, "readout": FAMILY.artifact_tag,
+                       "probe_family": FAMILY.name, "pooling_or_token_type": "forecast_slot",
                        "val_loss_by_layer": val_curve_from_selection(
                            {i: fitted[i]["selection"] for i in sorted(fitted)}, num_layers=len(fitted)),
                        "test_loss_by_layer": [float(out[i]) for i in sorted(out)]},
                       open(PTID_RUN_DIR / f"{src}__{qset}__seed{seed}.json", "w"), indent=2)
+            _save_fit_histories(src, qset, seed, fitted)     # MLP §3 diagnostics; no-op for linear
             print(f"  [saved] {src}__{qset}__seed{seed}.json")
         del w, f_tr, f_va, f_te
         gc.collect()
+
+
+def _save_fit_histories(src, qset, seed, fitted):
+    """Persist per-layer training diagnostics (§3) when the head collected them (native_mlp): per-epoch
+    train + val loss, chosen wd, lr, dropout, epochs, selected epoch, final train/val loss, convergence
+    flag, param count. Linear fits carry no history -> no file written. Enables the WindFarms
+    overfitting inspection (train improving while val worsens at deep layers) BEFORE the full sweep."""
+    first = fitted[next(iter(fitted))]
+    if "history" not in first:
+        return
+    hist = {"dataset": src, "quantile_set": qset, "run_seed": int(seed), "probe_family": FAMILY.name,
+            "dropout": float(first["dropout"]), "hidden_dim": int(first["hidden_dim"]),
+            "epochs": int(first["epochs"]), "param_count_per_head": int(first["param_count"]),
+            "by_layer": {}}
+    for i in sorted(fitted):
+        f = fitted[i]
+        hist["by_layer"][str(i)] = {
+            "layer_label": LAYER_LABELS[i], "chosen_wd": float(f["wd"]), "lr": float(f["lr"]),
+            "selected_epoch": int(f["selected_epoch"]),
+            "final_train_loss": float(f["final_train_loss"]),
+            "final_val_loss": float(f["final_val_loss"]), "converged": f["converged"],
+            "val_loss_by_wd": f["selection"]["val_loss_by_wd"] if f["selection"] else None,
+            "train_loss_by_wd": f["selection"].get("train_loss_by_wd") if f["selection"] else None,
+            "history_train": f["history"]["train"], "history_val": f["history"]["val"]}
+    json.dump(hist, open(PTID_RUN_DIR / f"{src}__{qset}__seed{seed}__history.json", "w"), indent=2)
 
 
 # --------------------------------------------------------------------------- #
@@ -250,7 +405,7 @@ def _ptid_run_curves(src, qset, seed):
 
 
 def _tunnel_path(src, qset):
-    return TUNNEL_DIR / f"{src}__{READOUT}__{qset}__{RUNS_TAG}.json"
+    return FAMILY.tunnel_path(src, qset)     # linear -> OUT_ROOT/tunnels/... (unchanged); mlp -> fslot_mlp/
 
 
 def _seed_mean_windows(curves_by_seed):
@@ -273,7 +428,8 @@ def compute_ptid_tunnels(qset):
         wl_mean, sid = _seed_mean_windows(runs)
         rec = tunnel_record_multi(src, val_by_run, test_by_run, RUN_SEEDS, run_type=RUN_TYPE,
                                   val_split_kind="temporal_rolling",
-                                  extra={"quantile_set": qset, "readout": READOUT,
+                                  extra={"quantile_set": qset, "readout": FAMILY.artifact_tag,
+                                         "probe_family": FAMILY.name,
                                          "pooling_or_token_type": "forecast_slot",
                                          "dataset_set": PTID_SET,
                                          "provenance": {"ptid_runs": str(PTID_RUN_DIR)}})
@@ -286,7 +442,7 @@ def compute_ptid_tunnels(qset):
         out = _tunnel_path(src, qset)
         json.dump(rec, open(out, "w"), indent=2)
         print(f"  [{SHORT[src]:>12}] tunnel [{LAYER_LABELS[rec['l_start']]}, {LAYER_LABELS[last]}]  "
-              f"(sustained plateau)  M_test={rec['M_test']:+.3f}  "
+              f"(first crossing 95%)  M_test={rec['M_test']:+.3f}  "
               f"D_ID={rec['D_ID']:+.3f} [{d_id['ci'][0]:+.3f}, {d_id['ci'][1]:+.3f}] "
               f"per-run {['%+.3f' % d for d in rec['d_id_by_run']]} -> {out.name}")
         _tunnel_figure(rec)
@@ -308,7 +464,7 @@ def _tunnel_figure(rec):
     x = np.arange(len(rec["mean_test_loss_by_layer"]))     # 14 for fslot
     last = len(x) - 1                                       # post-LN reference (L12+LN)
     ax.axvspan(ls - 0.25, last + 0.25, color="tab:green", alpha=0.12,
-               label=f"tunnel (sustained plateau) [{LAYER_LABELS[ls]}, {LAYER_LABELS[last]}]")
+               label=f"tunnel (first crossing 95%) [{LAYER_LABELS[ls]}, {LAYER_LABELS[last]}]")
     _plot_runs(ax, rec["val_loss_by_run"], rec["mean_val_loss_by_layer"],
                rec["std_val_loss_by_layer"], "tab:blue",
                f"validation, mean of {len(rec['run_seeds'])} runs (defines tunnel)")
@@ -316,14 +472,14 @@ def _tunnel_figure(rec):
                rec["std_test_loss_by_layer"], "tab:orange",
                f"test, mean of {len(rec['run_seeds'])} runs (tunnel frozen)")
     ax.axhline((1 + rec["tolerance"]) * rec["mean_val_loss_by_layer"][-1], color="tab:blue",
-               ls=":", lw=1, label="1.05 x final-layer mean val loss")
+               ls=":", lw=1, label=f"{1 + rec['tolerance']:.2f} x final-layer mean val loss")
     ax.set_xticks(x); ax.set_xticklabels(LAYER_LABELS[:len(x)])
     ax.set_xlabel("layer"); ax.set_ylabel("Chronos-2 quantile loss")
-    ax.set_title(f"{SHORT[src]} (PT-ID, shared forecast-token): sustained-plateau tunnel from MEAN "
+    ax.set_title(f"{SHORT[src]} (PT-ID, {FAMILY.label}): first-crossing (95%) tunnel from MEAN "
                  f"validation  (M_test={rec['M_test']:+.2f}, D_ID={rec['D_ID']:+.3f})", fontsize=9)
     ax.legend(fontsize=7)
     fig.tight_layout()
-    out = FIG_DIR / f"ptid_tunnel__{src}__{READOUT}__{rec['quantile_set']}__{RUNS_TAG}.png"
+    out = FIG_DIR / f"ptid_tunnel__{src}__{FAMILY.artifact_tag}__{rec['quantile_set']}__{RUNS_TAG}.png"
     fig.savefig(out, dpi=150); plt.close(fig)
     print(f"    [saved] {out.name}")
 
@@ -541,6 +697,10 @@ def _print_summary(rows):
 
 def _parse_args(argv=None):
     p = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    p.add_argument("--probe-family", default="shared_linear", choices=sorted(PROBE_FAMILIES),
+                   help="readout head: shared_linear (default, byte-identical) or native_mlp "
+                        "(nonlinear native-structure head -> fslot_mlp/ namespace; only --fit-ptid / "
+                        "--tunnels-only run here)")
     p.add_argument("--quantile-set", default="q9", choices=sorted(QUANTILE_SETS))
     p.add_argument("--targets", nargs="*", default=list(PT_OOD_TAGS), choices=list(PT_OOD_TAGS))
     p.add_argument("--fit-ptid", action="store_true",
@@ -553,13 +713,21 @@ def _parse_args(argv=None):
 
 
 def main():
+    global FAMILY
     args = _parse_args()
-    config.set_dataset_set(PTID_SET)     # roster + rolling windows + cache namespace (outputs -> OUT_ROOT)
+    FAMILY = PROBE_FAMILIES[args.probe_family]
+    config.set_dataset_set(PTID_SET)     # roster + rolling windows + cache namespace (outputs -> family root)
     _derive_dirs()
     quantiles = validate_quantiles(QUANTILE_SETS[args.quantile_set])
-    print(f"[run_ptood_probing_ftok] readout={READOUT}  set={PTID_SET}  out={OUT_ROOT.name}  "
-          f"qset={args.quantile_set}  {RUNS_TAG}  K={K}")
+    print(f"[run_ptood_probing_ftok] family={FAMILY.name}  readout={FAMILY.artifact_tag}  "
+          f"set={PTID_SET}  out={FAMILY.out_root.name}  qset={args.quantile_set}  {RUNS_TAG}  K={K}")
     device = "cuda" if torch.cuda.is_available() else "cpu"
+    if FAMILY.name == "native_mlp" and not (args.fit_ptid or args.tunnels_only):
+        raise SystemExit(
+            "native_mlp here supports only --fit-ptid / --tunnels-only (PT-ID source probes + "
+            "tunnels). The MLP transfer experiments (4×4 + PT-OOD) live in run_fslot_transfer "
+            "--probe-family native_mlp; the fresh-target PT-OOD/Probe-ID MLP diagnostic is "
+            "intentionally NOT part of this pass.")
     if args.fit_ptid:
         fit_ptid(args.quantile_set, quantiles, device)
         return

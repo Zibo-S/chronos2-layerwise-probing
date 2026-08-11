@@ -10,7 +10,7 @@ This script only READS existing outputs (tunnel records, ptid_runs, PT-OOD per-t
 spectral records) and renders/aggregates — no probe fits, no extraction, no SVDs. Missing
 inputs skip that figure with a clear message naming the producing command. Conventions shared
 across all figures: dataset order = probing.tunnel.PT_ID_TAGS / PT_OOD_TAGS, layer labels
-Emb, L1..L12, tunnel = sustained-plateau boundary from the MEAN PT-ID validation curve
+Emb, L1..L12, tunnel = first-crossing (95%) boundary from the MEAN PT-ID validation curve
 (never test, never PT-OOD), 3-run means with +-1 std variability, B=5000 paired cluster
 bootstrap for test inference, effective rank in actual units (not normalized).
 
@@ -289,7 +289,7 @@ def ptid_summary(tunnels, qset):
 
 
 def threshold_sensitivity(tunnels, qset):
-    """How the sustained-plateau l_start moves with the tolerance. PRIMARY stays tol=0.05."""
+    """How the first-crossing l_start moves with the tolerance. PRIMARY stays tol=0.05."""
     rows = []
     for src in PT_ID_TAGS:
         mv = tunnels[src]["mean_val_loss_by_layer"]

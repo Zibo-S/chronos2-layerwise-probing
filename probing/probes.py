@@ -1128,11 +1128,14 @@ def predict_content_mlp_head(fitted, feats, labels, quantiles=CHRONOS2_QUANTILES
 # native head (which is this block with pretrained weights on the L12-through-final-norm slots).
 
 def _fit_forecast_slot_head(Xtr, ytr, q, P, hidden_dim, dropout, weight_decay, epochs, lr, device,
-                            Xval=None, yval=None, history=None):
+                            Xval=None, yval=None, history=None, init_seed=SEED):
     """Fit one shared ResidualBlock over the K forecast slots with Chronos-2's quantile loss.
-    Same optimizer convention as _fit_shared_forecast_linear; returns the head in eval() mode."""
+    Same optimizer convention as _fit_shared_forecast_linear; returns the head in eval() mode.
+    `init_seed` selects the head init AND (with dropout > 0) the dropout stream — the only
+    randomness in this deterministic full-batch fit; threaded so the 3-independent-runs protocol can
+    vary it. Default SEED keeps every existing fit_forecast_slot_native_head call byte-identical."""
     Q, H = len(q), ytr.shape[1]
-    torch.manual_seed(SEED)
+    torch.manual_seed(init_seed)
     head = build_head(Xtr.shape[-1], Q * P, hidden_dim=hidden_dim, dropout=dropout, device=device)
     opt = torch.optim.AdamW(wd_param_groups(head, weight_decay), lr=lr)
     head.train()
@@ -1230,6 +1233,114 @@ def fit_forecast_slot_native_head(train_feats, train_labels, quantiles=CHRONOS2_
     return fitted
 
 
+def _fit_converged(val_hist, tail_frac=0.1, rel_tol=1e-3):
+    """Diagnostic convergence flag from a fixed-budget per-epoch loss history (val preferred — it is
+    eval-mode, so dropout-free and smooth). True iff the loss improved by < rel_tol (relative to the
+    final loss) over the last tail_frac of epochs. Training is fixed-epoch (NO early stopping); this
+    only flags layers still visibly improving at the budget. Returns None on a too-short history."""
+    h = [float(x) for x in val_hist if np.isfinite(x)]
+    if len(h) < 3:
+        return None
+    k = max(1, int(len(h) * tail_frac))
+    return bool((h[-1 - k] - h[-1]) / (abs(h[-1]) + 1e-8) < rel_tol)
+
+
+def fit_forecast_slot_native_head_explicit_val(train_feats, train_labels, val_feats, val_labels,
+                                               quantiles=CHRONOS2_QUANTILES, epochs=300, lr=1e-2,
+                                               weight_decay=1e-3, wd_grid=None, device=None,
+                                               hidden_dim=NATIVE_D_FF, dropout=0.0, init_seed=SEED,
+                                               output_patch_size=OUTPUT_PATCH_SIZE):
+    """Nonlinear (native-structure ResidualBlock) twin of fit_shared_forecast_probe_explicit_val:
+    ONE shared head over the K forecast slots, weight-decay chosen on an EXPLICIT temporal validation
+    split, returning the frozen fitted probe. Mirrors fit_content_mlp_head_explicit_val (full-train
+    scaler + head, val-only wd score, chosen-wd full-train head kept) but with the slot mechanics
+    (_fit_slot_scaler / _slot_transform / _apply_shared_head, K = ceil(H/P)) and the 14-key fslot
+    readout. The heads are freshly initialised (build_head + init_seed) — they NEVER load Chronos-2's
+    pretrained native-head weights.
+
+    train_feats / val_feats  : {layer: (n, K, 768)} forecast-slot states (extract_kout_features), 3-D.
+                               Iterates sorted(train_feats), so the v4 post-final-LN key (NUM_LAYERS)
+                               is fit alongside L0..L12; a legacy 13-key dict is handled unchanged.
+    train_labels / val_labels: (n, H) arcsinh trajectory labels — raises on 1-D / on 2-D feats.
+    init_seed                : head init + dropout stream (the only randomness); default SEED.
+    Per layer fitted[i] carries the frozen head plus training diagnostics (§3): selection.{
+    val_loss_by_wd, train_loss_by_wd, chosen_wd}; source_val_loss / source_train_loss; a per-epoch
+    "history" {train, val} for the chosen wd; final_train_loss / final_val_loss; epochs /
+    selected_epoch (= epochs; fixed budget, no early stopping) / lr / dropout / hidden_dim /
+    param_count / init_seed / converged. Shape is predict_forecast_slot_native_head-compatible and
+    the selection dict matches the linear twin, so save/load + source_selected_layer are unchanged."""
+    device = device or ("cuda" if torch.cuda.is_available() else "cpu")
+    quantiles = validate_quantiles(quantiles)
+    Ytr = np.asarray(train_labels, dtype=np.float32)
+    Yva = np.asarray(val_labels, dtype=np.float32)
+    if Ytr.ndim != 2 or Yva.ndim != 2:
+        raise ValueError("fit_forecast_slot_native_head_explicit_val needs (n, H) trajectory labels "
+                         f"for BOTH train and val -- got {Ytr.shape} / {Yva.shape}")
+    f0 = train_feats[0]
+    if np.ndim(f0) != 3:
+        raise ValueError(f"needs (n, K, 768) forecast-slot features, got {np.shape(f0)} "
+                         "— use extract_kout_features, not extract_window_features")
+    K = f0.shape[1]
+    Q, H = len(quantiles), Ytr.shape[1]
+    P = int(output_patch_size)
+    if K != math.ceil(H / P):
+        raise ValueError(f"features carry K={K} slots, but H={H}, P={P} needs K=ceil(H/P)="
+                         f"{math.ceil(H / P)} — re-extract with the matching horizon")
+    q = torch.as_tensor(quantiles, dtype=torch.float32, device=device)
+    ytr = torch.as_tensor(Ytr, device=device)
+    yva = torch.as_tensor(Yva, device=device)
+
+    fitted = {}
+    for i in sorted(train_feats):          # 14 keys for fslot v4 (L0..L12 + post-LN); range(13) legacy
+        sc = _fit_slot_scaler(train_feats[i])                          # slot-scaler on FULL train only
+        Xtr = torch.as_tensor(_slot_transform(sc, train_feats[i]), dtype=torch.float32, device=device)
+        Xva = torch.as_tensor(_slot_transform(sc, val_feats[i]), dtype=torch.float32, device=device)
+        if wd_grid is None:
+            wd, src_val, sel = weight_decay, None, None
+        else:
+            best_wd, best_val, sel_v, sel_t = wd_grid[0], float("inf"), {}, {}
+            for cand in wd_grid:
+                cm = _fit_forecast_slot_head(Xtr, ytr, q, P, hidden_dim, dropout, cand, epochs, lr,
+                                             device, init_seed=init_seed)              # FULL train
+                with torch.no_grad():
+                    v = chronos2_quantile_loss(_apply_shared_head(cm, Xva, Q, P, H), yva, q).item()
+                    t = chronos2_quantile_loss(_apply_shared_head(cm, Xtr, Q, P, H), ytr, q).item()
+                sel_v[cand], sel_t[cand] = v, t
+                if v < best_val:
+                    best_val, best_wd = v, cand
+            wd, src_val = best_wd, best_val
+            sel = {"val_loss_by_wd": {float(k): float(x) for k, x in sel_v.items()},
+                   "train_loss_by_wd": {float(k): float(x) for k, x in sel_t.items()},
+                   "chosen_wd": float(best_wd)}
+        # refit the chosen wd once WITH per-epoch history (val-mode -> dropout-free); same init_seed
+        # makes this head byte-identical to the grid's chosen candidate, so the stored head and the
+        # diagnostic curve's endpoint agree exactly.
+        hist = {"train": [], "val": []}
+        m = _fit_forecast_slot_head(Xtr, ytr, q, P, hidden_dim, dropout, wd, epochs, lr, device,
+                                    Xval=Xva, yval=yva, history=hist, init_seed=init_seed)
+        m.eval()
+        with torch.no_grad():
+            tr_loss = chronos2_quantile_loss(_apply_shared_head(m, Xtr, Q, P, H), ytr, q).item()
+            va_loss = chronos2_quantile_loss(_apply_shared_head(m, Xva, Q, P, H), yva, q).item()
+        fitted[i] = {"scaler": sc, "head": m, "wd": float(wd), "selection": sel,
+                     "source_val_loss": (None if src_val is None else float(src_val)),
+                     "source_train_loss": float(tr_loss),
+                     "history": {"train": [float(x) for x in hist["train"]],
+                                 "val": [float(x) for x in hist["val"]]},
+                     "final_train_loss": float(tr_loss), "final_val_loss": float(va_loss),
+                     "epochs": int(epochs), "selected_epoch": int(epochs), "lr": float(lr),
+                     "converged": _fit_converged(hist["val"] or hist["train"]),
+                     "in_features": int(m.hidden_layer.in_features), "out_features": Q * P,
+                     "hidden_dim": int(hidden_dim), "dropout": float(dropout), "K": int(K),
+                     "output_patch_size": P, "family": "forecast_slot_native_head",
+                     "pooling_or_token_type": "forecast_slot", "param_count": head_param_count(m),
+                     "init_seed": int(init_seed), "device": str(device)}
+        vtxt = "n/a" if src_val is None else f"{src_val:.3f}"
+        print(f"    [fit-explicit-val fslot_native] L{i:>2}  wd={wd:g}  train={tr_loss:.3f}  "
+              f"val={vtxt}  params={fitted[i]['param_count']:,}  conv={fitted[i]['converged']}")
+    return fitted
+
+
 def predict_forecast_slot_native_head(fitted, feats, labels, quantiles=CHRONOS2_QUANTILES,
                                       device=None, collect_test_median=False,
                                       collect_test_window_loss=False,
@@ -1255,7 +1366,7 @@ def predict_forecast_slot_native_head(fitted, feats, labels, quantiles=CHRONOS2_
     out = {}
     diag = ({"test_mean_pinball": {}, "test_median": {}, "test_window_loss": {}}
             if (collect_test_median or collect_test_window_loss) else None)
-    for i in range(NUM_LAYERS):
+    for i in sorted(feats):                # sorted keys: 14 for fslot v4 (L0..L12 + post-LN), 13 legacy
         dev = device or fitted[i]["device"]
         m = fitted[i]["head"].to(dev)
         m.eval()

@@ -15,9 +15,9 @@ from probing.tunnel import (PT_ID_TAGS, PT_OOD_TAGS, check_tunnel_on_test, d_sta
 
 
 def test_tunnel_start_basic():
-    # monotone descent into a flat tail: the sustained boundary is the start of the flat tail
+    # monotone descent: first-crossing = the first layer within 5% (1.05x) of the last layer
     v = [2.0, 1.6, 1.3, 1.04, 1.0, 1.01, 1.0]
-    assert tunnel_start(v) == 3          # earliest l with every j>=l within 1.05*last
+    assert tunnel_start(v) == 3          # v[2]=1.3 > 1.05x last; v[3]=1.04 <= 1.05x is the first crossing
 
 
 def test_tunnel_one_sided_better_than_last():
@@ -26,13 +26,13 @@ def test_tunnel_one_sided_better_than_last():
     assert tunnel_start(v) == 1
 
 
-def test_sustained_refuses_to_open_before_a_hump():
-    # U-shaped curve (the Electricity pattern): a single early crossing does NOT open the tunnel
-    # because a later hump re-crosses the threshold; the sustained boundary starts after the hump.
+def test_first_crossing_opens_before_a_hump():
+    # U-shaped curve (the Electricity pattern): first-crossing opens the tunnel at the FIRST dip,
+    # even though a later hump re-crosses the threshold. The hump then lives INSIDE the tunnel and
+    # is flagged by max_excursion (which is NOT bounded by tol on validation under first-crossing).
     v = [1.0, 3.0, 1.01, 1.02, 1.0]
-    assert tunnel_start(v) == 2                        # suffix rule starts after the violation
-    assert np.isclose(max_excursion(v, 0), 2.0)       # M at layer 0 would flag the hump (3.0/1.0 - 1)
-    assert max_excursion(v, 2) <= 0.05                # inside the sustained tunnel: flat by construction
+    assert tunnel_start(v) == 0                        # first crossing: v[0]=1.0 <= 1.05x last
+    assert np.isclose(max_excursion(v, 0), 2.0)       # the hump (3.0/1.0 - 1) lives inside the tunnel
 
 
 def test_tunnel_degenerate_last_only():
@@ -58,10 +58,10 @@ def test_tunnel_record_fields_and_no_test_leak():
     test = [0.9, 5.0, 1.0]              # test would give a different boundary — must not matter
     rec = tunnel_record("m4_hourly", val, test, val_split_kind="temporal_rolling")
     assert rec["l_start"] == 1 and rec["tunnel"] == [1, 2]
-    assert rec["tunnel_definition"] == "sustained_plateau"
+    assert rec["tunnel_definition"] == "first_crossing_95"
     assert "l_start_sustained" not in rec and "tunnel_sustained" not in rec   # single definition now
     assert rec["final_layer_val_loss"] == 1.0
-    assert np.isclose(rec["max_excursion_val"], 0.0)     # <= tol by construction on val
+    assert np.isclose(rec["max_excursion_val"], 0.0)     # flat val suffix here (NOT guaranteed under first-crossing)
     assert np.isclose(rec["max_excursion_test"], 4.0)    # test hump 5.0/1.0 - 1
     assert rec["test_criterion_holds"] is False          # test[1]=5.0 breaks it
     assert rec["domain_status"] == {"pretraining": "pt_id", "adaptation": None}
@@ -132,8 +132,8 @@ def test_delta_stat_is_replicate_difference():
 
 def test_tunnel_record_multi_mean_defines_boundary():
     # the tunnel must be defined from the MEAN validation curve, never an average of per-seed
-    # indices. Mean L0 = 1.20 > 1.05*last breaks the sustained suffix, but mean L1 = 1.047 <= 1.05
-    # and L2/L3 are flat, so the sustained boundary is L1.
+    # first-crossings (which would be 0, 1, 1 here). Mean L0 = 1.20 > 1.05*last, but mean
+    # L1 = 1.047 <= 1.05, so the first-crossing boundary from the MEAN curve is L1.
     val = [[1.00, 1.20, 1.00, 1.0],
            [1.30, 1.00, 1.00, 1.0],
            [1.30, 0.94, 1.00, 1.0]]
@@ -141,7 +141,7 @@ def test_tunnel_record_multi_mean_defines_boundary():
     rec = tunnel_record_multi("m4_hourly", val, test, run_seeds=(0, 1, 2))
     assert rec["mean_val_loss_by_layer"][0] == 1.2      # mean L0 = 1.20 > 1.05 -> tunnel can't start at L0
     assert rec["l_start"] == 1 and rec["tunnel"] == [1, 3]
-    assert rec["tunnel_definition"] == "sustained_plateau"
+    assert rec["tunnel_definition"] == "first_crossing_95"
     assert rec["run_seeds"] == [0, 1, 2] and rec["run_type"] == "probe_seed"
     # all runs + means + stds retained, layerwise
     assert np.array(rec["val_loss_by_run"]).shape == (3, 4)
