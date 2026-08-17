@@ -1,0 +1,1513 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Chronos-2 layer-wise probing — research notebook</title>
+<style>
+:root{
+  --ink:#1a1e24; --muted:#5a6472; --faint:#8a93a0; --bg:#fbfbfa; --panel:#ffffff;
+  --line:#e3e6ea; --accent:#20618f; --accent-soft:#eaf1f7;
+  --green:#1d6b3c; --green-bg:#e7f3ea; --blue:#1e5b8a; --blue-bg:#e8f0f8;
+  --amber:#8a5a11; --amber-bg:#faf1de; --gray:#5a6472; --gray-bg:#eef0f2;
+  --purple:#5b3f86; --purple-bg:#efe9f7; --red:#8f2f2f; --red-bg:#f9e9e9;
+  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--bg);color:var(--ink);
+  font:16px/1.62 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;}
+a{color:var(--accent);text-decoration:none}
+a:hover{text-decoration:underline}
+a:focus-visible,button:focus-visible,summary:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.skip{position:absolute;left:-9999px;top:0;background:var(--accent);color:#fff;padding:.5rem .9rem;z-index:50}
+.skip:focus{left:.5rem;top:.5rem}
+.layout{display:flex;max-width:1200px;margin:0 auto;gap:2.2rem;padding:0 1.1rem}
+nav.toc{display:none}
+@media(min-width:1100px){
+  nav.toc{display:block;position:sticky;top:0;align-self:flex-start;max-height:100vh;overflow-y:auto;
+    width:245px;flex:0 0 245px;padding:1.6rem 0 2rem;font-size:.83rem;line-height:1.5}
+  nav.toc ol{list-style:none;margin:.35rem 0 0;padding:0}
+  nav.toc>ol>li{margin:.32rem 0}
+  nav.toc ol ol{margin-left:.85rem;font-size:.94em;color:var(--muted)}
+  nav.toc a{color:var(--muted)}
+  nav.toc a:hover{color:var(--accent)}
+  nav.toc .toc-title{font-weight:600;color:var(--ink);font-size:.8rem;letter-spacing:.06em;text-transform:uppercase}
+}
+main{flex:1;min-width:0;max-width:47.5rem;padding:1.6rem 0 4rem}
+header.page h1{font-size:1.72rem;line-height:1.25;margin:.2rem 0 .5rem;letter-spacing:-.01em}
+header.page .q{font-size:1.05rem;color:var(--muted);max-width:42rem}
+h2{font-size:1.32rem;margin:2.6rem 0 .7rem;padding-top:.9rem;border-top:1px solid var(--line);letter-spacing:-.01em}
+h3{font-size:1.06rem;margin:1.7rem 0 .45rem}
+h4{font-size:.95rem;margin:1.25rem 0 .35rem}
+p{margin:.55rem 0}
+ul,ol{margin:.45rem 0 .7rem;padding-left:1.35rem}
+li{margin:.22rem 0}
+code{font-family:var(--mono);font-size:.855em;background:var(--gray-bg);border-radius:4px;padding:.08em .32em}
+pre{background:#f4f5f6;border:1px solid var(--line);border-radius:6px;padding:.7rem .9rem;
+  overflow-x:auto;font-size:.82rem;line-height:1.5}
+pre code{background:none;padding:0;font-size:1em}
+table{border-collapse:collapse;width:100%;margin:.7rem 0;font-size:.86rem}
+th,td{border:1px solid var(--line);padding:.34rem .55rem;text-align:left;vertical-align:top}
+th{background:var(--gray-bg);font-weight:600}
+.tbl-wrap{overflow-x:auto;margin:.7rem 0}
+.tbl-wrap table{margin:0;min-width:560px}
+.meta-grid{display:grid;grid-template-columns:max-content 1fr;gap:.18rem 1rem;font-size:.88rem;margin:.8rem 0}
+.meta-grid dt{color:var(--muted);font-weight:500}
+.meta-grid dd{margin:0}
+.badge{display:inline-block;font-size:.68rem;font-weight:600;letter-spacing:.03em;border-radius:4px;
+  padding:.1em .5em;vertical-align:.12em;white-space:nowrap;border:1px solid transparent}
+.b-vres{color:var(--green);background:var(--green-bg);border-color:#c4e0cc}
+.b-vimpl{color:var(--blue);background:var(--blue-bg);border-color:#c9daed}
+.b-hist{color:var(--gray);background:var(--gray-bg);border-color:#d8dce1}
+.b-inr{color:var(--amber);background:var(--amber-bg);border-color:#ecd9ac}
+.b-rpv{color:var(--amber);background:#fff;border-color:#d9b869}
+.b-plan{color:var(--purple);background:var(--purple-bg);border-color:#d9cdec}
+.b-sup{color:#7a4a4a;background:#f3ecec;border-color:#dcc8c8}
+.b-nv{color:var(--red);background:var(--red-bg);border-color:#e6c2c2}
+.callout{border:1px solid var(--line);border-left:3px solid var(--accent);background:var(--panel);
+  border-radius:0 6px 6px 0;padding:.6rem .9rem;margin:.9rem 0;font-size:.9rem}
+.callout.warn{border-left-color:#b98315;background:#fffdf6}
+.callout.flag{border-left-color:#a33d3d;background:#fdf8f8}
+.callout .lbl{font-weight:600;font-size:.78rem;letter-spacing:.05em;text-transform:uppercase;color:var(--muted)}
+details{border:1px solid var(--line);border-radius:6px;background:var(--panel);margin:.7rem 0;padding:0}
+details>summary{cursor:pointer;padding:.5rem .85rem;font-weight:600;font-size:.9rem;list-style:none}
+details>summary::before{content:"▸ ";color:var(--faint)}
+details[open]>summary::before{content:"▾ "}
+details>.body{padding:.1rem .95rem .75rem;border-top:1px solid var(--line);font-size:.92rem}
+article.entry{border:1px solid var(--line);border-radius:8px;background:var(--panel);
+  padding:.9rem 1.15rem;margin:1.1rem 0}
+article.entry h3{margin:.1rem 0 .5rem;padding:0;border:0}
+article.entry .date{font-family:var(--mono);font-size:.78rem;color:var(--faint);letter-spacing:.04em}
+.claim{border:1px solid var(--line);border-radius:8px;background:var(--panel);padding:.85rem 1.1rem;margin:1rem 0}
+.claim h4{margin:.05rem 0 .45rem}
+.claim .kv{display:grid;grid-template-columns:max-content 1fr;gap:.12rem .9rem;font-size:.85rem;margin:.5rem 0}
+.claim .kv dt{color:var(--muted)}
+.claim .kv dd{margin:0}
+.path{font-family:var(--mono);font-size:.82em;word-break:break-all}
+.small{font-size:.86rem;color:var(--muted)}
+.controls{margin:.6rem 0 0;font-size:.8rem;color:var(--muted)}
+.controls button{font:inherit;border:1px solid var(--line);background:#fff;border-radius:5px;
+  padding:.18rem .55rem;margin:0 .25rem .25rem 0;cursor:pointer;color:var(--ink)}
+.controls button[aria-pressed="true"]{background:var(--accent-soft);border-color:var(--accent);color:var(--accent)}
+footer{border-top:1px solid var(--line);margin-top:3rem;padding-top:1rem;font-size:.82rem;color:var(--muted)}
+@media print{
+  nav.toc,.controls,.skip{display:none}
+  body{background:#fff;font-size:11pt}
+  main{max-width:none;padding:0}
+  details{border:none}
+  details>summary{display:none}
+  details>.body{display:block;border:none;padding:0}
+  article.entry,.claim,.callout{break-inside:avoid;border-color:#bbb}
+  a{color:inherit}
+  pre{white-space:pre-wrap}
+}
+</style>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<div class="layout">
+<nav class="toc" aria-label="Table of contents">
+  <p class="toc-title">Contents</p>
+  <ol>
+    <li><a href="#how-to-read">1 · How to read this notebook</a></li>
+    <li><a href="#snapshot">2 · Current project snapshot</a></li>
+    <li><a href="#timeline">3 · Chronological notebook</a>
+      <ol>
+        <li><a href="#d0701">Jul 1 — repo + classification phase</a></li>
+        <li><a href="#d0708">Jul 8 — Phase 0 scaffolding</a></li>
+        <li><a href="#d0709">Jul 9 — Narval; the metric problem</a></li>
+        <li><a href="#d0711">Jul 11 — two meanings of OOD</a></li>
+        <li><a href="#d0713">Jul 13 — quantile probe + new datasets</a></li>
+        <li><a href="#d0714">Jul 14 — slot probe, bootstrap, q1/q9/q21</a></li>
+        <li><a href="#d0721">Jul 21 — layer 0</a></li>
+        <li><a href="#d0728">Jul 28 — 3×3 OOD pilot</a></li>
+        <li><a href="#d0729">Jul 29 — capacity heads</a></li>
+        <li><a href="#d0730">Jul 30 — screening, new roster</a></li>
+        <li><a href="#d0731">Jul 31 — 4×4 results</a></li>
+        <li><a href="#d0731b">Jul 31 — M4 MASE artifact</a></li>
+      </ol>
+    </li>
+    <li><a href="#evolution">4 · Evolution of the experiment</a></li>
+    <li><a href="#protocol">5 · Current experiment protocol</a></li>
+    <li><a href="#datasets">6 · Datasets</a></li>
+    <li><a href="#probes">7 · Probe and head glossary</a></li>
+    <li><a href="#metrics">8 · Metrics glossary</a></li>
+    <li><a href="#findings">9 · Findings by evidence status</a></li>
+    <li><a href="#article-ready">10 · Article-ready evidence</a></li>
+    <li><a href="#open">11 · Open questions and current work</a></li>
+    <li><a href="#repo-map">12 · Repository map</a></li>
+    <li><a href="#commands">13 · Commands</a></li>
+    <li><a href="#reconciliation">14 · Reconciliation notes</a></li>
+  </ol>
+</nav>
+<main id="main">
+
+<header class="page">
+  <h1>Layer-wise probing of frozen Chronos-2 — research notebook</h1>
+  <p class="q">At which depth inside the frozen <code>amazon/chronos-2</code> time-series
+  foundation model is the forecast most <em>linearly decodable</em>, measured in the model's
+  own quantile-loss currency — and does the intermediate-layer advantage survive strict
+  cross-dataset probe transfer?</p>
+  <dl class="meta-grid">
+    <dt>Repository</dt><dd><code>chronos2-layerwise-probing</code></dd>
+    <dt>Branch</dt><dd><code>ood-forecasting-pilot</code></dd>
+    <dt>Commit</dt><dd><code>a1731025a0b2d4e81e383a2470fe68a31d329b40</code> (2026-07-31, “Add extended_v2 4×4 cross-dataset OOD probe-transfer + normalized relative-gain”)</dd>
+    <dt>Working tree</dt><dd>clean at generation time — all results referenced here are committed</dd>
+    <dt>Generated</dt><dd>2026-07-31</dd>
+    <dt>Updated</dt><dd>2026-07-31 — added the M4 MASE-artifact entry (<a href="#d0731b">§3</a>); it cites the <em>uncommitted working-tree</em> <code>extended_v3_rolling</code> run alongside committed <code>extended_v2</code>, recomputed on the login node from cached features</dd>
+  </dl>
+  <p class="small">This notebook reconciles five sources: the human-written research notes
+  (<a href="EGOR_RESEARCH_NOTES.md"><span class="path">notes/EGOR_RESEARCH_NOTES.md</span></a>,
+  which sets the chronology and the intended interpretations), the rolling machine-written plan
+  (<a href="PLAN.md"><span class="path">notes/PLAN.md</span></a>, audited — several of its
+  “pending” items were found already completed), the current code, the committed machine-readable
+  result artifacts, and Git history. Where sources disagree, code wins on what is implemented,
+  saved outputs win on what was run, and the notes win on what was believed at the time.
+  Numerical values come exclusively from CSV/JSON/NPZ artifacts and run metadata — never from
+  reading figures.</p>
+</header>
+
+<section id="how-to-read">
+<h2>1 · How to read this notebook</h2>
+<p>Every claim carries one of eight evidence labels:</p>
+<ul>
+  <li><span class="badge b-vimpl">Verified implementation</span> — the current code implements
+  this behavior. Does <em>not</em> imply the corresponding experiment was run.</li>
+  <li><span class="badge b-vres">Verified result</span> — a matching machine-readable output or
+  run artifact exists and its configuration can be established.</li>
+  <li><span class="badge b-hist">Historical</span> — accurately describes what happened or was
+  believed at that date; may no longer match the current implementation.</li>
+  <li><span class="badge b-inr">Implemented, not run</span> — the code exists; no matching
+  completed scientific run was found.</li>
+  <li><span class="badge b-rpv">Run, partially verified</span> — evidence a run happened, but its
+  exact configuration or provenance cannot be fully established.</li>
+  <li><span class="badge b-plan">Planned</span> — proposed or decided, not implemented.</li>
+  <li><span class="badge b-sup">Superseded</span> — replaced by a later decision or implementation.</li>
+  <li><span class="badge b-nv">Needs verification</span> — repository evidence is insufficient or contradictory.</li>
+</ul>
+<p>The <a href="#timeline">timeline (§3)</a> describes what was true <em>at each date</em>, in the
+layer numbering of that date; “Later status” notes point forward. The
+<a href="#snapshot">snapshot (§2)</a>, <a href="#protocol">protocol (§5)</a> and glossaries
+describe the latest verified state only. <a href="#findings">§9</a> sorts every finding by
+evidence status, and <a href="#article-ready">§10</a> is the claim ledger for article writing.</p>
+<div class="callout warn"><span class="lbl">Layer numbering — read this first</span>
+<p>Until 2026-07-21 the project probed <strong>12</strong> representations, numbered L0–L11
+(block outputs; L11 = last). On 2026-07-21 the input embedding was inserted as
+<strong>L0</strong>, block outputs became <strong>L1–L12</strong>, and the last layer became
+<strong>L12</strong> (13 representations). Results generated before that date — including the
+committed <code>extended_v1</code> bootstrap tables and all q1/q9 outputs — still use the old
+numbering. Every layer index in this notebook states which convention it uses.</p></div>
+<div class="controls" aria-hidden="true">
+  <span>Filter by status (JS): </span>
+  <button data-filter="all" aria-pressed="true">all</button>
+  <button data-filter="b-vres" aria-pressed="false">verified results</button>
+  <button data-filter="b-nv" aria-pressed="false">needs verification</button>
+  <button id="expand-all" aria-pressed="false">expand all details</button>
+</div>
+</section>
+
+<section id="snapshot">
+<h2>2 · Current project snapshot</h2>
+<p class="small">Everything in this section was verified against code, config, run metadata, or
+committed artifacts at commit <code>a173102</code>. Two experiment versions coexist; they are
+kept explicit throughout rather than merged into one fictional “current protocol”.</p>
+
+<h3>Model and representations <span class="badge b-vimpl">Verified implementation</span></h3>
+<dl class="meta-grid">
+  <dt>Model</dt><dd><code>amazon/chronos-2</code>, frozen throughout; never trained or fine-tuned</dd>
+  <dt>Architecture</dt><dd>encoder-only; 12 encoder blocks; d_model = 768; head hidden width d_ff = 3072; input patch = output patch = 16 steps (run log: <code>d_model=768, num_layers=12, patch_size=16</code>; <span class="path">probing/heads.py</span> records d_ff)</dd>
+  <dt>Representations</dt><dd>13 per window: <strong>L0</strong> = embedded token sequence entering encoder block 1 (content patches + special tokens, pre-attention; captured by a forward pre-hook on <code>encoder.block[0]</code>), <strong>L1–L12</strong> = block outputs (<span class="path">probing/extraction.py</span>; <code>NUM_LAYERS=13</code>, <code>LAST_LAYER=12</code> in <span class="path">probing/config.py</span>)</dd>
+  <dt>Native head input</dt><dd>L12 after the final layer norm; the native head is a pretrained nonlinear ResidualBlock emitting 21 quantiles × 16 steps per forecast slot</dd>
+  <dt>Geometry</dt><dd>context C = 512, horizon H = 64, K = ⌈64/16⌉ = 4 native forecast slots</dd>
+  <dt>Target space</dt><dd>per-window context standardization then arcsinh: <code>z = arcsinh((y − μ_ctx)/σ_ctx)</code>; inverse <code>y = μ_ctx + σ_ctx·sinh(z)</code> (<span class="path">probing/id_data.py</span>, <code>_make_examples</code>)</dd>
+</dl>
+
+<h3>Probe training (shared by all current lines) <span class="badge b-vimpl">Verified implementation</span></h3>
+<dl class="meta-grid">
+  <dt>Optimizer</dt><dd>AdamW, lr 1e-2, <strong>fixed 300 epochs</strong> (no early stopping), full-batch; weight decay on weight matrices only, biases undecayed (<span class="path">probing/probes.py</span>)</dd>
+  <dt>Scaling</dt><dd>per-layer <code>StandardScaler</code> fit on (source) train features only</dd>
+  <dt>Weight decay</dt><dd>grid {1e-5, 1e-4, 1e-3, 1e-2, 1e-1}, selected per layer on a seed-0 80/20 carve of train, then refit on full train at the chosen wd</dd>
+  <dt>Seed</dt><dd>SEED = 0 everywhere; single seed (multi-seed replication is planned, not run)</dd>
+</dl>
+
+<h3>Two active experiment versions</h3>
+<div class="tbl-wrap"><table>
+<tr><th></th><th><code>extended_v1</code> — in-dataset probing line</th><th><code>extended_v2</code> — 4×4 OOD transfer line</th></tr>
+<tr><td>Datasets</td><td>monash_electricity_hourly, monash_kdd_cup_2018, monash_pedestrian_counts, uber_tlc_hourly</td><td>monash_electricity_hourly, uber_tlc_hourly, m4_hourly, wind_farms_hourly (KDD dropped after screening)</td></tr>
+<tr><td>Split</td><td>within-series (all four)</td><td>within-series except <strong>m4_hourly: cross-series</strong></td></tr>
+<tr><td>Window budget (totals)</td><td>≤3000 train / ≤1500 test per dataset</td><td>matched <strong>1500 train / 650 test totals</strong> per dataset (M4 supply is the floor)</td></tr>
+<tr><td>Quantile set</td><td>q21 default (q1/q9 ablations)</td><td>q9</td></tr>
+<tr><td>Readouts run</td><td>content, reg, content_K, reg_K, fslot_K + legacy ridge/binned</td><td>content-pooled linear only</td></tr>
+<tr><td>Status</td><td><span class="badge b-vres">Verified result</span> q21 regenerated 13-layer (2026-07-21); <span class="badge b-nv">Needs verification</span> bootstrap tables + q1/q9 still pre-L0 12-layer</td><td><span class="badge b-vres">Verified result</span> full 16-cell matrix + baselines + relative gain, run 2026-07-30/31, committed</td></tr>
+</table></div>
+
+<h3>Metrics, baselines, statistics <span class="badge b-vimpl">Verified implementation</span></h3>
+<dl class="meta-grid">
+  <dt>Primary metric</dt><dd>Chronos-2 quantile (pinball) loss, mean over H → sum over Q → mean over windows; lower is better</dd>
+  <dt>Cross-set companion</dt><dd><code>mean_pinball_loss</code> = loss / 2Q (the only quantity comparable across q1/q9/q21)</dd>
+  <dt>Point-forecast metric</dt><dd><code>mase_context</code>: MASE with an <em>in-context</em> seasonal-naive denominator (m = 24 over each 512-step context, clamped at 1e-8, clamp count recorded). The canonical train-series MASE (<code>mase_train_series</code>) is <em>not</em> a reported metric — see <a href="#mase-terms">§8</a></dd>
+  <dt>Baselines</dt><dd>native Chronos-2 median (cached <code>predict_quantiles</code>), seasonal-naive m = 24, last-value (<span class="path">experiments/run_ood_baselines.py</span>)</dd>
+  <dt>Uncertainty</dt><dd>series-level cluster bootstrap: whole test series resampled with replacement via one shared multinomial counts matrix (B = 5000, seed 0) reused across layers/readouts/metrics/native, so every Δ is genuinely paired (<span class="path">probing/stats.py</span>)</dd>
+  <dt>Reference layer</dt><dd>current convention: L12 (the last block). Pre-L0 artifacts compare against L11 — same block, old label</dd>
+</dl>
+
+<h3>Strongest verified finding <span class="badge b-vres">Verified result</span></h3>
+<p>In the <code>extended_v2</code> 4×4 matrix (pooled content linear q9 probe, seed 0): the
+best-layer probe has lower target-test quantile loss than the L12 probe in all 16 cells, and the
+paired series-bootstrap interval for Δ-vs-L12 excludes zero in 14 of 16 (the two exceptions are
+M4-as-source cells). Normalized as a relative gain over L12, ID cells average +6.2 % (n = 4) and
+OOD cells +12.5 % (n = 12). The best layer here is the target-test argmin, so per-cell CIs are
+descriptive, not selection-adjusted; and no transferred probe beats native Chronos-2 (0/16) or
+seasonal-naive (0/16) on <code>mase_context</code>. Full wording constraints in
+<a href="#article-ready">§10</a>.</p>
+
+<h3>Major caveats (current)</h3>
+<ul>
+  <li>Single seed (0) everywhere; probe-fit variance unquantified.</li>
+  <li>Best-layer selection in the transfer matrices uses the target test set (oracle); the fair
+  source-validation selection exists only for the capacity-head 3×3, not the 4×4.</li>
+  <li>All datasets except none are in Chronos-2's pretraining corpus — this measures
+  <em>pretraining-ID</em> decodability; “OOD” means <em>probe-OOD</em> (cross-dataset transfer).</li>
+  <li>M4 uses a different (cross-series) split, complicating its ID-vs-OOD comparison.</li>
+  <li>Linear probes lose to native Chronos-2 and seasonal-naive on point-forecast quality; the
+  result concerns relative decodability across layers, not competitive forecasting.</li>
+  <li>Reported <code>mase</code> <em>means</em> for cross-dataset (esp. M4) cells are not robust —
+  single windows dominate them via <code>sinh</code>-amplified predictions or near-zero
+  denominators; read the median per-window MASE instead (<a href="#d0731b">Jul 31 entry</a>). The
+  <code>quantile_loss</code> headline is unaffected.</li>
+  <li>The <code>extended_v1</code> bootstrap tables and q1/q9 results predate layer 0 and still
+  use the 12-layer numbering.</li>
+</ul>
+<p><strong>Immediate next step</strong> (from the notes, consistent with repo state): multi-seed
+replication of the 4×4 and source-validation layer selection — stop choosing the best layer on the
+target test set. <span class="badge b-plan">Planned</span></p>
+</section>
+
+<section id="timeline">
+<h2>3 · Chronological research notebook</h2>
+<p class="small">Structure and emphasis follow <span class="path">notes/EGOR_RESEARCH_NOTES.md</span>;
+dates before July 9 are reconstructed from Git history. Each entry uses the layer numbering that
+was current at that date.</p>
+
+<article class="entry" id="d0701">
+<p class="date">2026-07-01 · from Git history</p>
+<h3>Repository consolidation; end of the classification phase <span class="badge b-hist">Historical</span></h3>
+<p><strong>What existed.</strong> The project began as layer-wise <em>classification</em> probing
+of frozen Chronos-2 on UEA multivariate datasets. On July 1 the pre-existing pipeline was
+committed (<code>089c913</code>), reorganized into the <code>probing/</code> package +
+<code>experiments/</code> layout (<code>c6d066f</code>, <code>54c5389</code>), and the findings
+wording was finalized for the group (<code>811a126</code>).</p>
+<p><strong>Result carried forward.</strong> Task labels were more linearly decodable at
+intermediate layers than at the last layer in 5/6 UEA datasets (bootstrap CIs excluding zero); a
+hypothesized amplification of that gap under synthetic distribution shift was a null.
+<span class="badge b-vres">Verified result</span> — <span class="path">results/uea/perdataset_summary.json</span>
+(12-layer, pre-L0) with the writeup in <a href="../paper/perdataset_writeup.md"><span class="path">paper/perdataset_writeup.md</span></a>.</p>
+<p><strong>Later status.</strong> The classification line was demoted to a maintained baseline:
+a classification metric is the wrong currency for a forecasting model. Its results were never
+regenerated under the 13-layer scheme. <span class="badge b-sup">Superseded</span> as headline;
+regeneration <span class="badge b-plan">Planned</span>.</p>
+</article>
+
+<article class="entry" id="d0708">
+<p class="date">2026-07-08 · from Git history</p>
+<h3>Phase 0: a genuine in-distribution forecasting baseline <span class="badge b-hist">Historical</span></h3>
+<p><strong>The problem.</strong> The advisor's critique: all probing so far was on UEA
+classification data — foreign tasks for a forecasting model — so there was no genuine
+in-distribution reference (<a href="../paper/phase0_fixes.md"><span class="path">paper/phase0_fixes.md</span></a>).</p>
+<p><strong>The change.</strong> ID forecasting scaffolding (<code>a47b659</code>…<code>f2e08ac</code>):
+windowed loading of Chronos-2 <em>pretraining</em> datasets (M4-Hourly, Electricity, Solar — the
+<code>phase0_trio</code>), a memory-safe extractor, and two <em>scalar</em> linear probes —
+<code>ridge_regression</code> (R² on the normalized future mean) and <code>binned_future</code>
+(5-bin accuracy on the same scalar). Solar was demoted the same day for a label pathology, and
+M4's cross-series fallback split was labeled.</p>
+<p><strong>Later status.</strong> The scalar probes survive as legacy continuity readouts; the
+trio's frozen numbers live in <span class="path">results/phase0_trio/</span> (12-layer).
+<span class="badge b-sup">Superseded</span> by the quantile probe (Jul 13) and the
+<code>extended_v1</code> roster.</p>
+</article>
+
+<article class="entry" id="d0709">
+<p class="date">2026-07-09 · notes</p>
+<h3>First Narval GPU run; the metric problem named <span class="badge b-hist">Historical</span></h3>
+<p><strong>What changed.</strong> Moved compute from a MacBook to the Narval cluster (CUDA
+branch), solved the environment (modules → venv order; pre-download model + datasets on the login
+node because compute nodes have no internet; <code>HF_HUB_OFFLINE=1</code>). Started code cleanup.</p>
+<p><strong>What I learned — the metric problem.</strong> Both probes of that date collapse the
+64-step horizon into a single scalar (the future mean) before probing. A layer could hold an
+excellent linearly readable picture of the future <em>trajectory</em> and still score poorly on a
+scalar summary — and conversely. Fix identified: score real trajectories with a forecasting-native
+metric. Also noted: solar dataset broken.</p>
+<p><strong>Later status.</strong> The environment recipe is still the validated one (see
+<a href="#commands">§13</a>). The scalar-collapse problem drove the July 13 redesign.</p>
+</article>
+
+<article class="entry" id="d0711">
+<p class="date">2026-07-11 · notes</p>
+<h3>Two meanings of OOD <span class="badge b-hist">Historical</span> — still the project's terminology</h3>
+<p><strong>Decision.</strong> “ID/OOD” is ambiguous here and must always be qualified:</p>
+<ul>
+  <li><strong>pretraining-ID/OOD</strong> — relative to what Chronos-2 saw during pretraining.
+  A pretraining dataset is not one giant series: it is a family of related series, and training
+  examples are windows from individual series.</li>
+  <li><strong>probe-ID/OOD</strong> — relative to what the <em>linear probe</em> was trained on.
+  Training a probe on electricity and testing it on pedestrian counts is probe-OOD even though
+  both are pretraining-ID.</li>
+</ul>
+<p>Every dataset used to date is pretraining-ID (provenance:
+<a href="../data/chronos2_seen_manifest.md"><span class="path">data/chronos2_seen_manifest.md</span></a>).
+The later “OOD transfer” experiments are therefore probe-OOD only — the project has never yet
+tested a pretraining-OOD dataset. Open question: univariate vs multivariate / covariates
+(still unprobed).</p>
+</article>
+
+<article class="entry" id="d0713">
+<p class="date">2026-07-13 · notes + commit <code>e4ce34a</code></p>
+<h3>The probe learns Chronos-2's own language; new dataset roster <span class="badge b-hist">Historical</span></h3>
+<p><strong>The change.</strong> Two coupled moves, both committed that day (numbering of that
+date: 12 layers, L11 last):</p>
+<ol>
+  <li><strong>Quantile probe.</strong> Per layer, a single <code>Linear(768, 21·64)</code> on a
+  pooled 768-d vector predicts all 21 native quantile levels for every one of the 64 future
+  steps, trained <em>and scored</em> with Chronos-2's exact quantile loss on arcsinh-space
+  trajectories. The probe now speaks the model's own currency instead of a scalar proxy.</li>
+  <li><strong>Roster swap.</strong> <code>phase0_trio</code> → <code>extended_v1</code>: four
+  long hourly pretraining datasets (electricity, kdd_cup_2018, pedestrian_counts, uber_tlc), all
+  supporting the leakage-free within-series temporal split — killing the solar label pathology
+  and M4's short-series problem in one move.</li>
+</ol>
+<p><strong>Plain language — the two poolings.</strong> The encoder emits one 768-d vector per
+token. <em>Content pooling</em> averages the history-patch token vectors into one summary vector
+(solid lines in the figures of that period); <em>REG pooling</em> takes only the REG token's
+vector — a register position the model itself can use as scratch space (dashed lines).</p>
+<p><strong>Early observations</strong> (of that date, old numbering): on KDD Cup 2018 forecast
+information was most linearly recoverable from the <em>earliest</em> layers and faded with depth;
+KDD showed the smallest probe-vs-native gap, pedestrian the largest; native MASE was below 1 on
+every dataset. Also planned that day: horizon-aware shared forecast probe, bootstrap.</p>
+<p><strong>Later status.</strong> The quantile probe is still the core probe. The KDD depth
+profile became a recurring theme (see Jul 21 / Jul 28 / Jul 30).</p>
+</article>
+
+<article class="entry" id="d0714">
+<p class="date">2026-07-14 · notes + commits <code>655605d</code>…<code>c89392f</code></p>
+<h3>Shared forecast-slot probe, series bootstrap, capacity ablation <span class="badge b-hist">Historical</span></h3>
+<p>The busiest day of the project — three additions, all run on GPU the same week (old
+numbering: 12 layers, L11 last).</p>
+<h4>1 · Shared forecast-token probe — structural alignment with the native head</h4>
+<p>Chronos-2's own head does not read a pooled vector: for H = 64 it reads <strong>4
+forecast-slot hidden states</strong> (one per 16-step output patch) and applies the <em>same</em>
+head weights to each. The pooled probe is shape-compatible with that head but semantically
+mismatched. The new probe mirrors the native layout linearly: one shared
+<code>Linear(768, 21·16)</code> applied to each of the K = 4 slot states, patches concatenated to
+the 64-step forecast. It has ~4× fewer parameters than the pooled probe (258,384 vs 1,033,536 at
+q21). The two probes answer different questions:</p>
+<ul>
+  <li><em>Pooled:</em> can the whole future trajectory be decoded from one global summary vector?</li>
+  <li><em>Shared-slot:</em> can each layer's forecast-slot states be decoded by the same kind of
+  shared linear readout the native model uses?</li>
+</ul>
+<p>Because encoder attention is non-causal, adding forecast slots changes <em>all</em> token
+states — so controlled pooled variants (<code>content_K</code>, <code>reg_K</code>) were re-run
+on the same K-slot pass.</p>
+<h4>2 · Series-level cluster bootstrap</h4>
+<p>Plain language: with one test set you cannot rerun the world, so the bootstrap fabricates
+~5000 artificial test sets by resampling the real one and reads the middle 95 % of the metric's
+spread. But test windows <em>overlap within a series</em> (stride 64 ≪ span 576), so resampling
+individual windows would pretend there is more independent evidence than exists and give
+too-narrow intervals. The unit of resampling is therefore the <strong>whole series</strong>: draw
+S series with replacement, keep all their windows. One shared resampling matrix per dataset makes
+every layer-vs-L11 difference paired.</p>
+<h4>3 · Probe-capacity ablation (q1/q9/q21)</h4>
+<p>Worry: the 21-quantile head has ~1.03 M parameters — maybe the mid-layer advantage is a
+big-probe artifact. The head was shrunk to deciles (q9, 442,944 params) and median-only (q1,
+49,216). Cross-set comparisons must use the per-quantile mean pinball loss (loss / 2Q); raw
+summed losses are incomparable across Q.</p>
+<h4>Findings recorded that day <span class="badge b-hist">Historical</span> (old numbering; CIs from the pre-L0 bootstrap <span class="badge b-vres">Verified result</span>)</h4>
+<ul>
+  <li>Intermediate layers beat the last layer in 3 of 4 datasets under validation-selected L*
+  with bootstrap CIs excluding zero: electricity L2 (+0.27 [0.20, 0.33]), pedestrian L4
+  (+0.18 [0.12, 0.25]), uber L9 (+0.68 [0.60, 0.77]); KDD an honest null — validation itself
+  selects L11 (<span class="path">results/extended_v1/bootstrap/tables/bootstrap_table.csv</span>, 12-layer).</li>
+  <li>The pattern survives q1 and q9. <span class="badge b-vres">Verified result</span> (12-layer
+  outputs in <span class="path">results/extended_v1/quantile_loss_q{1,9}/</span>).</li>
+  <li>REG-token readouts were recorded as “consistently outperforming content pooling”. In the
+  later regenerated 13-layer q21 data this holds on 3 of 4 datasets by best-layer
+  <code>mase_context</code> (uber is the exception) — keep the softer wording.
+  <span class="badge b-hist">Historical</span> interpretation.</li>
+  <li>Linear probes remain worse than native Chronos-2 everywhere — information is present but a
+  linear readout does not recover the full nonlinear forecasting mechanism.</li>
+</ul>
+<h4>Also that day: canonical MASE specified, not adopted</h4>
+<p>A full specification for a canonical train-series MASE (<code>mase_train_series</code>: one
+denominator per original series from its raw training history, m = 24, NaN-and-exclude policy)
+was written into the notes, alongside a rename of the existing metric to
+<code>mase_context</code>. <strong>Current state:</strong> the rename happened
+(<code>mase_context</code> is the explicit key in bootstrap inputs/outputs); the per-series
+train-portion denominator is computed and exposed by <code>build_windows</code>
+(<code>test_denominator</code>, NaN under cross-series) but is <em>unused by any reported
+metric</em>, and no <code>mase_train_series</code> results exist.
+<span class="badge b-inr">Implemented, not run</span> (denominator only) /
+<span class="badge b-plan">Planned</span> (the metric itself). See <a href="#mase-terms">§8</a>.</p>
+<p><strong>Open question logged:</strong> many probes select wd = 0.1, the upper edge of the
+grid — flagged as a robustness check (grid expansion), still not done.
+<span class="badge b-plan">Planned</span>.</p>
+</article>
+
+<article class="entry" id="d0721">
+<p class="date">2026-07-21 · notes + commits <code>f93d57e</code>…<code>8535943</code> + SLURM job 66083059</p>
+<h3>Layer 0 <span class="badge b-vimpl">Verified implementation</span> — partially regenerated <span class="badge b-nv">Needs verification</span></h3>
+<p><strong>The change.</strong> One line in the notes — “Include layer 0, defined as the
+representation immediately before the first transformer block” — but it renumbers everything.
+L0 = the embedded token sequence entering block 1 (content patches + special tokens,
+pre-attention), captured by a forward pre-hook on <code>encoder.block[0]</code> in all three
+extractors; block outputs shift to L1–L12; the native head consumes L12; <code>NUM_LAYERS=13</code>.
+Why it matters scientifically: L0 is the most generic, pre-transformer representation — if a
+probe on L0 competes with deep layers, the transformer's contribution to <em>linear</em>
+decodability is small for that dataset. A fail-loud guard makes stale 12-layer caches error
+instead of silently misaligning.</p>
+<p><strong>What was regenerated</strong> (GPU job 66083059, log committed):</p>
+<ul>
+  <li><span class="badge b-vres">Verified result</span> the <code>extended_v1</code> q21 line:
+  13-layer curves in <span class="path">results/extended_v1/id_probing_summary.json</span> and
+  <span class="path">results/extended_v1/quantile_loss/</span>, plus 13-layer per-window
+  bootstrap <em>inputs</em> with validation-selected layers under the new convention —
+  content L*: electricity 3, KDD 12, pedestrian 5, uber 10 (exactly the old 2/11/4/9, +1).</li>
+</ul>
+<p><strong>What was not regenerated</strong> — still true at HEAD:</p>
+<ul>
+  <li><span class="badge b-nv">Needs verification</span> (as current-convention results): the
+  bootstrap <em>tables/figures</em> (<span class="path">results/extended_v1/bootstrap/tables/</span>,
+  12 layers, column <code>delta_vs_L11</code>), the q1/q9 lines (12-layer), the UEA baseline
+  (12-layer), and the README headline table (old labels, carries its own “pending regeneration”
+  note). The 13-layer CI-backed ID headline therefore does not exist yet — only the 13-layer
+  point curves and val-selected layers do.</li>
+</ul>
+<p><strong>New in the 13-layer q21 point data</strong> (test-argmin, no CIs): KDD's content
+test-argmin is now L0 (loss 9.66 vs 12.01 at L12; probe <code>mase_context</code> 0.99 vs
+native 0.83) — yet <em>validation</em> still selects L12 for KDD, so the honest-null
+characterization survives under the fair selection rule. Also that day: the ridge-R² and
+binned-accuracy figures were decoupled from the (still 12-layer) UEA overlay so they no longer
+block on regenerating it.</p>
+</article>
+
+<article class="entry" id="d0728">
+<p class="date">2026-07-28 · notes + commits <code>b2fcf3f</code>…<code>de88/de87b88</code> + SLURM jobs 66590077/79/80</p>
+<h3>OOD pilot: 3×3 cross-dataset transfer <span class="badge b-vres">Verified result</span> (now legacy/appendix)</h3>
+<p><strong>Why.</strong> Before building any formal dataset-distance machinery, answer the basic
+question: does the layerwise pattern survive outside the training dataset at all? Design: train
+the linear q9 quantile probe on ONE source dataset (electricity / KDD / uber), freeze it
+(scaler + linear + chosen wd), and score all three targets' test splits — no target training,
+tuning, calibration, or early stopping. Diagonal = in-dataset; six off-diagonal cells = strict
+probe-OOD transfer. Checkpoint identity deliberately excludes the target (unit-tested).</p>
+<p><strong>Result</strong> (13-layer numbering, q9, seed 0;
+<span class="path">results/extended_v1/ood_transfer/ood_transfer_summary__q9.json</span>): the
+best (target-test argmin) layer beats L12 with a paired bootstrap CI excluding zero in
+<strong>8 of 9 cells</strong> — including <strong>5 of 6 OOD cells</strong>; the one null is
+Uber→KDD, where the best layer <em>is</em> L12. KDD-as-source transfers best from L0 with very
+large deltas (KDD→elec Δ = 4.43 [4.21, 4.65]).</p>
+<p><strong>Second half of the day — actual forecasting quality.</strong> The layerwise result
+says nothing about whether the transferred probes are any good: both could be bad. New driver
+<span class="path">experiments/run_ood_baselines.py</span> compares each cell's best-layer and
+L12 probe median forecasts against native Chronos-2, seasonal-naive (m = 24) and last-value on
+<code>mase_context</code>, with paired series-bootstrap improvement CIs. Verdict
+<span class="badge b-vres">Verified result</span>: best-layer transferred probes beat native in
+0/9 cells, seasonal-naive in 3/9, last-value in 4/9 — earlier representations transfer better,
+but frozen linear probes generally do not produce competitive point forecasts. Division of labor
+fixed here: <em>q9 loss decides which layer transfers; median MASE/MAE decides whether the
+forecast is any good</em>.</p>
+<p><strong>The KDD discovery.</strong> Preparing the baselines exposed that KDD's task is
+unusually easy in a specific way: the trivial last-value forecast (MASE 1.044) beats
+seasonal-naive (1.159) — a persistence-dominated target. Reported to the group as the main
+caveat; decision to replace KDD before Friday. Also implemented that day: the
+electricity-only common-pooling control (three objectives — binned accuracy, ridge R², mean
+pinball — on the identical 13-depth content representation; they peak at different layers:
+7 / 5 / 3. <span class="badge b-vres">Verified result</span>,
+<span class="path">results/extended_v1/common_pooling/electricity/</span>).</p>
+<p><strong>Interpretation recorded</strong> <span class="badge b-hist">Historical</span>: “consistent
+with a tunnel effect that may strengthen under shift” — kept carefully hypothesis-flavored in the
+notes; the strengthening claim was never promoted beyond descriptive (see §10).</p>
+<p><strong>Later status.</strong> <span class="badge b-sup">Superseded</span> as headline by the
+4×4; preserved frozen with an explanatory
+<span class="path">results/extended_v1/ood_transfer/README_LEGACY.md</span>.</p>
+</article>
+
+<article class="entry" id="d0729">
+<p class="date">2026-07-29 · notes (Jul 28 section) + commit <code>c4ec967</code> + SLURM logs 66617320, 66639567</p>
+<h3>Capacity-control heads: does the pattern survive a stronger decoder? <span class="badge b-vres">Verified result</span></h3>
+<p><strong>Why a stronger decoder changes the question.</strong> A linear probe measures
+<em>linear</em> decodability. If a layer looks bad linearly, the information may still be there,
+just not linearly arranged. Swapping in a higher-capacity head re-asks the question as “does the
+intermediate-layer advantage survive increased decoder capacity?” — explicitly <em>not</em> a
+replacement for the linear result.</p>
+<p><strong>The change.</strong> Two from-scratch heads, structural clones of the native
+ResidualBlock (Linear→ReLU→Dropout→Linear + linear skip, no LayerNorm, hidden = native
+d_ff = 3072, dropout 0), trained with the identical protocol as the linear probe (fixed 300
+epochs — early stopping was considered and deliberately rejected to keep the comparison clean):</p>
+<ul>
+  <li><code>content_mlp_head</code> — head on the pooled content vector; 4,575,360 params at q9
+  (10.3× the pooled linear probe). Isolates “replace the linear map with a nonlinear one”.</li>
+  <li><code>forecast_slot_native_head</code> — ONE shared head over the K = 4 forecast slots;
+  2,915,616 params at q9 (26.3× the shared linear probe). The architecture-faithful analogue of
+  the native head — but <strong>trained from scratch; it is not the pretrained native head</strong>.</li>
+</ul>
+<p>The driver additionally records both a <strong>target-test oracle</strong> best layer
+(diagnostic) and a <strong>source-validation selected</strong> layer (the deployable, fair
+choice) — the first appearance of this distinction in the project.</p>
+<p><strong>Run and result</strong> (all 3 sources × both families, 3×3, q9, GPU July 29;
+<span class="path">results/extended_v1/ood_transfer/capacity/</span>): under the pooled
+content readout the mid-layer advantage survives the 10× nonlinear head (8/9 cells Δ&gt;0 with CI
+excluding zero; same single null, Uber→KDD). Under the shared forecast-slot head the advantage
+largely disappears: oracle best layers sit late (L8–L12), five cells have Δ exactly 0 (best =
+L12), and source-validation selects L11/L12 in every cell. The pilot's PENDING checklist in
+PLAN.md (electricity first, then the rest) was overtaken — everything ran and was committed.</p>
+</article>
+
+<article class="entry" id="d0730">
+<p class="date">2026-07-30 · notes + screen artifacts</p>
+<h3>Dataset screening: KDD out; M4 + Wind Farms in; WeatherBench rejected <span class="badge b-vres">Verified result</span></h3>
+<p><strong>The problem.</strong> KDD is persistence-dominated (Jul 28). Wanted: a 4×4 matrix on
+four healthy targets. A reusable screen was built
+(<span class="path">experiments/run_ood_screen.py</span>): data diagnostics (series counts,
+lengths, missingness, constant series, window supply under the exact production windowing) plus
+task-quality baselines (last-value vs seasonal-naive m = 24 and m = 168, optional native
+Chronos-2), with the explicit rule that <em>last-value ≤ seasonal-naive is a persistence
+warning, not a triviality proof — confirm with native before excluding/including</em>.</p>
+<p><strong>Candidates and outcomes</strong> (screen artifacts:
+<span class="path">results/extended_v2/ood_transfer/screen/</span>):</p>
+<ul>
+  <li><strong>Wiki hourly — unavailable.</strong> <code>autogluon/chronos_datasets</code> has
+  only daily Wiki (<code>wiki_daily_100k</code>). Rejected on availability.
+  <span class="badge b-hist">Historical</span> (loader checked at the time).</li>
+  <li><strong>WeatherBench 2 m-temperature — rejected.</strong> Screened as the Wiki substitute;
+  last-value 1.223 &lt; seasonal 1.300 → the same persistence warning as KDD. Numbers recorded in
+  the notes/plan; no screen artifact for WeatherBench was committed, so the exact figures are
+  <span class="badge b-rpv">Run, partially verified</span>.</li>
+  <li><strong>Wind Farms Hourly — accepted.</strong> 337 series, within-series capable, supply
+  14,042 / 7,391 windows ≫ budget, no single-series dominance, last-value 2.043 &gt; seasonal
+  1.322 (healthy ratio 1.55). Caveat: 17.0 % missing data — handled leakage-free because
+  windowing drops any 576-step span containing non-finite values. <span class="badge b-vres">Verified result</span>.</li>
+  <li><strong>M4 Hourly — readmitted with a documented split change.</strong> See the dedicated
+  explanation in <a href="#m4">§6</a>: every M4 series (748–1008 points) is shorter than the
+  2·(512+64) = 1152 points a within-series split needs, so M4 is forced onto the leakage-free
+  cross-series split (disjoint train/test series). Supply 1,534 / 688. Accepted because the
+  question “does an earlier layer beat the final layer?” stays well-posed; the ID-vs-OOD
+  comparison for M4 cells is flagged as less clean. <span class="badge b-vres">Verified result</span>.</li>
+</ul>
+<p><strong>Budget decision.</strong> M4's supply is the floor, so all four datasets are matched
+at a <strong>total</strong> budget of 1500 train / 650 test windows per dataset, enforced by the
+existing uniform deterministic subsample — explicitly <em>not</em> a per-series cap (see
+<a href="#budget-terms">§6</a>).</p>
+<p><strong>Native gate.</strong> Following the screening-rigor rule, native Chronos-2 was run on
+all four (short GPU session): MASE electricity 0.823, uber 0.690, m4 0.966, wind 1.149 — all
+beat their seasonal-naive baselines, so none is trivially easy and none persistence-dominated.
+Wind is the weakest (native only ~13 % better than seasonal, the only native &gt; 1) — a
+legitimately harder task, to be stated plainly. Roster locked:
+<code>extended_v2</code> = electricity, uber, m4_hourly, wind_farms_hourly.
+<span class="badge b-vres">Verified result</span>
+(<span class="path">…/screen/dataset_screen__extended_v2_native.json</span>).</p>
+<p><strong>Engineering to make it safe.</strong> New budget changes the windows for electricity
+and uber, which share feature-cache tags with <code>extended_v1</code> — so ID caches were
+namespaced per set (<code>IDF_&lt;tag&gt;__extended_v2</code>; legacy sets keep bare
+<code>IDF_&lt;tag&gt;</code> so the committed ~13 GB cache still hits). Drivers generalized from
+hardcoded 3×3 to N×N with per-set matrix order. Three new tests. <span class="badge b-vimpl">Verified implementation</span>.</p>
+<p>The four 4×4 transfer jobs were submitted the same evening (SLURM 66758668/70/72/74,
+one source each).</p>
+</article>
+
+<article class="entry" id="d0731">
+<p class="date">2026-07-30 → 31 · notes + commit <code>a173102</code> + SLURM logs</p>
+<h3>The 4×4 matrix and the normalized relative gain <span class="badge b-vres">Verified result</span></h3>
+<p><strong>First cut — raw deltas.</strong> All 16 cells positive: mean Δ-vs-L12 = 0.203 (ID)
+vs 0.727 (OOD), a ~3.6× ratio. But raw deltas are misleading across datasets whose losses sit at
+different absolute levels (wind's losses are ~3× electricity's), so a normalized view was added
+the same night.</p>
+<p><strong>Normalized relative gain.</strong>
+<code>relative_gain_pct = 100·(loss[L12] − loss[best]) / loss[L12]</code>, computed post-hoc from
+the saved per-window npz. The CI reuses the <em>same</em> paired bootstrap resamples
+(ratio per replicate, percentile interval — not a raw CI divided by a constant). The best layer
+is the full-sample target-test argmin held fixed, so the CIs are descriptive, not
+selection-adjusted — recorded in the artifact's own config note.</p>
+<p><strong>Result</strong> (<span class="path">results/extended_v2/ood_transfer/relative_gain_summary_q9.json</span>,
+aggregates recomputed from the artifact for this notebook):</p>
+<div class="tbl-wrap"><table>
+<tr><th>Group</th><th>n</th><th>Mean gain</th><th>Median gain</th><th>Positive</th><th>CI excludes 0</th></tr>
+<tr><td>ID (diagonal)</td><td>4</td><td>+6.2 %</td><td>+6.3 %</td><td>4/4</td><td>4/4</td></tr>
+<tr><td>OOD (off-diagonal)</td><td>12</td><td>+12.5 %</td><td>+14.9 %</td><td>12/12</td><td>10/12</td></tr>
+</table></div>
+<p>The two null cells are both M4-as-source: M4→electricity +0.2 % [−3.4, +3.7] and
+M4→wind +1.3 % [−1.1, +3.8] — consistent with M4's probe transferring weakly, and read in the
+notes as making the result “credible rather than perfectly uniform”. Four OOD cells select the
+embedding L0 as best (elec→wind, uber→m4, uber→wind, wind→uber). The notes' own guardrail:
+do <em>not</em> claim the best layer universally shifts left — the size of the gain over L12 is
+the clearer result. Absolute quality unchanged: best-layer probes beat native in 0/16 and
+seasonal-naive in 0/16 cells (last-value: 8/16).</p>
+<p><strong>Committed</strong> as one commit (<code>a173102</code>, code + results together —
+diverging from the stated code/results-separate convention). Presentation nit logged: labels
+overlap in the ID-vs-OOD scatter.</p>
+<p><strong>Next steps recorded in the notes</strong> <span class="badge b-plan">Planned</span>:
+robustness before more datasets — 5-seed replication of the 4×4; <em>source-validation</em> layer
+selection (stop choosing on target test); statistical ID-vs-OOD comparison of normalized gains;
+only then higher-capacity / forecast-token readouts on the 4×4.</p>
+</article>
+
+<article class="entry" id="d0731b">
+<p class="date">2026-07-31 · session recompute — committed <code>extended_v2</code> +
+<em>uncommitted working-tree</em> <code>extended_v3_rolling</code> artifacts + cached features</p>
+<h3>M4's “catastrophic” MASE is a metric artifact, not a forecasting failure
+<span class="badge b-vres">Verified result</span></h3>
+<p>Auditing M4's transfer numbers surfaced <code>mase</code> cells as large as
+<strong>589 017</strong>, <strong>3 369</strong>, <strong>226</strong> and <strong>202</strong> in
+<span class="path">results/extended_v3_rolling/ood_transfer/ood_transfer_results__q9.json</span> —
+<em>every</em> one an off-diagonal (cross-dataset) cell; every M4→M4 diagonal is ~3. Recomputing
+each M4 test window individually (frozen source checkpoint applied to the cached content features,
+raw-unit median inverted exactly as <code>compute_mase</code> does) shows the numbers are an
+artifact of the <code>mase_context</code> aggregation — a window-weighted <em>mean of ratios</em> —
+not of the forecasts. Two related pathologies inflate it, split by transfer direction.</p>
+
+<h4>Pathology 1 — a <code>sinh</code>-exploded prediction window (foreign → M4)</h4>
+<p>The extreme cells are all <strong>foreign probe → M4 target</strong>, and a <em>single</em> M4
+window (series 222) supplies <strong>96–100 %</strong> of each cell's mean. Its context is
+unremarkable (μ = 14.85, σ = 1.84, values 11.8–17.9; true future 13–18; true arcsinh target
+<code>z ∈ [−0.89, 1.31]</code>) and its denominator (3.26) is normal — this is <em>not</em> a
+denominator effect. The foreign linear probe extrapolates to an absurd arcsinh-space median
+(electricity-L0 predicts <code>z</code> up to 18.6), and the raw inverse
+<code>y = μ + σ·sinh(z)</code> amplifies it exponentially: <code>sinh(18.6) ≈ 6.3×10⁷</code> → a
+predicted value ~10⁸ on a series whose true scale is ~15. Drop that one window and the cell
+collapses (layers in the current 13-layer convention):</p>
+<div class="tbl-wrap"><table>
+<tr><th>cell (extended_v3_rolling)</th><th>reported mean <code>mase</code></th><th>drop the top-1 window</th><th>median per-window</th><th>top-1 share of mean</th></tr>
+<tr><td>elec → m4 (L0)</td><td>589 017</td><td>7.2</td><td>2.66</td><td>100.0 %</td></tr>
+<tr><td>uber → m4 (L12)</td><td>3 369</td><td>15.8</td><td>4.44</td><td>99.5 %</td></tr>
+<tr><td>elec → m4 (L12)</td><td>201.7</td><td>7.3</td><td>2.14</td><td>96.4 %</td></tr>
+<tr><td>m4 → m4 (diagonal)</td><td>3.0</td><td>3.0</td><td>1.88</td><td>—</td></tr>
+</table></div>
+<p>The metric the <em>analysis</em> uses is immune: the per-window <code>quantile_loss</code> for
+that same window is only ~60–92 (it lives in bounded arcsinh space) and the cell's aggregate
+quantile loss is ~3.9. The <code>sinh</code> inverse to raw units is the sole reason MASE explodes.</p>
+
+<h4>Pathology 2 — near-zero seasonal-naive denominators (M4 → flat target)</h4>
+<p>The other inflated cells are <strong>M4 probe → M4-unrelated target</strong>: m4→wind ≈ 226 and
+m4→uber ≈ 55. Here the prediction is fine — the blow-up is a tiny <code>mase_context</code>
+denominator on near-flat or near-zero <em>target</em> windows. The worst m4→wind window (wind
+series 232) has denominator <code>d = 5.1×10⁻⁵</code> (a near-constant context) with a good raw
+forecast (predicted scale 0.25 on a target of 0.046) → per-window MASE 5 752; the worst m4→uber
+window (uber series 102) has a target ≈ 0 (10⁻¹¹). Unlike pathology 1 this is a broader
+<em>tail</em>, not one window (top-1 share only 10–20 %; dropping it barely moves the mean). The
+same signature explains the bounded M4-diagonal tail:
+<code>rankcorr(mase, rawMAE) = −0.40</code> (the biggest-MASE windows have the <em>smallest</em> raw
+error) and <code>rankcorr(mase, 1/denom) = +0.51</code>; low-amplitude M4 series (181, 186, 320)
+give raw MAE ≈ 0.4–0.9 ÷ scale ≈ 0.013 → MASE 30–185, with the diagonal capped at ≈ 29.</p>
+
+<div class="callout flag"><span class="lbl">What this means</span>
+<p>The reported <code>mase</code> <strong>mean</strong> is not a trustworthy summary under
+cross-dataset transfer — a single <code>sinh</code>-amplified window (foreign→M4) or a handful of
+near-zero-denominator windows (M4→flat target) governs the cell. The <strong>median</strong> (or a
+trimmed mean) per-window MASE, 2–16 across these cells, is the honest number. The headline
+<code>quantile_loss</code> / relative-gain results are unaffected. This is a <em>distinct</em> issue
+from the M4-as-source negative-transfer question (§9 preliminary) — that one is a genuine
+quantile-loss phenomenon, not a MASE artifact.</p></div>
+
+<p><strong>Both sets carry it.</strong> The extreme single-window explosions are in the uncommitted
+rolling run (<code>extended_v3_rolling</code>); the committed <code>extended_v2</code> is milder —
+worst cells uber→m4 ≈ 55 and m4→wind ≈ 67, driven by the tiny-denominator tail rather than one
+explosion — but shares the same non-robustness.</p>
+
+<p><strong>Fixes recorded</strong> <span class="badge b-plan">Planned</span>: report the median /
+trimmed per-window MASE (= per-series in the rolling set, where there is 1 window per series);
+optionally clip the arcsinh prediction to the training <code>z</code>-range before the
+<code>sinh</code> inverse (extrapolation is <em>expected</em> under transfer); keep
+<code>quantile_loss</code> primary. No repository code or committed results were changed by this
+audit; the recompute ran on the login node from cached features (no re-extraction, no retrain).</p>
+</article>
+</section>
+<section id="evolution">
+<h2>4 · Evolution of the experiment</h2>
+<p class="small">Verified against code and Git history; each stage lists the problem that
+motivated it, what it answered, and whether it is still active.</p>
+<pre><code>scalar future summary (ridge R² / 5-bin accuracy)          Jul 8    superseded, kept as legacy
+  → horizon-aware quantile probe (pooled content / REG)    Jul 13   active core
+  → shared forecast-slot linear probe (+ content_K/reg_K)  Jul 14   active (ID line)
+  → quantile-capacity ablation q1 / q9 / q21               Jul 14   run pre-L0; not regenerated
+  → series-level cluster bootstrap                         Jul 14   active; v1 tables stale (pre-L0)
+  → layer 0 (input embedding; 13 depths)                   Jul 21   active convention
+  → cross-dataset transfer 3×3 (probe-OOD)                 Jul 28   superseded → legacy appendix
+  → point-forecast baselines (native / seasonal / last)    Jul 28   active
+  → higher-capacity heads (from-scratch ResidualBlock)     Jul 29   run on the 3×3 only
+  → dataset screen + revised roster (extended_v2)          Jul 30   active
+  → 4×4 transfer + normalized relative gain                Jul 30–31  current headline</code></pre>
+<ul>
+  <li><strong>Scalar → trajectory.</strong> Problem: collapsing a 64-step future into one scalar
+  can misrank layers in either direction. Change: probe the full trajectory under the model's own
+  quantile loss. Question: which depth is most linearly decodable <em>at the model's own task</em>.
+  Scalar probes remain in the registry for continuity only.</li>
+  <li><strong>Pooled → shared-slot.</strong> Problem: a pooled vector is not what the native head
+  reads. Change: shared linear head over the K native forecast slots. Question: does the
+  mid-layer advantage depend on the readout structure? (It does — the advantage is specific to
+  pooled readouts.) Active in the ID line; not yet run on the 4×4.</li>
+  <li><strong>Capacity ablation.</strong> Problem: is the advantage a 1 M-parameter artifact?
+  q1/q9 reproduce the pattern (pre-L0 runs). Not regenerated post-L0.</li>
+  <li><strong>Cluster bootstrap.</strong> Problem: overlapping windows fake precision. Change:
+  resample whole series, paired via one shared counts matrix. Active in every line since.</li>
+  <li><strong>Layer 0.</strong> Problem: without the embedding, “early layers win” cannot be
+  separated from “the transformer adds nothing linear here”. Active convention; several OOD
+  cells later select L0.</li>
+  <li><strong>3×3 transfer → 4×4.</strong> Problem (3×3): does the pattern survive strict
+  probe-OOD transfer at all? Answer: mostly yes (8/9). Problem (4×4): KDD was a weak target;
+  roster rebuilt through a pre-registered screen, matched budgets, normalized effect size.
+  Current headline.</li>
+  <li><strong>Baselines.</strong> Problem: “better than L12” ≠ “good”. Change: native /
+  seasonal-naive / last-value comparison per cell. Answer: transferred linear probes are not
+  competitive point forecasters.</li>
+  <li><strong>Capacity heads.</strong> Problem: linear decodability ≠ information presence.
+  Change: from-scratch native-shaped heads. Answer (3×3): pooled advantage survives a 10×
+  nonlinear head; slot-aligned advantage largely vanishes. Not yet run on the 4×4.</li>
+</ul>
+</section>
+
+<section id="protocol">
+<h2>5 · Current experiment protocol</h2>
+<p class="small">The end-to-end pipeline as the code implements it today. Stages marked
+<span class="badge b-vimpl">Verified implementation</span> are code facts; run status per
+experiment version is in <a href="#findings">§9</a>. The description follows the current
+headline line (<code>extended_v2</code> 4×4 transfer); the ID line differs only where noted.</p>
+
+<h3>Data</h3>
+<ol>
+  <li><strong>Acquisition.</strong> All datasets load from the public HF dataset
+  <code>autogluon/chronos_datasets</code> by config name
+  (<span class="path">probing/id_data.py</span>, <code>load_seen_series</code>). On Narval they
+  must be pre-downloaded to <code>$HF_HOME</code> on the login node; compute nodes run with
+  <code>HF_HUB_OFFLINE=1</code>. <span class="badge b-vimpl">Verified implementation</span></li>
+  <li><strong>Dataset-set selection.</strong> <code>probing.config.DATASET_SET</code> — precedence
+  CLI <code>--dataset-set</code> &gt; env <code>ID_DATASET_SET</code> &gt; default
+  <code>extended_v1</code>. The same value selects the roster, the results namespace
+  <span class="path">results/&lt;set&gt;/</span>, and (for new sets) the feature-cache prefix, so
+  one configuration can never overwrite another. <span class="badge b-vimpl">Verified implementation</span></li>
+  <li><strong>Split.</strong> <code>build_windows</code>: within-series when ≥1 series has
+  length ≥ 2·(C+H) — early windows train, late windows test, split at 75 % of each series, no
+  span crosses the boundary; otherwise cross-series — a seeded 70/30 partition of whole series
+  (M4). Windows: stride 64, span 576; windows with any non-finite value or near-constant context
+  (σ &lt; 1e-6) are skipped and counted. <span class="badge b-vimpl">Verified implementation</span></li>
+  <li><strong>Budget.</strong> <code>BUDGET_BY_SET</code>: total per-dataset window budgets
+  (extended_v2 → 1500/650, others → 3000/1500), applied by one deterministic
+  <code>rng.choice</code> subsample that slices contexts, scalar labels, trajectories and series
+  ids by the same indices — series identity is preserved into every downstream artifact.
+  <span class="badge b-vimpl">Verified implementation</span></li>
+  <li><strong>Targets.</strong> Trajectory label <code>Y_traj = arcsinh((future − μ_ctx)/σ_ctx)</code>
+  (H,) per window; legacy scalar label = mean of the pre-arcsinh normalized future. A per-series
+  train-portion seasonal-naive denominator (<code>test_denominator</code>) is also emitted —
+  currently unused by any metric (see §8). <span class="badge b-vimpl">Verified implementation</span></li>
+</ol>
+
+<h3>Feature extraction (frozen model)</h3>
+<ol>
+  <li><code>extract_window_features</code> — per window, per depth, a 768-d vector under
+  <code>content</code> (mean over content tokens) or <code>reg</code> (REG token) pooling; L0 via
+  the pre-hook, L1–L12 via forward hooks; deterministic <code>eval()</code> with state restore.
+  Cached per (dataset-prefix, split, pooling) npz with a fail-loud label guard against stale
+  windowing. <span class="badge b-vimpl">Verified implementation</span></li>
+  <li><code>extract_kout_features</code> — the K = 4 native forecast-slot states from a
+  <code>num_output_patches=K</code> encoder pass, cache key carries K and H (ID line only).
+  <span class="badge b-vimpl">Verified implementation</span></li>
+  <li>Native median forecast — cached <code>predict_quantiles</code> median in raw units, with a
+  context-tail guard (<span class="path">experiments/run_id_forecasting.py</span>,
+  <code>native_median_forecast</code>). <span class="badge b-vimpl">Verified implementation</span></li>
+</ol>
+
+<h3>Probe fitting and transfer</h3>
+<ol>
+  <li><code>fit_quantile_probe</code> (<span class="path">probing/probes.py</span>): per layer —
+  StandardScaler on source train; per-wd candidates trained on the seed-0 80/20 carve
+  (deterministic re-seeded init per candidate); wd with the lowest carve-validation quantile loss
+  wins; refit on full source train; returns the frozen {scaler, linear, wd} dict. Training:
+  AdamW lr 1e-2, 300 epochs, decay on weights only. <span class="badge b-vimpl">Verified implementation</span></li>
+  <li>Checkpointing (<span class="path">experiments/run_ood_transfer.py</span>): one
+  <code>L##.pt</code> per layer under an identity of
+  <code>&lt;source&gt;__content__C512_H64__&lt;qset&gt;__seed&lt;s&gt;</code> — the target is
+  excluded by construction (unit-tested), so every target evaluation of a source reuses the same
+  frozen probe. <code>run_meta.json</code> records model, normalization, epochs, wd grid, layer
+  scheme. <span class="badge b-vimpl">Verified implementation</span></li>
+  <li>Target evaluation: <code>predict_quantile_probe</code> scores frozen probes on cached
+  target features; no target statistic is fitted anywhere (the scaler is source-fit; the
+  per-window arcsinh normalization uses only each window's own context). Diagonal = in-dataset;
+  <code>is_ood = source ≠ target</code>. <span class="badge b-vimpl">Verified implementation</span></li>
+</ol>
+
+<h3>Metrics, baselines, statistics</h3>
+<ol>
+  <li>Quantile loss <code>2·|(y−ŷ)·(𝟙[y≤ŷ]−τ)|</code>, mean over H, sum over Q, mean over
+  windows; per-window arrays saved to the bootstrap-inputs npz. <span class="badge b-vimpl">Verified implementation</span></li>
+  <li>Median reconstruction: the probe's τ = 0.5 row, inverted to raw units with each window's
+  context μ/σ (exact <code>sinh</code> inverse); <code>mase_context</code> and raw-unit median
+  MAE computed against the same in-context denominator used for native. <span class="badge b-vimpl">Verified implementation</span></li>
+  <li>Baselines (<span class="path">experiments/run_ood_baselines.py</span>): computed once per
+  target from raw contexts; probe rows re-score the frozen checkpoints on cached features —
+  nothing refits. Paired improvement CIs vs each baseline. <span class="badge b-vimpl">Verified implementation</span></li>
+  <li>Bootstrap (<span class="path">probing/stats.py</span> + drivers): one multinomial counts
+  matrix per dataset (B = 5000, seed 0) shared across all layers, readouts, metrics, and native;
+  window-weighted means within replicates; percentile 95 % intervals; Δ-vs-last computed inside
+  each replicate (paired). <span class="badge b-vimpl">Verified implementation</span></li>
+  <li>Relative gain: per replicate, <code>100·(loss_B[L12] − loss_B[best])/loss_B[L12]</code>
+  with the full-sample best layer held fixed; percentile CI. <span class="badge b-vimpl">Verified implementation</span></li>
+</ol>
+
+<h3>Saved result structures <span class="badge b-vres">Verified result</span></h3>
+<details><summary>Output layout of one transfer run (results/&lt;set&gt;/ood_transfer/)</summary>
+<div class="body">
+<pre><code>results/&lt;set&gt;/ood_transfer/
+  checkpoints/&lt;source&gt;__content__C512_H64__q9__seed0/L00.pt … L12.pt + run_meta.json
+  per_source/&lt;source&gt;__q9__seed0.json          per-layer rows for all targets of one source
+  bootstrap_inputs/&lt;src&gt;__to__&lt;tgt&gt;__q9__seed0.npz   per-window losses + series ids (16 cells)
+  ood_transfer_results__q9.{csv,json}           tidy rows: source,target,layer,…,quantile_loss,
+                                                mean_pinball_loss,mase,mae_median_raw
+  ood_transfer_delta_vs_last__q9.{csv,json}     per-layer paired Δ + CI (selection-free view)
+  ood_transfer_summary__q9.json                 per-cell best layer, Δ, CI, native mase, config
+  relative_gain_summary_q9.{csv,json}           normalized gain + ratio CI per cell
+  ood_target_baselines__q9.{csv,json}           native / seasonal / last-value per target
+  ood_probe_vs_baseline__q9.{csv,json}          probe-vs-baseline improvement + CI per cell</code></pre>
+</div>
+</details>
+</section>
+
+<section id="datasets">
+<h2>6 · Dataset history and current roster</h2>
+
+<h3>Active in the current 4×4 (<code>extended_v2</code>) <span class="badge b-vres">Verified result</span></h3>
+<p class="small">All facts from the committed screen artifacts
+(<span class="path">results/extended_v2/ood_transfer/screen/dataset_screen__extended_v2*.json</span>),
+which run the exact production windowing. “Supply” = windows available before the budget
+subsample; every dataset is then cut to the matched totals 1500 train / 650 test.
+All hourly; seasonality m = 24 throughout. All four are in Chronos-2's pretraining corpus
+(pretraining-ID).</p>
+<div class="tbl-wrap"><table>
+<tr><th>Dataset (HF config)</th><th>Domain</th><th>Series</th><th>Lengths</th><th>Split</th><th>Supply (tr/te)</th><th>Missing</th><th>last-value / seasonal-m24 MASE</th><th>Native MASE</th></tr>
+<tr><td><code>monash_electricity_hourly</code></td><td>energy</td><td>321</td><td>26,304 (uniform)</td><td>within-series</td><td>95,894 / 30,066</td><td>0 %</td><td>4.38 / 1.19</td><td>0.823</td></tr>
+<tr><td><code>uber_tlc_hourly</code></td><td>ride demand</td><td>262</td><td>4,344 (uniform)</td><td>within-series</td><td>10,900 / 2,075</td><td>0 %</td><td>1.45 / 1.14</td><td>0.690</td></tr>
+<tr><td><code>m4_hourly</code></td><td>mixed hourly</td><td>414</td><td>748–1,008</td><td><strong>cross-series</strong></td><td>1,534 / 688</td><td>0 %</td><td>21.04 / 1.60</td><td>0.966</td></tr>
+<tr><td><code>wind_farms_hourly</code></td><td>wind generation</td><td>337</td><td>1,715–8,784 (median 8,784)</td><td>within-series</td><td>14,042 / 7,391</td><td>17.0 %</td><td>2.04 / 1.32</td><td>1.149</td></tr>
+</table></div>
+<p class="small">Inclusion reasons: electricity/uber carried over as healthy long-series
+anchors; wind adds a distinct renewable-generation domain and passed the screen; M4 readmitted
+(see below). Wind caveats, stated plainly: highest missingness (handled by dropping non-finite
+spans, no imputation) and the weakest native skill (native 1.149 vs seasonal 1.322, ~13 % —
+the only dataset where native MASE &gt; 1); a legitimately harder task, not shown to be
+pathological.</p>
+
+<h3>Active in the ID probing line (<code>extended_v1</code>) <span class="badge b-vres">Verified result</span></h3>
+<ul>
+  <li><code>monash_electricity_hourly</code>, <code>monash_kdd_cup_2018</code> (air quality),
+  <code>monash_pedestrian_counts</code> (foot traffic), <code>uber_tlc_hourly</code> — all
+  within-series, budgets ≤3000/≤1500 totals; test series counts 318 / 75 / 59 / 260. This roster
+  remains the basis of the per-layer ID results and the (stale) bootstrap tables; it was
+  <em>not</em> replaced by <code>extended_v2</code> — the two sets serve different lines.</li>
+</ul>
+
+<h3 id="m4">M4 Hourly — why it needs a different split</h3>
+<p>One probing window needs C + H = 512 + 64 = <strong>576</strong> consecutive points. A
+within-series temporal split needs a training span <em>and</em> a disjoint test span from the
+same series — at least 2 × 576 = <strong>1,152</strong> points. Every M4 Hourly series has
+748–1,008 points (screen artifact: p0 = 748, p50–p100 = 1,008): each series can host windows,
+but never both splits. So M4 uses the <strong>cross-series</strong> split: a seeded 70/30
+partition of whole series; train windows come only from train series, test windows only from
+held-out series. This is leakage-free but changes the task: the probe is evaluated on
+<em>entirely unseen series</em>, not later time of familiar series — a harder generalization
+problem than the other three datasets face. Consequence, recorded at the decision: if M4 cells
+look worse, it cannot be attributed cleanly to representation transfer vs the harder split; the
+per-cell question “does an earlier layer beat L12?” stays valid, and every M4 artifact row
+carries <code>split_mode = "cross_series"</code>. Both M4 nulls in the 4×4 are M4-as-source.
+For a stronger paper version, the notes record two options: cross-series splitting for
+<em>every</em> dataset, or replacing M4 with a long hourly dataset. <span class="badge b-plan">Planned</span> (undecided).</p>
+<p class="small">Additional M4 consequence: held-out test series have no training portion, so the
+canonical train-series MASE denominator is undefined (NaN) for M4 — one reason
+<code>mase_context</code> (computable from any window's own context) is the operative MASE.</p>
+
+<h3 id="budget-terms">Budget terminology (used consistently in this notebook)</h3>
+<ul>
+  <li><strong>Per-series window cap</strong> — a limit on windows drawn from one series.
+  <em>Does not exist in this project</em>; PLAN.md explicitly warns against introducing one.</li>
+  <li><strong>Total retained train/test windows</strong> — what <code>BUDGET_BY_SET</code>
+  controls: a uniform deterministic subsample down to N windows across the whole dataset.</li>
+  <li><strong>Matched total budget</strong> — the same totals (1500/650) enforced for all four
+  <code>extended_v2</code> datasets so matrix cells are comparable; chosen because M4's supply
+  (1,534/688) is the floor. Spread diagnostics in the screen artifact show no single series
+  dominates after subsampling (top series ≤ 1.1 % of windows).</li>
+</ul>
+
+<h3>Screened, rejected, or historical</h3>
+<div class="tbl-wrap"><table>
+<tr><th>Dataset</th><th>Role / outcome</th><th>Status</th></tr>
+<tr><td><code>monash_kdd_cup_2018</code></td><td>ID-line member and 3×3 pilot member; dropped from the 4×4 as persistence-dominated (last-value 1.044 &lt; seasonal 1.159 on the committed baseline artifact) — a task-quality exclusion decided by the screen rule, not by the layerwise outcome. Remains active in <code>extended_v1</code>.</td><td><span class="badge b-vres">Verified result</span> (exclusion evidence); <span class="badge b-sup">Superseded</span> in the transfer line</td></tr>
+<tr><td>WeatherBench 2 m-temperature</td><td>Screened as a candidate 4th dataset; rejected for the same persistence warning (last-value 1.223 &lt; seasonal 1.300 per notes/plan). No committed screen artifact.</td><td><span class="badge b-rpv">Run, partially verified</span></td></tr>
+<tr><td>Wiki hourly</td><td>Wanted; not present in <code>autogluon/chronos_datasets</code> (only <code>wiki_daily_100k</code>). Never integrated.</td><td><span class="badge b-hist">Historical</span></td></tr>
+<tr><td>Alibaba / Azure / Borg cloud traces</td><td>Mentioned as shortlist candidates; not in the loader's dataset family; never screened.</td><td><span class="badge b-plan">Planned</span> (effectively dropped)</td></tr>
+<tr><td><code>solar_1h</code></td><td>Phase 0 member; demoted for a documented label pathology (<span class="path">paper/phase0_fixes.md</span>). Frozen in <span class="path">results/phase0_trio/</span>.</td><td><span class="badge b-sup">Superseded</span></td></tr>
+<tr><td><code>monash_pedestrian_counts</code></td><td>ID-line member; never part of any transfer matrix (the 3×3 deliberately used only 3 of extended_v1's 4 datasets).</td><td><span class="badge b-vres">Verified result</span> (ID line only)</td></tr>
+</table></div>
+</section>
+<section id="probes">
+<h2>7 · Probe and head glossary</h2>
+<p class="small">All parameter counts below are verified — either recorded in committed
+artifacts (<span class="path">parameter_counts__*.json</span>, run configs) or reproduced
+arithmetically from the layer shapes. Every trained head in this project is
+<strong>trained from scratch</strong>; the only pretrained decoder is Chronos-2's own native
+head, which appears solely as the “native” baseline (and, in a parked idea, as a possible frozen
+layerwise baseline — <span class="badge b-plan">Planned</span>, not implemented).</p>
+
+<div class="claim"><h4>Pooled content linear quantile probe (<code>quantile</code>, pooling <code>content</code>)</h4>
+<dl class="kv">
+<dt>Input</dt><dd>mean of content-token vectors → (n, 768), per depth</dd>
+<dt>Output</dt><dd>(n, Q, 64); Q ∈ {1, 9, 21}</dd>
+<dt>Params</dt><dd>q21: 1,033,536 · q9: 442,944 · q1: 49,216 (incl. bias)</dd>
+<dt>Objective</dt><dd>Chronos-2 quantile loss on arcsinh trajectories</dd>
+<dt>Question</dt><dd>can the full future trajectory be linearly decoded from one global content summary?</dd>
+<dt>Status</dt><dd><span class="badge b-vimpl">Verified implementation</span> · runs: <span class="badge b-vres">Verified result</span> (ID line q21 13-layer; q1/q9 12-layer; OOD lines q9 13-layer)</dd>
+</dl></div>
+
+<div class="claim"><h4>Pooled REG-token linear quantile probe (<code>quantile</code>, pooling <code>reg</code>)</h4>
+<dl class="kv">
+<dt>Input</dt><dd>the REG token's 768-d vector (a register/scratch position, not a history patch)</dd>
+<dt>Everything else</dt><dd>identical to the content probe</dd>
+<dt>Question</dt><dd>does the model concentrate globally useful forecast information in its register token?</dd>
+<dt>Status</dt><dd><span class="badge b-vimpl">Verified implementation</span> · <span class="badge b-vres">Verified result</span> (ID line only; not used in transfer)</dd>
+</dl></div>
+
+<div class="claim"><h4>Shared forecast-slot linear probe (<code>shared_forecast</code> / readout <code>fslot_K</code>)</h4>
+<dl class="kv">
+<dt>Input</dt><dd>the K = 4 native forecast-slot states (n, 4, 768) from a K-output-patch encoder pass; one scaler shared across slots</dd>
+<dt>Weights</dt><dd>ONE <code>Linear(768, Q·16)</code> shared by all slots (native-head layout, linearized); patches concatenated then trimmed to H</dd>
+<dt>Params</dt><dd>q21: 258,384 · q9: 110,736</dd>
+<dt>Question</dt><dd>are the forecast-slot states themselves linearly decodable with the same shared-readout structure the model uses?</dd>
+<dt>Status</dt><dd><span class="badge b-vimpl">Verified implementation</span> · <span class="badge b-vres">Verified result</span> (ID line, incl. controls <code>content_K</code>/<code>reg_K</code> on the same K-slot pass; not run on any transfer matrix)</dd>
+</dl></div>
+
+<div class="claim"><h4>Content residual-MLP head (<code>content_mlp_head</code>)</h4>
+<dl class="kv">
+<dt>Input</dt><dd>pooled content vector (n, 768)</dd>
+<dt>Architecture</dt><dd>from-scratch ResidualBlock — Linear(768→3072) → ReLU → Dropout(0) → Linear(3072→Q·64) + Linear(768→Q·64) skip; no LayerNorm (matching the native block's <code>use_layer_norm=False</code>)</dd>
+<dt>Params</dt><dd>4,575,360 at q9 (10.33× the pooled linear probe; artifact-recorded)</dd>
+<dt>Question</dt><dd>does the pooled mid-layer advantage survive a much stronger nonlinear readout?</dd>
+<dt>Status</dt><dd><span class="badge b-vimpl">Verified implementation</span> · <span class="badge b-vres">Verified result</span> (3×3 matrix, q9; not run on the 4×4)</dd>
+</dl></div>
+
+<div class="claim"><h4>Native-style shared forecast-slot residual head (<code>forecast_slot_native_head</code>)</h4>
+<dl class="kv">
+<dt>Input</dt><dd>K = 4 forecast-slot states (n, 4, 768)</dd>
+<dt>Weights</dt><dd>ONE shared from-scratch ResidualBlock(768→3072→Q·16) across slots (permutation-equivariance unit-tested)</dd>
+<dt>Params</dt><dd>2,915,616 at q9 (26.33× the shared linear probe; artifact-recorded). For scale: the real pretrained native head at q21 has ≈3,653,280 params (derived from the same shapes)</dd>
+<dt>Naming caution</dt><dd>“native-style” = same <em>structure</em> and weight-sharing as the native head, trained from scratch. It must never be described as the pretrained native head.</dd>
+<dt>Question</dt><dd>with the architecture-faithful readout at full capacity, do intermediate layers still beat L12?</dd>
+<dt>Status</dt><dd><span class="badge b-vimpl">Verified implementation</span> · <span class="badge b-vres">Verified result</span> (3×3, q9). Answer: mostly no — best layers move to L10–L12, many exact-zero deltas.</dd>
+</dl></div>
+
+<div class="claim"><h4>Legacy scalar probes (<code>ridge_regression</code>, <code>binned_future</code>)</h4>
+<dl class="kv">
+<dt>Input / output</dt><dd>(n, 768) → scalar normalized future mean (R²) / its 5-quantile bin (accuracy)</dd>
+<dt>Status</dt><dd><span class="badge b-vimpl">Verified implementation</span> · <span class="badge b-vres">Verified result</span> (regenerated 13-layer for extended_v1 q21). Kept for continuity with the classification phase; superseded as evidence by the trajectory probes.</dd>
+</dl></div>
+
+<div class="claim"><h4>Frozen pretrained native head applied layerwise</h4>
+<dl class="kv">
+<dt>Idea</dt><dd>apply <code>final_layer_norm</code> to each layer's block output, slice the forecast slots, feed the actual pretrained ResidualBlock head — a zero-training layerwise baseline</dd>
+<dt>Status</dt><dd><span class="badge b-plan">Planned</span> (parked in PLAN.md “Future directions”; no code found)</dd>
+</dl></div>
+
+<div class="claim"><h4>UEA classification probe (<code>linear</code>)</h4>
+<dl class="kv">
+<dt>Definition</dt><dd>per-layer StandardScaler + LogisticRegression, test accuracy — the maintained classification baseline</dd>
+<dt>Status</dt><dd><span class="badge b-vimpl">Verified implementation</span> · <span class="badge b-vres">Verified result</span> (12-layer, pre-L0; not regenerated)</dd>
+</dl></div>
+</section>
+
+<section id="metrics">
+<h2>8 · Metrics glossary</h2>
+
+<div class="claim"><h4><code>quantile_loss</code> — the primary probe metric</h4>
+<dl class="kv">
+<dt>Definition</dt><dd>Chronos-2's pinball loss <code>2·|(y−ŷ_τ)·(𝟙[y≤ŷ_τ]−τ)|</code> in arcsinh target space; per window: mean over the 64 horizon steps, <strong>sum</strong> over the Q quantile levels; reported: mean over windows. Lower is better.</dd>
+<dt>Uses</dt><dd>probe training, layer ranking, Δ-vs-last, transfer matrices</dd>
+<dt>Caution</dt><dd>the sum over Q makes raw values comparable only within one quantile set</dd>
+<dt>Where</dt><dd><span class="path">probing/probes.py</span> (<code>chronos2_quantile_loss*</code>); verified against an explicit reference in <span class="path">tests/test_quantile_sets.py</span> <span class="badge b-vimpl">Verified implementation</span></dd>
+</dl></div>
+
+<div class="claim"><h4><code>mean_pinball_loss</code> — the cross-capacity companion</h4>
+<dl class="kv">
+<dt>Definition</dt><dd>quantile_loss / 2Q (per-quantile average; equals 0.5·MAE in arcsinh space for the q1 probe)</dd>
+<dt>Use</dt><dd>the only valid comparison across q1 / q9 / q21</dd>
+</dl></div>
+
+<div class="claim" id="mase-terms"><h4>MASE — two definitions; never use the bare word</h4>
+<p><strong><code>mase_context</code></strong> (implemented, reported everywhere
+<span class="badge b-vimpl">Verified implementation</span>): per-window denominator
+<code>d = mean_t |x_t − x_{t−24}|</code> over that window's own 512-step <em>context</em>
+(488 lagged pairs), clamped at 1e-8 with the clamp count recorded (0 in current runs). Numerator:
+mean absolute error of the raw-unit median forecast over the 64-step horizon. Aggregation:
+plain mean over windows (window-weighted). No test observation enters the denominator (the
+context precedes the forecast origin). This is the definition behind <em>every</em> reported
+MASE number — including the columns literally named <code>mase</code> in the OOD CSVs and
+<code>native_mase</code> in summaries; the bootstrap artifacts name it explicitly
+(<code>mase_context</code> keys, definition string embedded in the npz metadata).</p>
+<div class="callout warn"><span class="lbl">Not robust under transfer</span>
+<p>Because the aggregation is a plain <em>mean of ratios</em>, individual cells can be governed by a
+single window and are unsafe to read at face value across datasets. Two failure modes, both seen in
+the M4 transfer cells (<a href="#d0731b">Jul 31 entry</a>): (1) the raw-unit inverse
+<code>μ + σ·sinh(z)</code> amplifies any out-of-range probe median exponentially, so one
+cross-dataset extrapolation can push a cell's <code>mase</code> to 10⁵–10⁶ while its
+<code>quantile_loss</code> (arcsinh space) stays ~4; (2) near-constant / near-zero target windows
+give a denominator ≈ 10⁻⁵, so a good forecast still scores MASE in the thousands. Prefer the
+<strong>median</strong> (or a trimmed mean) per-window MASE for cross-dataset summaries; the mean is
+reliable only within a single well-scaled dataset. Point estimates named <code>mase</code> in the
+OOD CSVs inherit this and should not be quoted as means.</p></div>
+<p><strong><code>mase_train_series</code></strong> (canonical train-series MASE
+<span class="badge b-inr">Implemented, not run</span> — denominator only): one denominator per
+original series from its raw <em>training-portion</em> history (m = 24), same value for all of
+that series' test windows, NaN-and-exclude policy for invalid cases, undefined (NaN) under the
+cross-series split. The denominator ships in <code>build_windows</code>
+(<code>test_denominator</code>, with <code>n_denominator_invalid</code> counted), but
+<em>no metric, result, or figure uses it</em> — <span class="path">experiments/run_id_forecasting.py</span>
+states this explicitly. The full metric remains <span class="badge b-plan">Planned</span>; no
+<code>mase_train_series</code> numbers exist anywhere in <span class="path">results/</span>.</p>
+</div>
+
+<div class="claim"><h4>Other implemented metrics</h4>
+<dl class="kv">
+<dt><code>mae_median_raw</code> / <code>mae</code></dt><dd>mean absolute error of the raw-unit median forecast (secondary point metric in the transfer/baseline tables)</dd>
+<dt><code>q9_quantile_loss_degenerate</code></dt><dd>pinball loss of a deterministic baseline broadcast across all 9 levels — lets seasonal-naive/last-value be placed on the probe's loss axis; “degenerate” flags that a point forecast cannot express quantile spread</dd>
+<dt><code>delta_vs_last</code></dt><dd><code>loss[L12] − loss[layer]</code> (current convention; pre-L0 artifacts: <code>delta_vs_L11</code>). Positive = earlier layer better. Paired cluster-bootstrap CI; per-cell scalar uses the best layer</dd>
+<dt><code>relative_gain_pct</code></dt><dd><code>100·(loss[L12] − loss[best])/loss[L12]</code>; ratio computed inside each bootstrap replicate; best layer fixed at the full-sample test argmin → descriptive CI</dd>
+<dt><code>improvement_vs_baseline</code> / <code>skill_vs_baseline</code></dt><dd>baseline MASE − probe MASE (positive = probe better), with paired CI / relative skill score, in <code>ood_probe_vs_baseline__q9.csv</code></dd>
+<dt><code>best_layer_shift</code></dt><dd>best_layer(transfer cell) − best_layer(source diagonal); descriptive</dd>
+<dt><code>oracle_best_layer</code> vs <code>source_selected_layer</code></dt><dd>target-test argmin (diagnostic, not deployable) vs source-validation argmin (the fair, deployable choice). Recorded for both capacity families; for the linear matrices only the oracle exists per cell (plus <code>best_layer_source_id</code>, the source's own diagonal argmin)</dd>
+</dl></div>
+
+<h3 id="transfer-vs-quality">Representation transfer vs forecast quality</h3>
+<p>Fixed division of labor since Jul 28, applied everywhere:</p>
+<ul>
+  <li><strong>Which layer transfers best</strong> → q9 quantile loss (and its Δ/relative-gain
+  derivatives). A probe can win this comparison decisively and still forecast poorly.</li>
+  <li><strong>Whether the forecast is any good</strong> → median-forecast
+  <code>mase_context</code> (MAE secondary) against native Chronos-2, seasonal-naive m = 24 and
+  last-value, with paired bootstrap improvement CIs.</li>
+  <li>Verified consequence: in both transfer matrices the transferred best-layer probes
+  <em>never</em> beat native (0/9 and 0/16) and rarely or never beat seasonal-naive (3/9 and
+  0/16). A lower loss than the L12 probe must never be read as competitiveness with real
+  baselines.</li>
+</ul>
+</section>
+
+<section id="findings">
+<h2>9 · Findings by evidence status</h2>
+
+<h3>Verified findings <span class="badge b-vres">Verified result</span></h3>
+<ol>
+  <li><strong>4×4 transfer (extended_v2, content linear q9, 13-layer, seed 0).</strong> Best
+  (target-test) layer beats L12 in 16/16 cells; paired Δ CI excludes zero in 14/16; relative gain
+  ID mean +6.2 % / OOD mean +12.5 %; both nulls are M4-as-source; 4 of 12 OOD cells pick L0.
+  <span class="path">results/extended_v2/ood_transfer/{ood_transfer_summary__q9.json, relative_gain_summary_q9.json}</span></li>
+  <li><strong>Transferred probes are not competitive forecasters (extended_v2).</strong>
+  Best-layer probe vs native 0/16 wins, vs seasonal-naive 0/16, vs last-value 8/16
+  (<code>mase_context</code>). <span class="path">…/ood_probe_vs_baseline__q9.csv</span></li>
+  <li><strong>3×3 pilot (extended_v1 minus pedestrian, q9, 13-layer).</strong> 8/9 cells Δ CI &gt; 0;
+  Uber→KDD null (best = L12); KDD-as-source transfers from L0 with the largest deltas.
+  Legacy/appendix per <span class="path">README_LEGACY.md</span>.</li>
+  <li><strong>Capacity control (3×3, q9).</strong> content_mlp_head (10.3×, nonlinear): 8/9 cells
+  Δ CI &gt; 0 — the pooled advantage is not a probe-capacity artifact at this scale.
+  forecast_slot_native_head (26.3×): advantage largely gone — oracle best layers L8–L12, five
+  exact-zero cells, source-validation selects L11/L12 everywhere.
+  <span class="path">results/extended_v1/ood_transfer/capacity/…/ood_capacity_summary__*.json</span></li>
+  <li><strong>Readout specificity (ID line).</strong> The shared forecast-slot linear probe is
+  uniformly the strongest probe and its best layers sit late (13-layer q21 <code>mase_context</code>
+  argmins: fslot 8/12/10/9 vs content 3/0/3/6) — the mid-layer advantage is specific to pooled
+  readouts. Point estimates 13-layer; CI-backed version only pre-L0.</li>
+  <li><strong>Dataset screen + native gate (extended_v2).</strong> All four rostered datasets
+  seasonal-dominant and native-skillful (§6 table); KDD excluded on persistence
+  (last-value 1.044 &lt; seasonal 1.159).</li>
+  <li><strong>Pre-L0 ID headline (12-layer convention, q21).</strong> Validation-selected L*
+  beats L11 with CI &gt; 0 in 3/4 datasets (elec L2 +0.27 [0.20, 0.33]; ped L4 +0.18 [0.12, 0.25];
+  uber L9 +0.68 [0.60, 0.77]); KDD null. Same pattern under q1/q9 and REG pooling.
+  <span class="path">results/extended_v1/bootstrap/tables/bootstrap_table.csv</span> —
+  valid as a result of its (superseded) configuration.</li>
+  <li><strong>The <code>mase_context</code> mean is non-robust under transfer.</strong>
+  Per-window recompute of the M4 cells shows the giant <code>mase</code> values (589 017, 3 369 in
+  <code>extended_v3_rolling</code>; ~55–67 in committed <code>extended_v2</code>) are artifacts of a
+  mean of ratios: one <code>sinh</code>-amplified window governs foreign→M4 cells (96–100 % of the
+  mean; drop it → 7–16), and near-zero denominators inflate M4→flat-target cells. Median per-window
+  MASE is 2–5; <code>quantile_loss</code> and the relative-gain headline are unaffected. Use the
+  median/trimmed statistic for cross-dataset MASE (<a href="#d0731b">Jul 31 entry</a>,
+  <a href="#mase-terms">§8</a>).</li>
+</ol>
+
+<h3>Preliminary findings</h3>
+<ol>
+  <li><strong>“The OOD advantage is ~2× the ID advantage.”</strong> Descriptively true in the
+  4×4 relative gains (12.5 % vs 6.2 %), but the 16 cells share sources and targets (not
+  independent), no test compares the two groups, and it is a single seed. The notes themselves
+  demand a statistical ID-vs-OOD comparison before promotion. <span class="badge b-rpv">Run, partially verified</span> (as a comparative claim)</li>
+  <li><strong>13-layer ID line (extended_v1 q21).</strong> Point curves and validation-selected
+  layers exist (content L*: 3/12/5/10 — the old 2/11/4/9 shifted +1, KDD still an honest null
+  under validation); but no post-L0 bootstrap CIs. CI-backed 13-layer ID claims are pending a
+  <code>run_bootstrap</code> re-run over the committed 13-layer inputs. <span class="badge b-nv">Needs verification</span> (CIs only)</li>
+  <li><strong>KDD's L0 test-argmin.</strong> In the 13-layer q21 data KDD's content test-argmin
+  is L0 (loss 9.66 vs 12.01; probe <code>mase_context</code> 0.99 vs native 0.83) and the 3×3 KDD
+  diagonal's L0 Δ CI excludes zero — but test-argmin selection is exploratory, and validation
+  still picks L12. An interesting embedding-decodability observation, not yet a selection-fair
+  finding.</li>
+  <li><strong>Common-pooling control (electricity only).</strong> Different objectives on the
+  identical representation peak at different layers (binned acc 7, ridge R² 5, pinball 3) —
+  suggestive that “the best layer” is metric-dependent; single dataset, no CIs.</li>
+</ol>
+
+<h3>Historical interpretations <span class="badge b-hist">Historical</span></h3>
+<ul>
+  <li>“KDD's forecast information is most recoverable at the earliest layers and fades with
+  depth” (Jul 13, old numbering, test curves) — later refined: under fair validation selection
+  KDD prefers the last layer; under test-argmin its embedding wins.</li>
+  <li>“REG consistently outperforms content pooling” (Jul 14) — holds 3/4 in the regenerated
+  data; keep “often”.</li>
+  <li>“A tunnel effect is present and may strengthen under distribution shift” (Jul 28) —
+  hypothesis language; the strengthening part remains descriptive (see Preliminary 1); the
+  project's own notes forbid claiming a universal leftward best-layer shift.</li>
+  <li>The classification-phase claim (5/6 UEA datasets, mid &gt; last, CIs exclude zero) — verified
+  in its own artifacts, 12-layer, different task currency.</li>
+</ul>
+
+<h3>Negative and null results</h3>
+<ul>
+  <li>Uber→KDD (3×3, linear and content_mlp_head): best layer <em>is</em> L12 — an honest null
+  that survives the capacity increase.</li>
+  <li>M4→electricity and M4→wind (4×4): relative-gain CIs cross zero.</li>
+  <li>forecast_slot_native_head: the mid-layer advantage essentially disappears under the
+  slot-aligned nonlinear readout (5 of 9 cells exactly zero).</li>
+  <li>Classification phase: no amplification of the mid-layer gap under synthetic shift
+  (18 dataset×shift cells, small and inconsistently signed).</li>
+  <li>WeatherBench 2 m-temperature and KDD: excluded as persistence-dominated targets (a
+  data-quality null, not a layerwise one).</li>
+  <li>Absolute forecast quality: no linear probe, transferred or in-dataset, matches native
+  Chronos-2 anywhere in the project.</li>
+</ul>
+
+<h3>Unverified statements <span class="badge b-nv">Needs verification</span></h3>
+<ul>
+  <li>WeatherBench screen numbers (1.223 / 1.300) — recorded in notes/PLAN only; no artifact.</li>
+  <li>The README headline table — accurate to the pre-L0 run it describes, but its layer labels
+  and the “pending regeneration” note no longer match the mixed state of
+  <span class="path">results/extended_v1/</span> (13-layer summaries + 12-layer bootstrap).</li>
+  <li>Any claim phrased as “statistically significant” — no hypothesis test is defined anywhere
+  in the project; the correct phrasing is “the paired 95 % bootstrap interval excluded zero”.</li>
+</ul>
+</section>
+<section id="article-ready">
+<h2>10 · Article-ready evidence</h2>
+<p class="small">Claim ledger for the article. “Article-ready” requires: exact configuration,
+cells, metric, layer convention, readout, selection rule, machine-readable support, comparison
+method, uncertainty, and caveats — all known. Claims failing any of these stay preliminary.
+Never write “statistically significant”; write “the paired 95 % bootstrap interval excluded zero”.</p>
+
+<div class="claim"><h4>C1 · Mid-vs-last advantage in cross-dataset transfer — <span class="badge b-vres">article-ready</span></h4>
+<dl class="kv">
+<dt>Safest wording</dt><dd>“Under the pooled-content linear q9 readout and this four-dataset roster, the probe at the target-test best layer achieved lower quantile loss than the final-layer (L12) probe in all 16 source→target cells; the paired series-level 95 % bootstrap interval for the difference excluded zero in 14 of 16, the two exceptions both having M4 as source.”</dd>
+<dt>Config</dt><dd>extended_v2, C512/H64, q9, seed 0, 13 depths (Embed L0 + L1–L12), budgets 1500/650</dd>
+<dt>Selection rule</dt><dd>best layer = full-sample target-test argmin, held fixed inside the bootstrap → CIs descriptive, not selection-adjusted (state this)</dd>
+<dt>Comparison</dt><dd>paired (one shared multinomial counts matrix per target, B = 5000, seed 0)</dd>
+<dt>Support</dt><dd><span class="path">results/extended_v2/ood_transfer/ood_transfer_summary__q9.json</span>; code <span class="path">experiments/run_ood_transfer.py</span></dd>
+<dt>Caveats</dt><dd>single seed; oracle layer selection; cells not independent; M4 cross-series split; pretraining-ID data</dd>
+</dl></div>
+
+<div class="claim"><h4>C2 · Normalized relative gain, ID vs OOD — <span class="badge b-vres">article-ready as descriptive</span></h4>
+<dl class="kv">
+<dt>Safest wording</dt><dd>“Normalized as a relative gain over the final layer, the advantage averaged +6.2 % on the four diagonal (probe-ID) cells and +12.5 % on the twelve off-diagonal (probe-OOD) cells (medians +6.3 % / +14.9 %); ratio CIs from the same paired resamples excluded zero in 4/4 and 10/12 cells. Descriptively, the advantage was roughly twice as large under transfer; the cells share sources and targets and no formal ID-vs-OOD test was performed.”</dd>
+<dt>Support</dt><dd><span class="path">results/extended_v2/ood_transfer/relative_gain_summary_q9.{csv,json}</span></dd>
+<dt>Forbidden stronger form</dt><dd>“OOD makes the tunnel effect stronger” / “the best layer systematically shifts earlier” — not supported; only 4/12 OOD cells select L0 and the notes explicitly disclaim the shift claim</dd>
+</dl></div>
+
+<div class="claim"><h4>C3 · Transferred linear probes are not competitive forecasters — <span class="badge b-vres">article-ready</span></h4>
+<dl class="kv">
+<dt>Safest wording</dt><dd>“On the in-context seasonal-naive MASE (m = 24, denominator from each window's own 512-step context), the best-layer transferred probe beat native Chronos-2 in 0 of 16 cells and seasonal-naive in 0 of 16 (last-value: 8 of 16). The layerwise result concerns relative linear decodability, not competitive forecasting.”</dd>
+<dt>Support</dt><dd><span class="path">results/extended_v2/ood_transfer/ood_probe_vs_baseline__q9.csv</span>, <span class="path">…/ood_target_baselines__q9.csv</span></dd>
+<dt>Caveat</dt><dd>MASE definition must be named (<code>mase_context</code>); canonical train-series MASE was never computed</dd>
+</dl></div>
+
+<div class="claim"><h4>C4 · Readout dependence — pooled vs slot-aligned — <span class="badge b-vres">article-ready (3×3 scope)</span></h4>
+<dl class="kv">
+<dt>Safest wording</dt><dd>“The advantage survived a 10× larger nonlinear head on the pooled readout (8/9 cells' paired intervals excluded zero) but largely disappeared under the shared forecast-slot residual head trained from scratch (26× the linear slot probe): oracle best layers moved to L8–L12 and source-validation selected L11/L12 in every cell. This shows the pooled-readout advantage is not a probe-capacity artifact at this scale, and that forecast-slot states keep improving with depth; it does not establish that any information was destroyed.”</dd>
+<dt>Config</dt><dd>extended_v1 3×3 (elec/KDD/uber), q9, seed 0, hidden 3072, dropout 0, fixed 300 epochs</dd>
+<dt>Support</dt><dd><span class="path">results/extended_v1/ood_transfer/capacity/…/ood_capacity_summary__*.json</span>, <span class="path">parameter_counts__*.json</span></dd>
+<dt>Caveats</dt><dd>3×3 roster includes the persistence-dominated KDD; heads trained from scratch (never call them the pretrained native head); not yet run on the 4×4</dd>
+</dl></div>
+
+<div class="claim"><h4>C5 · In-dataset headline (pre-L0 convention) — <span class="badge b-vres">article-ready with the old-numbering caveat</span></h4>
+<dl class="kv">
+<dt>Safest wording</dt><dd>“On pooled readouts with validation-selected comparison layers, intermediate layers beat the final layer in 3 of 4 datasets with paired series-bootstrap intervals excluding zero (electricity, pedestrian, uber); on KDD validation itself selected the final layer. The pattern persisted across probe head sizes q1/q9/q21 and both poolings.”</dd>
+<dt>Convention</dt><dd><strong>12-layer pre-L0 numbering</strong> (L11 = last; L* = 2/4/9). Under the current 13-layer scheme the validation-selected layers are 3/12/5/10, but the bootstrap has not been re-run — publish either after regeneration or with the old convention explicitly declared</dd>
+<dt>Support</dt><dd><span class="path">results/extended_v1/bootstrap/tables/bootstrap_table.csv</span> (q21/q9/q1), 13-layer inputs in <span class="path">results/extended_v1/bootstrap/inputs/*.npz</span></dd>
+</dl></div>
+
+<div class="claim"><h4>C6 · 3×3 pilot — <span class="badge b-vres">article-ready as appendix</span></h4>
+<dl class="kv">
+<dt>Safest wording</dt><dd>“In the KDD-inclusive pilot, an earlier layer beat L12 with a paired interval excluding zero in 8 of 9 cells (5 of the 6 off-diagonal cells); the exception was Uber→KDD, where the best layer was the final layer. KDD was subsequently excluded from the headline matrix as persistence-dominated.”</dd>
+<dt>Support</dt><dd><span class="path">results/extended_v1/ood_transfer/ood_transfer_summary__q9.json</span> + <span class="path">README_LEGACY.md</span></dd>
+</dl></div>
+
+<div class="claim"><h4>C7 · Embedding-layer transfer — <span class="badge b-rpv">preliminary</span></h4>
+<dl class="kv">
+<dt>Observation</dt><dd>4 of 12 OOD cells in the 4×4 (and all KDD-source cells in the pilot) select L0 — the pre-transformer embedding — as the best transferring representation</dd>
+<dt>Why not ready</dt><dd>test-argmin selection; no source-validation confirmation; no mechanism analysis. Usable only as “several transfer cells selected the input embedding”, flagged exploratory</dd>
+</dl></div>
+
+<div class="claim"><h4>C8 · KDD/M4/wind dataset characterizations — <span class="badge b-vres">article-ready as screening facts</span></h4>
+<dl class="kv">
+<dt>Safest wording</dt><dd>“KDD was excluded because its last-value baseline (MASE 1.044) outperformed seasonal-naive (1.159) — a persistence-dominated target; the exclusion rule treats this as a task-quality warning confirmed by baselines, not proof of triviality. Wind Farms passed screening but is the hardest rostered task for the native model (native 1.149 vs seasonal 1.322) and has 17 % missing data, handled by dropping incomplete windows.”</dd>
+<dt>Support</dt><dd><span class="path">results/extended_v1/ood_transfer/ood_target_baselines__q9.csv</span>; <span class="path">results/extended_v2/ood_transfer/screen/dataset_screen__extended_v2_native.json</span></dd>
+<dt>Forbidden forms</dt><dd>“KDD is trivial”, “wind is persistence-dominated” (it is not — its ratio is healthy), “M4 generalizes worse” (confounded by its split)</dd>
+</dl></div>
+</section>
+
+<section id="open">
+<h2>11 · Open questions and current work</h2>
+
+<h3>Immediate next work</h3>
+<ul>
+  <li>Multi-seed (≈5) replication of the 4×4: vary probe init and source-window subsampling;
+  report mean/CI of relative gain across seeds. <span class="badge b-plan">Planned</span> (the
+  seed is already a schema column; threading it into probe init is noted as required).</li>
+  <li>Source-validation layer selection for the 4×4 — freeze one layer per source chosen without
+  target data, then evaluate on all targets. The machinery exists in the capacity driver
+  (<code>source_selected_layer</code>) but not in the linear 4×4 outputs.
+  <span class="badge b-plan">Planned</span>.</li>
+  <li>Statistical ID-vs-OOD comparison of normalized gains (the “~2×” claim currently rests on
+  group means over non-independent cells). <span class="badge b-plan">Planned</span>.</li>
+</ul>
+
+<h3>Required before the next full experiment / writeup</h3>
+<ul>
+  <li>Re-run <code>run_bootstrap</code> over the committed 13-layer inputs so the ID headline has
+  current-convention CIs; re-run q1/q9 and regenerate the README table (its “pending
+  regeneration” note is now only half-true). <span class="badge b-plan">Planned</span> — CPU-only
+  for the bootstrap; q1/q9 need GPU refits.</li>
+  <li>UEA baseline regeneration under 13 layers (needs cache invalidation + dataset pre-fetch on
+  the login node; the stale-cache guard will otherwise fail loudly). <span class="badge b-plan">Planned</span>.</li>
+  <li>Decide the M4 problem for the paper: cross-series splits for all datasets, or replace M4
+  with a long hourly dataset. <span class="badge b-plan">Planned</span> (undecided).</li>
+  <li>Switch the reported cross-dataset point metric from mean <code>mase_context</code> to the
+  <strong>median (or trimmed) per-window MASE</strong>, and optionally clip the arcsinh prediction
+  to the training <code>z</code>-range before the <code>sinh</code> inverse — the current mean is
+  governed by single windows under transfer (<a href="#d0731b">Jul 31 entry</a>). Any table that
+  quotes M4 <code>mase</code> means (e.g. the 589 017 / 3 369 cells) must be regenerated first.
+  <span class="badge b-plan">Planned</span> — CPU-only, no re-extraction.</li>
+</ul>
+
+<h3>Robustness checks</h3>
+<ul>
+  <li>Weight-decay grid expansion — many probes select wd = 0.1, the grid's upper edge (flagged
+  Jul 14, never done).</li>
+  <li>Capacity heads and the shared forecast-slot probe on the 4×4 (currently 3×3 only) — the
+  notes' “different readout” sensitivity check.</li>
+  <li>Early stopping as an alternative fit protocol for the big heads (considered and rejected
+  for comparability; would need to apply to all families at once).</li>
+  <li>Other horizons and context lengths (currently one point: C = 512 ≈ 6 % of the model's 8192
+  capacity, H = 64).</li>
+  <li><code>mase_train_series</code> as the primary point metric on within-series datasets
+  (denominators already computed; metric never wired up).</li>
+</ul>
+
+<h3>Paper-level improvements</h3>
+<ul>
+  <li>A genuinely pretraining-OOD dataset — everything so far is pretraining-ID, so no claim
+  about generalization outside the pretraining corpus is possible.</li>
+  <li>Formal treatment of selection: pre-registered layer choice or selection-adjusted
+  intervals.</li>
+  <li>Multivariate / covariate probing (GroupSelfAttention — the model's headline feature,
+  unprobed).</li>
+</ul>
+
+<h3>Exploratory directions (parked)</h3>
+<ul>
+  <li>Frozen pretrained native head applied layerwise (final-norm each block output → slots →
+  pretrained head).</li>
+  <li>Representational similarity (CKA / effective rank) alongside the probe curves; the
+  <code>effective_rank</code>/<code>entropy</code>/<code>epiplexity</code> probe stubs exist in
+  the registry docs.</li>
+  <li>Formal dataset-distance metric for grading “how far OOD” a transfer is.</li>
+</ul>
+
+<h3>Superseded or obsolete tasks (still listed somewhere, no longer real)</h3>
+<ul>
+  <li>PLAN.md “Pending: commit the q1/q9 results + regenerated bootstrap” — committed since
+  Jul 14/16 (<code>c89392f</code>, merge <code>c235fef</code>).</li>
+  <li>PLAN.md capacity-head “PENDING: electricity pilot → then kdd/uber → figures → commit” —
+  all done and committed Jul 29.</li>
+  <li>PLAN.md “requirements.txt dataset comment is stale (names m4/solar)” — the current comment
+  points to <code>ID_DATASET_SPECS</code>; fixed.</li>
+  <li>PLAN.md “delete stray logs/*.out” — logs are now tracked run evidence; treat as resolved
+  by adoption.</li>
+  <li>PLAN.md reference “branch egor/phase0-forecasting” — current branch is
+  <code>ood-forecasting-pilot</code>.</li>
+  <li>WeatherBench / Wiki / cloud-trace candidates — closed by the Jul 30 screen.</li>
+</ul>
+</section>
+
+<section id="repo-map">
+<h2>12 · Repository map</h2>
+<div class="tbl-wrap"><table>
+<tr><th>Path</th><th>Category</th><th>Purpose / key names</th></tr>
+<tr><td><a href="../probing/config.py"><span class="path">probing/config.py</span></a></td><td>configuration</td><td>SEED, NUM_LAYERS=13, LAST_LAYER=12, OUTPUT_PATCH_SIZE=16; DATASET_SET selector + per-set results namespacing (<code>set_dataset_set</code>)</td></tr>
+<tr><td><a href="../probing/id_data.py"><span class="path">probing/id_data.py</span></a></td><td>dataset loading / windows</td><td>ID_DATASET_SPECS (3 sets), BUDGET_BY_SET, <code>build_windows</code> (splits, budgets, labels, series ids, canonical denominators)</td></tr>
+<tr><td><a href="../probing/extraction.py"><span class="path">probing/extraction.py</span></a></td><td>extraction</td><td><code>get_pipeline</code>, <code>extract_window_features</code>, <code>extract_kout_features</code>, L0 pre-hook, <code>_idf_prefix</code> cache namespacing, fail-loud cache guards</td></tr>
+<tr><td><a href="../probing/probes.py"><span class="path">probing/probes.py</span></a></td><td>probe fitting</td><td>PROBES registry, QUANTILE_SETS, <code>quantile_probe</code>, <code>fit_/predict_quantile_probe</code>, <code>shared_forecast_token_probe</code>, capacity-head fit/predict, loss functions</td></tr>
+<tr><td><a href="../probing/heads.py"><span class="path">probing/heads.py</span></a></td><td>probe fitting</td><td><code>ResidualBlock</code> (from-scratch structural clone of the native head), <code>build_head</code>, <code>wd_param_groups</code></td></tr>
+<tr><td><a href="../probing/stats.py"><span class="path">probing/stats.py</span></a></td><td>statistics</td><td><code>cluster_bootstrap_counts/apply</code> (series-level, paired), <code>bootstrap_ci</code>, <code>paired_diff_ci</code></td></tr>
+<tr><td><a href="../experiments/run_id_forecasting.py"><span class="path">experiments/run_id_forecasting.py</span></a></td><td>experiment driver</td><td>ID line: per-layer probes, <code>compute_mase</code> (mase_context), <code>native_median_forecast</code>, bootstrap-input writer</td></tr>
+<tr><td><a href="../experiments/run_bootstrap.py"><span class="path">experiments/run_bootstrap.py</span></a></td><td>statistics driver</td><td>post-hoc CPU bootstrap → tables/figures under <span class="path">results/&lt;set&gt;/bootstrap/</span> (currently last run pre-L0)</td></tr>
+<tr><td><a href="../experiments/run_ood_transfer.py"><span class="path">experiments/run_ood_transfer.py</span></a></td><td>experiment driver</td><td>N×N frozen-probe transfer; checkpoints keyed by source only; <code>_paired_delta_bootstrap</code>; relative-gain tables</td></tr>
+<tr><td><a href="../experiments/run_ood_baselines.py"><span class="path">experiments/run_ood_baselines.py</span></a></td><td>baseline evaluation</td><td>native / seasonal-naive / last-value per target; probe-vs-baseline improvement CIs</td></tr>
+<tr><td><a href="../experiments/run_ood_capacity.py"><span class="path">experiments/run_ood_capacity.py</span></a></td><td>experiment driver</td><td>capacity-head transfer; oracle vs source-selected layers; per-family outputs + comparison</td></tr>
+<tr><td><a href="../experiments/run_ood_screen.py"><span class="path">experiments/run_ood_screen.py</span></a></td><td>screening / diagnostics</td><td>dataset screen: supply, spread, missingness, last-value/seasonal(m24, m168)/native baselines</td></tr>
+<tr><td><a href="../experiments/run_perdataset.py"><span class="path">experiments/run_perdataset.py</span></a></td><td>experiment driver</td><td>UEA classification baseline (maintained; results still 12-layer)</td></tr>
+<tr><td><a href="../experiments/electricity_common_pooling.py"><span class="path">experiments/electricity_common_pooling.py</span></a></td><td>experiment driver</td><td>one-off control: three objectives on the identical content representation</td></tr>
+<tr><td><a href="../tests/test_quantile_sets.py"><span class="path">tests/test_quantile_sets.py</span></a></td><td>tests</td><td>quantile-set registry, exact param counts, loss vs explicit reference, pinball identities — no GPU</td></tr>
+<tr><td><a href="../tests/test_ood_transfer.py"><span class="path">tests/test_ood_transfer.py</span></a></td><td>tests</td><td>fit→predict equivalence, frozen reuse, no-target-in-fit, checkpoint identity, per-set order, budget/cache namespacing</td></tr>
+<tr><td><a href="../tests/test_ood_capacity.py"><span class="path">tests/test_ood_capacity.py</span></a></td><td>tests</td><td>head shapes, slot weight-sharing, source-only selection, determinism, output namespacing</td></tr>
+<tr><td><a href="../job_id_forecasting.sh"><span class="path">job_id_forecasting.sh</span></a> · <a href="../job_ood_transfer.sh"><span class="path">job_ood_transfer.sh</span></a> · <a href="../job_ood_capacity.sh"><span class="path">job_ood_capacity.sh</span></a> · <a href="../job_ood_capacity_matrix.sh"><span class="path">job_ood_capacity_matrix.sh</span></a> · <a href="../job_perdataset.sh"><span class="path">job_perdataset.sh</span></a></td><td>job scripts</td><td>SLURM wrappers (def-irina, 1 GPU, module trio, offline HF cache; extra args forwarded)</td></tr>
+<tr><td><span class="path">results/</span></td><td>saved results</td><td>namespaced per set: <span class="path">uea/</span>, <span class="path">phase0_trio/</span>, <span class="path">extended_v1/</span> (+ <span class="path">ood_transfer/</span> legacy pilot + <span class="path">capacity/</span>), <span class="path">extended_v2/ood_transfer/</span> (headline)</td></tr>
+<tr><td><a href="../README.md"><span class="path">README.md</span></a> · <a href="PLAN.md"><span class="path">notes/PLAN.md</span></a> · <a href="EGOR_RESEARCH_NOTES.md"><span class="path">notes/EGOR_RESEARCH_NOTES.md</span></a> · <a href="../paper/phase0_fixes.md"><span class="path">paper/phase0_fixes.md</span></a></td><td>documentation</td><td>README headline table is pre-L0 (its own note says so); PLAN.md partially stale (see §14)</td></tr>
+</table></div>
+</section>
+
+<section id="commands">
+<h2>13 · Commands</h2>
+<p class="small">All flags verified against the current argument parsers and job scripts. Do not
+run anything heavy on a login node; the model cannot load there.</p>
+
+<h3>Environment (Narval — validated recipe, still current)</h3>
+<pre><code># login node (has internet): one-time setup + pre-download
+module load gcc python/3.11 arrow/24.0.0        # modules BEFORE venv (arrow needs python/3.11)
+source .venv/bin/activate
+export HF_HOME=$SCRATCH/chronos2/hf_cache       # model + dataset cache (compute nodes offline)
+export HF_HUB_OFFLINE=1                         # on compute nodes
+export OMP_NUM_THREADS=2                        # login-node CPU etiquette (per notes)</code></pre>
+
+<h3>Current, GPU (submit via sbatch; account def-irina)</h3>
+<pre><code>sbatch job_id_forecasting.sh                          # ID line, q21 (args forwarded)
+sbatch job_id_forecasting.sh --quantile-set q9        # capacity ablation refit
+sbatch job_ood_transfer.sh --dataset-set extended_v2 --source-dataset monash_electricity_hourly
+                                                      # one source per job; ×4 for the matrix
+sbatch job_ood_capacity.sh --probe-family content_mlp_head --source-dataset monash_electricity_hourly
+sbatch job_perdataset.sh                              # UEA baseline (would regenerate 13-layer)</code></pre>
+
+<h3>Current, CPU / login-node safe</h3>
+<pre><code>python -m experiments.run_bootstrap                        # post-hoc CIs (reads saved inputs)
+python -m experiments.run_bootstrap --dataset-set extended_v1
+python -m experiments.run_ood_transfer --dataset-set extended_v2 --figure-only   # re-aggregate
+python -m experiments.run_ood_baselines --dataset-set extended_v2                # default --device cpu
+python -m experiments.run_ood_capacity --figure-only --compare
+python -m experiments.run_ood_screen --dataset-set extended_v2                   # data/task screen
+python -m experiments.run_ood_screen --dataset-set extended_v2 --native          # + native gate (GPU better)</code></pre>
+
+<h3>Tests (no GPU, no model, no cache)</h3>
+<pre><code>python -m tests.test_quantile_sets
+python -m pytest tests/ -q          # all four test modules are pytest-compatible</code></pre>
+
+<h3>Historical (kept for provenance; do not use as-is)</h3>
+<pre><code># Jul 9 interactive-GPU pattern (still valid in shape):
+salloc --account=def-irina --gres=gpu:1 --cpus-per-task=2 --mem=16G --time=1:00:00
+# Jul 28 pilot invocations assumed --dataset-set extended_v1 (the then-default 3×3):
+python -m experiments.run_ood_transfer --source-dataset monash_kdd_cup_2018</code></pre>
+<p class="small">Make aliases: <code>make forecasting</code> / <code>make bootstrap</code> /
+<code>make uea</code> / <code>make help</code> (verified in <span class="path">Makefile</span>).</p>
+</section>
+
+<section id="reconciliation">
+<h2>14 · Reconciliation notes</h2>
+<p class="small">The contradictions that mattered, and how each was resolved. Method per item:
+compare the conflicting statements → inspect code → inspect artifacts → inspect Git history →
+assign the most defensible status.</p>
+<ol>
+  <li><strong>12 vs 13 layers inside <code>results/extended_v1/</code>.</strong> The q21
+  summaries/curves and bootstrap <em>inputs</em> are 13-layer (regenerated Jul 21, committed
+  Jul 28 in <code>b2fcf3f</code>); the bootstrap <em>tables/figures</em> and all q1/q9 outputs
+  are 12-layer with a <code>delta_vs_L11</code> column. Resolution: one directory holds two
+  conventions; every claim in this notebook names its convention. The 13-layer CI headline does
+  not exist yet.</li>
+  <li><strong>README “pending regeneration” vs actual state.</strong> Half-resolved: the q21
+  forward run was regenerated; bootstrap/q1/q9/UEA were not; the README headline table still
+  shows pre-L0 labels. Treated as: README = historical description + open task.</li>
+  <li><strong>PLAN.md “uncommitted q1/q9 + bootstrap” and “capacity runs pending”.</strong> Both
+  false at HEAD: q1/q9 + bootstrap committed Jul 14–16; all capacity runs committed Jul 29. PLAN's
+  Pending block predates its own later entries. Resolution: Git wins; items moved to
+  “superseded tasks” (§11).</li>
+  <li><strong>“KDD honest null” vs “KDD best = L0”.</strong> Both true under different selection
+  rules: validation (fair) picks the last layer; test-argmin (exploratory) picks L0, with a
+  CI-excluding-zero delta in the 3×3 diagonal. Resolution: report both, labeled by selection
+  rule; never merge them into one claim.</li>
+  <li><strong>Oracle vs source-selected layers.</strong> The linear matrices select on target
+  test (oracle); only the capacity driver records source-validation selection. The 4×4 headline
+  CIs are therefore descriptive. Resolution: stated in the artifact's own config note and
+  repeated wherever the 4×4 is cited.</li>
+  <li><strong>“5 of 6 OOD cells” (notes) vs artifacts.</strong> Confirmed exactly: 6 off-diagonal
+  cells, 5 with Δ CI &gt; 0, Uber→KDD the null. Likewise “8/9”, “16/16 positive”, “14/16 CI &gt; 0”,
+  “ID 0.203 / OOD 0.727 (~3.6×)”, and “+6.2/+6.3/+12.5/+14.9 %” all reproduce from the committed
+  JSONs.</li>
+  <li><strong>M4 “rejected” (Phase 0) vs “accepted” (extended_v2).</strong> Not a contradiction:
+  Phase 0 dropped M4 from the <em>within-series ID line</em>; extended_v2 readmits it explicitly
+  under the cross-series split with the comparability caveat recorded at decision time.</li>
+  <li><strong>WeatherBench “selected” vs “rejected”.</strong> It was tried as the Wiki substitute
+  and rejected on the persistence warning. No committed screen artifact → its numbers stay
+  “run, partially verified”.</li>
+  <li><strong>“Native-style head” vs “pretrained native head”.</strong> All trained heads are
+  from-scratch structural clones (module docstring is explicit). The pretrained head appears only
+  inside the native baseline. Any wording implying the probes use pretrained decoder weights is
+  wrong.</li>
+  <li><strong>mase naming.</strong> Bootstrap artifacts use <code>mase_context</code> explicitly;
+  OOD CSVs use a bare <code>mase</code> column that is <em>computed by the same function</em>
+  (verified import chain). Canonical <code>mase_train_series</code>: denominator implemented,
+  metric absent. Resolution: this notebook always names the definition; flagged as a naming
+  cleanup for the paper.</li>
+  <li><strong>Early stopping.</strong> Discussed for the capacity heads, deliberately rejected in
+  favor of fixed 300 epochs for protocol identity with the linear probe. No early-stopping code
+  exists.</li>
+  <li><strong>Commit conventions.</strong> The stated code/results-separate convention was not
+  followed for <code>a173102</code> (code + results in one commit). Cosmetic; recorded for
+  honesty.</li>
+  <li><strong>BOOT_B = 2000 (config) vs B = 5000 (drivers).</strong> Not a bug: the config
+  constant feeds the legacy UEA helpers; every forecasting-line bootstrap hardcodes B = 5000 and
+  records it in its artifacts.</li>
+  <li><strong>Which line is “current”?</strong> Neither replaced the other: <code>extended_v1</code>
+  remains the in-dataset probing line (with its regeneration debt); <code>extended_v2</code> is
+  the transfer line and current headline. The notebook keeps them separate throughout.</li>
+</ol>
+</section>
+
+<footer>
+<p>Generated 2026-07-31 from branch <code>ood-forecasting-pilot</code>, commit
+<code>a173102</code> (clean working tree), by auditing
+<span class="path">notes/EGOR_RESEARCH_NOTES.md</span>, <span class="path">notes/PLAN.md</span>,
+the current code, committed result artifacts, run logs, and Git history. This page contains no
+figures — every number cited here comes from a machine-readable artifact named next to it, and
+figure files are referenced only as plain repository paths. No experiments, extractions, model
+loads, or dataset downloads were performed to produce it, and no source notes, plan, scientific
+code, or saved results were modified. Self-contained: no external fonts, styles, scripts, or
+network requests; readable with JavaScript disabled and printable.</p>
+</footer>
+
+<script>
+(function(){
+  var buttons=document.querySelectorAll('.controls button[data-filter]');
+  function apply(f){
+    document.querySelectorAll('article.entry, .claim, #findings li, #findings ul > li').forEach(function(el){
+      if(f==='all'){el.style.display='';return;}
+      el.style.display = el.querySelector('.badge.'+f) ? '' : 'none';
+    });
+    buttons.forEach(function(b){b.setAttribute('aria-pressed', String(b.dataset.filter===f));});
+  }
+  buttons.forEach(function(b){b.addEventListener('click',function(){apply(b.dataset.filter);});});
+  var ex=document.getElementById('expand-all');
+  if(ex){ex.addEventListener('click',function(){
+    var open = ex.getAttribute('aria-pressed')!=='true';
+    document.querySelectorAll('details').forEach(function(d){d.open=open;});
+    ex.setAttribute('aria-pressed',String(open));
+  });}
+})();
+</script>
+</main>
+</div>
+</body>
+</html>
