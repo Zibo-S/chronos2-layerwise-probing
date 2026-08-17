@@ -289,12 +289,15 @@ def _syn_traj(n, seed):
 
 
 def _setup_stageB(tmp):
-    """Point the B2 output dirs at a tmp tree and shrink the fit/bootstrap so the synthetic run is fast."""
+    """Point the B2-B5 output dirs at a tmp tree and shrink the fit/bootstrap so the synthetic run is fast."""
     from pathlib import Path
     from probing import config as _c
     tmp = Path(tmp)
     rfs.PROBE_DIR = tmp / "probes"; rfs.TUNNEL_DIR = tmp / "tunnels"
     rfs.FIG_DIR = tmp / "figures"; rfs.TABLE_DIR = tmp / "tables"
+    rfs.NATIVE_DIR = tmp / "native"; rfs.NATIVE_IN_DIR = tmp / "native" / "inputs"
+    rfs.TRANSFER_DIR = tmp / "transfer"; rfs.TRANSFER_IN_DIR = tmp / "transfer" / "inputs"
+    rfs.FORGET_DIR = tmp / "forgetting"
     rfs.QUANTILE_EPOCHS = 6; rfs.WD_GRID = (1e-3, 1e-2)
     _c.BOOT_B = 40
 
@@ -367,6 +370,129 @@ def test_stageB_probe_tunnel_figures_synthetic():
         assert (rfs.FIG_DIR / f"layerwise__{tag}__q9.png").exists()
 
 
+# ---- B3 native forgetting -------------------------------------------------- #
+# B3a. Per-stage native cache namespacing: FT stages carry the checkpoint hash; stage0 uses the
+#      default committed namespace, and a PT-ID stage0 key matches run_fslot_forecasting_comparison's
+#      native q9 cache key exactly (so it reuses it instead of recomputing).
+def test_stageB_native_cache_namespacing():
+    _config.set_dataset_set("extended_v3_rolling")
+    early = rfs.Stage("stage1_ft_early", "/scratch/ck", "18c93f86")
+    assert rfs._native_cache_path(early, "boom_hourly", 9).name == (
+        "IDF_boom_hourly__ft__boom__stage1_ft_early__18c93f86__test_rolling__native_q9_H64.npz")
+    s0 = rfs.Stage(rfs.STAGE0, None, None)
+    assert rfs._native_cache_path(s0, "boom_hourly", 9).name == \
+        "IDF_boom_hourly__ood__test_rolling__native_q9_H64.npz"                     # PT-OOD stage0
+    assert rfs._native_cache_path(s0, "monash_electricity_hourly", 9).name == \
+        "IDF_monash_electricity_hourly__extended_v3_rolling__test__native_q9_H64.npz"  # PT-ID stage0
+
+
+# B3b. Native metric cell is PURE over (windows, quantile forecast): MASE/WQL/MAE finite, correct
+#      metadata + directionality fields, per-window parts aligned. No model, no data loaders.
+def test_stageB_native_cell_metrics_synthetic():
+    quantiles = validate_quantiles(QUANTILE_SETS[rfs.QSET])
+    n, Q = 12, len(quantiles)
+    rng = np.random.default_rng(3)
+    X = (10.0 + rng.standard_normal((n, C))).astype(np.float64)
+    Ytraj = (0.1 * rng.standard_normal((n, H))).astype(np.float32)
+    w = {"X_test": X, "Y_test_traj": Ytraj, "series_test": np.repeat(np.arange(n // 2), 2),
+         "meta": {"sigma_eps": 1e-6, "n_test": n}}
+    qr = rng.standard_normal((n, Q, H))                        # arbitrary raw quantile forecast
+    row, parts = rfs._native_cell("stage2_ft_late", "f734bbc4", "monash_electricity_hourly",
+                                  w, qr, quantiles)
+    assert row["method"] == "native_chronos2" and row["probe_status"] == "native_head"
+    assert (row["pt_status"], row["ft_status"]) == ("PT-ID", "FT-OOD")
+    assert row["checkpoint_hash"] == "f734bbc4"
+    assert np.isfinite(row["mase"]) and np.isfinite(row["wql"]) and np.isfinite(row["median_mae"])
+    assert parts["mase_pw"].shape == (n,) and parts["wql_num"].shape == (n,)
+    assert np.array_equal(parts["series_test"], w["series_test"])
+
+
+# ---- B4 frozen-BOOM transfer ----------------------------------------------- #
+# B4. Transfer is PREDICT-ONLY on the target: _transfer_cell applies a frozen BOOM probe, NEVER fits
+#     on the target (the fit fn is patched to raise), and the frozen weights are unmutated by predict.
+def test_stageB_transfer_frozen_boom_predict_only():
+    import tempfile
+    _setup_stageB(tempfile.mkdtemp())
+    quantiles = validate_quantiles(QUANTILE_SETS[rfs.QSET])
+    n = 15
+    f_tr, f_va = _syn_feats(n, 40), _syn_feats(n, 41)          # a genuine frozen BOOM probe
+    fitted = rfs.fit_shared_forecast_probe_explicit_val(
+        f_tr, _syn_traj(n, 40), f_va, _syn_traj(n, 41), quantiles=quantiles,
+        epochs=rfs.QUANTILE_EPOCHS, wd_grid=rfs.WD_GRID, device="cpu", init_seed=0)
+    before = {i: fitted[i]["linear"].weight.detach().clone() for i in fitted}
+
+    stage = rfs.Stage("stage2_ft_late", None, None)
+    f_te, Yte = _syn_feats(n, 42), _syn_traj(n, 42)
+    sids = np.repeat(np.arange(n // 3), 3)
+    w_syn = {"X_test": np.zeros((n, C), np.float32), "y_test": np.zeros((n, H), np.float32),
+             "Y_test_traj": Yte, "series_test": sids}
+    orig_tw, orig_lf = rfs.target_windows, rfs._load_fslot
+    orig_fit = rfs.fit_shared_forecast_probe_explicit_val
+    rfs.target_windows = lambda tag: (w_syn, rfs._role_split(tag))
+    rfs._load_fslot = lambda st, tag, split, X, y: f_te
+    rfs.fit_shared_forecast_probe_explicit_val = lambda *a, **k: (_ for _ in ()).throw(
+        AssertionError("B4 must not fit on the target"))
+    try:
+        curve, wl, sid = rfs._transfer_cell(stage, "monash_electricity_hourly", fitted, 0,
+                                            quantiles, "cpu")
+    finally:
+        rfs.target_windows, rfs._load_fslot = orig_tw, orig_lf
+        rfs.fit_shared_forecast_probe_explicit_val = orig_fit
+    assert len(curve) == NPTS and wl.shape == (NPTS, n)
+    for i in fitted:                                            # frozen probe unmutated by predict
+        assert torch.equal(fitted[i]["linear"].weight, before[i])
+    assert np.array_equal(sid, sids)
+    assert (rfs.TRANSFER_IN_DIR / "stage2_ft_late__monash_electricity_hourly__q9__seed0.npz").exists()
+
+
+# ---- B5 paired forgetting stats -------------------------------------------- #
+# B5a. Paired native-forgetting stats: identical windows across stages -> paired deltas (FT -
+#      pretrained), correct directionality (worse FT => positive delta), fail-loud when windows differ.
+def test_stageB_native_forgetting_pairing_and_direction():
+    import tempfile
+    _setup_stageB(tempfile.mkdtemp())
+    rfs.NATIVE_IN_DIR.mkdir(parents=True, exist_ok=True)
+    n = 12; sid = np.repeat(np.arange(n // 2), 2)
+    stages = [rfs.Stage(l, None, None) for l in (rfs.STAGE0, "stage1_ft_early", "stage2_ft_late")]
+    base = {"wql_num": np.ones(n), "wql_den": 2 * np.ones(n), "series_test": sid}
+    for lbl, m in ((rfs.STAGE0, 1.0), ("stage1_ft_early", 1.2), ("stage2_ft_late", 1.5)):
+        np.savez(rfs.NATIVE_IN_DIR / f"{lbl}__boom_hourly__q9.npz",
+                 mase_pw=np.full(n, m), mae_pw=np.full(n, m), **base)
+    row = rfs._paired_native_stats("boom_hourly", stages)
+    assert row[f"{rfs.STAGE0}__mase"] == 1.0
+    assert abs(row["stage1_ft_early__dmase"] - 0.2) < 1e-9
+    assert abs(row["stage2_ft_late__dmase"] - 0.5) < 1e-9
+    assert row["stage2_ft_late__dmase"] > 0                     # positive = worse = forgetting
+    assert (row["pt_status"], row["ft_status"]) == ("PT-OOD", "FT-ID")
+
+    np.savez(rfs.NATIVE_IN_DIR / "stage2_ft_late__boom_hourly__q9.npz",   # windows now differ
+             mase_pw=np.full(n, 1.5), mae_pw=np.full(n, 1.5),
+             wql_num=np.ones(n), wql_den=2 * np.ones(n), series_test=sid[::-1] + 1)
+    try:
+        rfs._paired_native_stats("boom_hourly", stages)
+        raise AssertionError("mismatched series ids across stages must fail loud")
+    except RuntimeError as e:
+        assert "identical windows" in str(e)
+
+
+# B5b. Missing B3/B4 inputs fail loud (never silently substitute or recompute).
+def test_stageB_forgetting_missing_inputs_fail_loud():
+    import tempfile
+    _setup_stageB(tempfile.mkdtemp())
+    rfs.NATIVE_IN_DIR.mkdir(parents=True, exist_ok=True)
+    stages = [rfs.Stage(l, None, None) for l in (rfs.STAGE0, "stage1_ft_early", "stage2_ft_late")]
+    try:
+        rfs._paired_native_stats("uber_tlc_hourly", stages)     # no native parts on disk
+        raise AssertionError("missing native parts must fail loud")
+    except FileNotFoundError as e:
+        assert "run --native" in str(e)
+    try:
+        rfs._transfer_runs("stage0_pretrained", "uber_tlc_hourly", rfs.PROBE_SEEDS)
+        raise AssertionError("missing transfer inputs must fail loud")
+    except FileNotFoundError as e:
+        assert "run --transfer" in str(e)
+
+
 if __name__ == "__main__":
     tests = [
         test_build_ft_data_truncation_and_counts,
@@ -382,6 +508,11 @@ if __name__ == "__main__":
         test_ft_defaults_match_official,
         test_stageB_cache_path_and_fail_loud,
         test_stageB_probe_tunnel_figures_synthetic,
+        test_stageB_native_cache_namespacing,
+        test_stageB_native_cell_metrics_synthetic,
+        test_stageB_transfer_frozen_boom_predict_only,
+        test_stageB_native_forgetting_pairing_and_direction,
+        test_stageB_forgetting_missing_inputs_fail_loud,
     ]
     for t in tests:
         t()

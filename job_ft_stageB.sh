@@ -9,10 +9,16 @@
 # FT-SPECIALIZATION Stage B — driver env. Extracts shared-forecast-slot (fslot) features for the 3
 # BOOM backbone stages (pretrained / ft_early@300 / ft_late@1000) x 7 eval targets. stage0 reuses the
 # committed pretrained caches; the FT stages load the $SCRATCH BOOM checkpoints and extract into
-# collision-proof IDF_<tag>__ft__boom__<stage>__<hash8> caches. B2-B5 analysis added after B1 verifies.
+# collision-proof IDF_<tag>__ft__boom__<stage>__<hash8> caches.
 #
-#   sbatch job_ft_stageB.sh --extract --smoke      # B0: BOOM/test, all 3 stages (fast verification)
-#   sbatch job_ft_stageB.sh --extract              # B1: full 3 x 7 x 3 extraction
+# Sub-stages (GPU needed only for --extract and --native; --transfer/--forgetting are CPU/warm-cache
+# and can run on the login node — but keep multi-second probe fits off the login node, use this job):
+#   sbatch job_ft_stageB.sh --extract --smoke               # B0: BOOM/test, all 3 stages (fast check)
+#   sbatch job_ft_stageB.sh --extract                       # B1: full 3 x 7 x 3 extraction  [GPU]
+#   sbatch job_ft_stageB.sh --probe --tunnels --figures     # B2: fresh probes + tunnels + curves
+#   sbatch job_ft_stageB.sh --native                        # B3: native MASE/WQL, 3 x 7      [GPU cold]
+#   sbatch job_ft_stageB.sh --transfer                      # B4: frozen-BOOM transfer (3 x 6)
+#   sbatch job_ft_stageB.sh --forgetting                    # B5: paired-bootstrap stats + figures
 
 module load gcc python/3.11 arrow/24.0.0
 source .venv/bin/activate

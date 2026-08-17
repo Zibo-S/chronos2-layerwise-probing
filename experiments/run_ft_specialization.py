@@ -20,17 +20,35 @@ Metric hierarchy:
 Tunnel: each stage's tunnel is defined ONLY from its BOOM FT-ID/probe-ID validation curve, then used
 as the layer-region lens for the FT-OOD curves (tunnel.py unchanged). Never from FT-OOD data.
 
-THIS FILE (B0/B1): the ``--extract`` mode populates the shared-forecast-slot (fslot) feature caches
-for 3 stages x 7 targets x {train,val,test}. stage0 reuses the committed pretrained caches (default
-get_pipeline + default cache namespace); stage1/stage2 load the BOOM FT checkpoints and extract into
-collision-proof ``IDF_<tag>__ft__boom__<stage>__<hash8>`` caches via the extract_kout_features
-``pipeline=`` / ``cache_prefix=`` injection. ``--smoke`` restricts to BOOM/test for a fast 3-backbone
-check. B2-B5 (fresh probes + tunnels, native MASE/WQL, frozen-BOOM transfer, bootstrap+figures) are
-added after B1 is verified.
+Modes (each a build sub-stage; stage0 reuses the committed pretrained caches, stage1/stage2 load the
+BOOM FT checkpoints via the extract_kout_features ``pipeline=`` / ``cache_prefix=`` injection into
+collision-proof ``IDF_<tag>__ft__boom__<stage>__<hash8>`` caches):
+  --extract/--smoke [B0/B1]  fslot feature caches, 3 stages x 7 targets x {train,val,test}.
+  --probe/--tunnels/--figures [B2]  FRESH per-target shared-forecast-slot linear probes (probe-ID),
+                             per-stage BOOM tunnels, layerwise curves — "does forecasting info stay
+                             linearly recoverable after BOOM FT?".
+  --native  [B3, PRIMARY]    each stage's OWN native head on IDENTICAL target-test windows, ORIGINAL
+                             -scale MASE + WQL. The model's own forecast, no probe. Delta = FT -
+                             pretrained (POSITIVE = worse = forgetting); BOOM (FT-ID) is the in-domain
+                             control (expected to IMPROVE). GPU on a cold native cache.
+  --transfer [B4, SECONDARY] the FROZEN BOOM readout (re-derived per stage/seed = B2's BOOM probe)
+                             applied predict-only to the 6 non-BOOM targets (probe-OOD) — "does a
+                             BOOM readout TRANSFER without retraining?". CPU / warm fslot caches.
+  --forgetting [B5]          paired cluster-bootstrap forgetting stats (native, per target: early-vs-
+                             pretrained + late-vs-pretrained CIs) + the B2-vs-B4 comparison + the
+                             headline figures/tables. CPU aggregation over B2/B3/B4 outputs.
 
-Run (GPU; OOD_TARGET_ROOT + HF offline set, e.g. via job_ft_pilot.sh's env):
-    python -m experiments.run_ft_specialization --extract --smoke      # B0: BOOM/test, all 3 stages
-    python -m experiments.run_ft_specialization --extract               # B1: full 3 x 7 x 3
+The three stages score IDENTICAL target-test windows (built once per target, seed 0), so every
+pretrained->FT comparison is paired series-for-series. B3/B4/B5 use the BOOM-VALIDATION tunnel
+entrance (from B2) as the layer lens — never a target-test-selected layer.
+
+Run (GPU only for --extract and --native; OOD_TARGET_ROOT + HF offline set, e.g. via job_ft_stageB.sh):
+    python -m experiments.run_ft_specialization --extract --smoke        # B0: BOOM/test, all 3 stages
+    python -m experiments.run_ft_specialization --extract                # B1: full 3 x 7 x 3
+    python -m experiments.run_ft_specialization --probe --tunnels --figures  # B2 (CPU, warm caches)
+    python -m experiments.run_ft_specialization --native                 # B3 native MASE/WQL (GPU cold)
+    python -m experiments.run_ft_specialization --transfer               # B4 frozen-BOOM (CPU)
+    python -m experiments.run_ft_specialization --forgetting             # B5 stats + figures (CPU)
 """
 
 from __future__ import annotations
@@ -49,13 +67,20 @@ import numpy as np
 import torch
 
 from probing import config
-from probing.config import NUM_LAYERS, SEED, OUTPUT_PATCH_SIZE
-from probing.extraction import extract_kout_features, _cache_path, _idf_prefix
+from probing.config import NUM_LAYERS, SEED, OUTPUT_PATCH_SIZE, CACHE_DIR
+from probing.extraction import extract_kout_features, get_pipeline, _cache_path, _idf_prefix
 from probing.id_data import build_ood_rolling_windows, build_windows
 from probing.finetune import ft_cache_prefix, checkpoint_hash, _select_device
-from probing.probes import (QUANTILE_SETS, validate_quantiles,
+from probing.probes import (QUANTILE_SETS, validate_quantiles, median_index,
                             fit_shared_forecast_probe_explicit_val, predict_shared_forecast_probe)
+from probing.stats import cluster_bootstrap_counts, ci_bounds
 from probing.tunnel import d_stat_boot, tunnel_record_multi, val_curve_from_selection
+# B3/B5 reuse the native-forecasting + paired-bootstrap primitives verbatim (NO parallel evaluation
+# logic): the in-context MASE denom + arcsinh inverse from run_id_forecasting / the forecasting
+# comparison, and the per-window MASE/WQL + series-cluster-bootstrap adapters from that same driver.
+from experiments.run_id_forecasting import M_SEASON, _ctx_stats, _mase_denominator
+from experiments.run_fslot_forecasting_comparison import (
+    _raw_future, _mase_pw, _mae_pw, _wql_pw_parts, _series_group, _boot_mean, _boot_ratio)
 
 C, H = 512, 64
 K = math.ceil(H / OUTPUT_PATCH_SIZE)              # native forecast-slot count (=4 at H=64)
@@ -494,6 +519,435 @@ def run_figures(stages, targets):
     return rows
 
 
+def _dump_rows(stem, rows):
+    """Write rows to <stem>.csv and <stem>.json (fail loud on nothing computed)."""
+    if not rows:
+        raise RuntimeError(f"no rows to write for {stem} — nothing was computed")
+    with open(f"{stem}.csv", "w", newline="") as f:
+        wtr = csv.DictWriter(f, fieldnames=list(rows[0].keys()))
+        wtr.writeheader(); wtr.writerows(rows)
+    json.dump(rows, open(f"{stem}.json", "w"), indent=2)
+
+
+# --------------------------------------------------------------------------- #
+# B3 — native catastrophic-forgetting evaluation (PRIMARY forgetting metric)
+# --------------------------------------------------------------------------- #
+# Each backbone stage's OWN native forecasting head is scored on IDENTICAL target-test windows (built
+# once per target, seed 0, shared across stages), in ORIGINAL units — the model's own forecast, no
+# probe trained. Primary quantity = the change vs pretrained (Delta = FT - pretrained; POSITIVE =
+# worse = forgetting). BOOM (FT-ID) is the in-domain control (expected to IMPROVE, Delta < 0). The
+# native quantile pass reuses run_fslot_forecasting_comparison's predict_quantiles -> (n, Q, H)
+# transform, made STAGE-AWARE (stage0 = pretrained singleton; FT stages = the loaded checkpoint) and
+# cached per checkpoint hash so two stages can never alias one native cache.
+NATIVE_DIR = OUT_ROOT / "native"
+NATIVE_IN_DIR = NATIVE_DIR / "inputs"          # per (stage,target) per-window MASE/WQL parts (feed B5)
+
+
+def _native_cache_path(stage, tag, n_levels):
+    """Per-STAGE native multi-quantile cache path. stage0 -> the default _idf_prefix namespace (so a
+    PT-ID target reuses the committed pretrained native q-cache from run_fslot_forecasting_comparison
+    --native-wql, identical key); FT stages -> the checkpoint-hash namespace. The split token matches
+    the target's fslot test split (test / test_rolling), so nothing collides across stages."""
+    prefix = stage.cache_prefix(tag) or _idf_prefix(tag)
+    return CACHE_DIR / f"{prefix}__{_role_split(tag)['test']}__native_q{n_levels}_H{H}.npz"
+
+
+def _native_quantiles_stage(stage, tag, X_test, quantiles, pipe_holder):
+    """Multi-quantile native Chronos-2 forecast (n, Q, H) in RAW units for THIS stage's head. Cold ->
+    load the stage pipeline once (lazily, reused across the stage's targets via pipe_holder) and run
+    predict_quantiles; warm -> read the per-stage cache (context-tail guard fails loud on a
+    re-window). Same call + reshape as run_fslot_forecasting_comparison._native_quantiles_raw,
+    parameterized by the stage pipeline and cache namespace."""
+    levels = [float(q) for q in quantiles]
+    cache = _native_cache_path(stage, tag, len(levels))
+    X = np.asarray(X_test, np.float32)
+    if cache.exists():
+        d = np.load(cache)
+        if d["ctx_tail"].shape[0] == len(X) and np.allclose(d["ctx_tail"], X[:, -8:]):
+            print(f"  [cache HIT]  {cache.name}")
+            return d["quant"].astype(np.float64)
+        raise RuntimeError(f"stale native cache {cache.name}: contexts changed since it was written "
+                           "— delete it and re-run")
+    if pipe_holder["pipe"] is None:            # load the stage's backbone once, on the first cold cell
+        pipe_holder["pipe"] = (get_pipeline()[0] if stage.hash8 is None
+                               else load_ft_pipeline(stage.ckpt_dir))
+    print(f"  [native] {stage.label}/{SHORT[tag]}: {len(X)} windows x {len(levels)} quantiles (H={H})")
+    qt, _mean = pipe_holder["pipe"].predict_quantiles(list(X), prediction_length=H,
+                                                      quantile_levels=levels)
+    quant = np.stack([q.reshape(H, len(levels)).cpu().numpy() for q in qt]).transpose(0, 2, 1)  # (n,Q,H)
+    np.savez(cache, quant=quant.astype(np.float32), ctx_tail=X[:, -8:])
+    print(f"  [saved]      {cache.name}  shape={quant.shape}")
+    return quant.astype(np.float64)
+
+
+def _native_cell(stage_label, hash8, tag, w, qr, quantiles):
+    """ORIGINAL-scale native metrics for one (stage, target): MASE (median row vs the in-context m=24
+    seasonal-naive denom), median MAE, and WQL (from the full quantile grid). PURE over (w, qr) so it
+    is CPU/data-free testable. Returns (row, parts); parts feed the B5 paired bootstrap."""
+    X_test = np.asarray(w["X_test"], np.float64)
+    mu, s = _ctx_stats(X_test, w["meta"]["sigma_eps"])
+    y_raw = _raw_future(w, mu, s)                                   # arcsinh inverse mu + s*sinh(z)
+    denom = np.maximum(_mase_denominator(X_test), 1e-8)[:, None]
+    qmid = median_index(quantiles)
+    med = qr[:, qmid, :]
+    mase_pw, mae_pw = _mase_pw(y_raw, med, denom), _mae_pw(y_raw, med)
+    num, den = _wql_pw_parts(y_raw, qr, quantiles)                  # WQL = sum(num)/sum(den)
+    sid = np.asarray(w["series_test"], np.int64)
+    pt, ft = target_status(tag)
+    row = {"experiment": "ft_specialization_stageB", "analysis": "B3_native_forgetting",
+           "stage": stage_label, "target": tag, "short": SHORT[tag],
+           "pt_status": pt, "ft_status": ft, "probe_status": "native_head",
+           "method": "native_chronos2", "ft_source": FT_SOURCE, "quantile_set": QSET,
+           "checkpoint_hash": (hash8 or "pretrained"), "seasonal_m": M_SEASON,
+           "mase_denominator": "in_context_seasonal_naive_m24",
+           "mase": round(float(mase_pw.mean()), 6), "median_mae": round(float(mae_pw.mean()), 6),
+           "wql": round(float(num.sum() / max(den.sum(), 1e-12)), 6),
+           "n_windows": int(sid.size), "n_series": int(np.unique(sid).size),
+           "C": C, "H": H, "P": OUTPUT_PATCH_SIZE, "K": K}
+    parts = {"mase_pw": mase_pw, "mae_pw": mae_pw, "wql_num": num, "wql_den": den, "series_test": sid}
+    return row, parts
+
+
+def run_native(stages, targets, device=None):
+    """B3: score EACH stage's native head on identical target-test windows. GPU on a cold native
+    cache; warm re-runs are CPU (cache-hit). Idempotent via the per-stage native cache. Writes the
+    metrics table + per-window parts (native/inputs) for the B5 bootstrap. `device` is accepted for
+    CLI symmetry but the pipeline's own device governs the forecast."""
+    NATIVE_DIR.mkdir(parents=True, exist_ok=True); NATIVE_IN_DIR.mkdir(parents=True, exist_ok=True)
+    config.set_dataset_set("extended_v3_rolling")     # FT geometry set (PT-OOD tags are set-independent)
+    quantiles = validate_quantiles(QUANTILE_SETS[QSET])
+    win = {tag: target_windows(tag)[0] for tag in targets}   # ONCE per target -> identical across stages
+    rows = []
+    for stage in stages:
+        holder = {"pipe": None}
+        try:
+            for tag in targets:
+                qr = _native_quantiles_stage(stage, tag, win[tag]["X_test"], quantiles, holder)
+                row, parts = _native_cell(stage.label, stage.hash8, tag, win[tag], qr, quantiles)
+                np.savez(NATIVE_IN_DIR / f"{stage.label}__{tag}__{QSET}.npz", **parts)
+                rows.append(row)
+                print(f"  [{stage.label:>18}/{SHORT[tag]:>11}]  MASE {row['mase']:.3f}  "
+                      f"WQL {row['wql']:.3f}  MAE {row['median_mae']:.3f}  "
+                      f"({row['pt_status']}/{row['ft_status']})")
+        finally:
+            if stage.hash8 is not None and holder["pipe"] is not None:     # free the FT checkpoint
+                del holder["pipe"]; gc.collect()
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+    _dump_rows(str(NATIVE_DIR / f"native_metrics__{QSET}"), rows)
+    print(f"[B3 native] {len(rows)} (stage,target) native cells -> "
+          f"{NATIVE_DIR}/native_metrics__{QSET}.csv")
+    return rows
+
+
+# --------------------------------------------------------------------------- #
+# B4 — frozen BOOM readout transfer (SECONDARY diagnostic, probe-OOD)
+# --------------------------------------------------------------------------- #
+# Where B2 fits a FRESH probe on each target (is the info recoverable?), B4 FREEZES the BOOM-trained
+# readout and applies it unchanged to the 6 non-BOOM targets (does a BOOM readout TRANSFER without
+# retraining?). The frozen probe is re-derived per (stage, seed) from the stage's BOOM train/val
+# fslot caches — deterministic, so byte-identical to B2's BOOM probe — then predict-only on each
+# target's test cache. NEVER fit on a target. Compared at the stage's BOOM tunnel entrance (the
+# validation-defined lens), never at a target-test-selected layer.
+TRANSFER_DIR = OUT_ROOT / "transfer"
+TRANSFER_IN_DIR = TRANSFER_DIR / "inputs"
+TRANSFER_TARGETS = tuple(t for t in ALL_TARGETS if t != FT_ID_TAG)   # the 6 non-BOOM (probe-OOD)
+
+
+def _fit_boom_probe(stage, seed, quantiles, device):
+    """Fit the shared-forecast-slot linear probe on the STAGE's BOOM train (wd on BOOM val, seed =
+    Linear init). Reads BOOM's B1 fslot caches (cache-hit only). Deterministic => the same frozen
+    probe B2 fit for this (stage, seed). Fits ONLY on BOOM — never touches a transfer target."""
+    w, _ = target_windows(FT_ID_TAG)
+    roles = _role_split(FT_ID_TAG)
+    f_tr = _load_fslot(stage, FT_ID_TAG, roles["train"], w["X_train"], w["y_train"])
+    f_va = _load_fslot(stage, FT_ID_TAG, roles["val"], w["X_val"], w["y_val"])
+    return fit_shared_forecast_probe_explicit_val(
+        f_tr, w["Y_train_traj"], f_va, w["Y_val_traj"], quantiles=quantiles,
+        epochs=QUANTILE_EPOCHS, wd_grid=WD_GRID, device=device, init_seed=seed)
+
+
+def _transfer_stem(stage_label, tag, seed):
+    return f"{stage_label}__{tag}__{QSET}__seed{seed}"
+
+
+def _transfer_cell(stage, tag, fitted, seed, quantiles, device):
+    """Apply the FROZEN BOOM probe to one target's test split — PREDICT-ONLY, never trains on the
+    target. Saves the per-window loss (14, n) + series ids for the B5 bootstrap; returns the 14-point
+    seed curve, the per-window losses, and the series ids."""
+    w, _ = target_windows(tag)
+    f_te = _load_fslot(stage, tag, _role_split(tag)["test"], w["X_test"], w["y_test"])
+    out, diag = predict_shared_forecast_probe(fitted, f_te, w["Y_test_traj"], quantiles=quantiles,
+                                             device=device, collect_test_window_loss=True)
+    wl = np.stack([diag["test_window_loss"][i]
+                   for i in sorted(diag["test_window_loss"])]).astype(np.float64)
+    sid = np.asarray(w["series_test"], np.int64)
+    TRANSFER_IN_DIR.mkdir(parents=True, exist_ok=True)
+    np.savez(TRANSFER_IN_DIR / f"{_transfer_stem(stage.label, tag, seed)}.npz",
+             window_loss=wl, series_test=sid)
+    return [float(out[i]) for i in sorted(out)], wl, sid
+
+
+def _transfer_runs(stage_label, tag, seeds):
+    runs = []
+    for s in seeds:
+        p = TRANSFER_IN_DIR / f"{_transfer_stem(stage_label, tag, s)}.npz"
+        if not p.exists():
+            raise FileNotFoundError(f"missing transfer input {p.name} — run --transfer (B4) first")
+        z = np.load(p)
+        runs.append((z["window_loss"], z["series_test"]))
+    return runs
+
+
+def _aggregate_transfer(stages):
+    """Seed-mean frozen-BOOM curve per (stage, target); D at the stage's BOOM tunnel entrance (the
+    validation-defined lens). probe_status = probe-OOD (a BOOM readout on a non-BOOM target)."""
+    tunnels = {s.label: _load_stage_tunnel(s.label) for s in stages}
+    rows = []
+    for stage in stages:
+        ls = tunnels[stage.label]["l_start"]
+        for tag in TRANSFER_TARGETS:
+            runs = _transfer_runs(stage.label, tag, PROBE_SEEDS)
+            wls = [wl for wl, _ in runs]
+            sids = [sid for _, sid in runs]
+            assert all(np.array_equal(sid, sids[0]) for sid in sids), \
+                "transfer seeds must share identical test windows"
+            wl_mean = np.mean(wls, axis=0)
+            last = wl_mean.shape[0] - 1
+            d = d_stat_boot(wl_mean, sids[0], ls, last=last, B=config.BOOT_B, seed=SEED)
+            mt = wl_mean.mean(axis=1)
+            pt, ft = target_status(tag)
+            rows.append({"experiment": "ft_specialization_stageB",
+                         "analysis": "B4_frozen_boom_transfer", "stage": stage.label, "target": tag,
+                         "short": SHORT[tag], "pt_status": pt, "ft_status": ft,
+                         "probe_status": "probe-OOD", "readout": "fslot_frozen_boom",
+                         "ft_source": FT_SOURCE, "quantile_set": QSET,
+                         "l_start": ls, "l_start_label": LAYER_LABELS[ls],
+                         "last_label": LAYER_LABELS[last],
+                         "loss_at_entrance": float(mt[ls]), "loss_at_ref": float(mt[last]),
+                         "D_last_vs_lstart": d["point"], "D_ci_lo": d["ci"][0], "D_ci_hi": d["ci"][1],
+                         "n_clusters": d["n_clusters"], "n_windows": d["n_windows"],
+                         "C": C, "H": H, "P": OUTPUT_PATCH_SIZE, "K": K})
+    return rows
+
+
+def run_transfer(stages, seeds, device):
+    """B4: per stage, FREEZE the BOOM probe (each seed) and score the 6 non-BOOM targets predict-only.
+    Idempotent: a (stage, seed) whose 6 target inputs all exist skips the BOOM fit entirely."""
+    TRANSFER_DIR.mkdir(parents=True, exist_ok=True); TRANSFER_IN_DIR.mkdir(parents=True, exist_ok=True)
+    config.set_dataset_set("extended_v3_rolling")
+    quantiles = validate_quantiles(QUANTILE_SETS[QSET])
+    for stage in stages:
+        for seed in seeds:
+            pending = [t for t in TRANSFER_TARGETS
+                       if not (TRANSFER_IN_DIR / f"{_transfer_stem(stage.label, t, seed)}.npz").exists()]
+            if not pending:
+                print(f"  [skip] {stage.label}/seed{seed}: all {len(TRANSFER_TARGETS)} transfers done")
+                continue
+            print(f"\n[B4 transfer] {stage.label} / frozen BOOM probe / seed {seed} "
+                  f"-> {len(pending)} target(s)")
+            fitted = _fit_boom_probe(stage, seed, quantiles, device)
+            for tag in pending:
+                _transfer_cell(stage, tag, fitted, seed, quantiles, device)
+                print(f"  [saved] {_transfer_stem(stage.label, tag, seed)}  "
+                      f"({'/'.join(target_status(tag))} / probe-OOD)")
+            del fitted
+            gc.collect()
+    rows = _aggregate_transfer(stages)
+    _dump_rows(str(TRANSFER_DIR / f"transfer_metrics__{QSET}"), rows)
+    print(f"[B4 transfer] {len(rows)} (stage,target) frozen-BOOM cells -> "
+          f"{TRANSFER_DIR}/transfer_metrics__{QSET}.csv")
+    return rows
+
+
+# --------------------------------------------------------------------------- #
+# B5 — paired statistics + catastrophic-forgetting figures/tables
+# --------------------------------------------------------------------------- #
+FORGET_DIR = OUT_ROOT / "forgetting"
+FT_STAGES = ("stage1_ft_early", "stage2_ft_late")   # compared against stage0_pretrained
+
+
+def _load_native_parts(stage_label, tag):
+    p = NATIVE_IN_DIR / f"{stage_label}__{tag}__{QSET}.npz"
+    if not p.exists():
+        raise FileNotFoundError(f"missing native parts {p.name} — run --native (B3) first")
+    z = np.load(p)
+    return {"mase_pw": z["mase_pw"], "mae_pw": z["mae_pw"], "wql_num": z["wql_num"],
+            "wql_den": z["wql_den"], "series_test": z["series_test"]}
+
+
+def _paired_native_stats(tag, stages):
+    """Per target: absolute native MASE/WQL per stage + Delta vs pretrained (FT - pretrained; >0 =
+    worse) with PAIRED cluster-bootstrap CIs. All stages MUST score identical windows (asserted on
+    the series ids) so the ONE shared count matrix pairs the stages window-for-window."""
+    parts = {s.label: _load_native_parts(s.label, tag) for s in stages}
+    ref = parts[STAGE0]["series_test"]
+    for lbl, p in parts.items():
+        if not np.array_equal(p["series_test"], ref):
+            raise RuntimeError(f"{tag}/{lbl}: native series ids differ from {STAGE0} — the three "
+                               "stages must be scored on identical windows for a paired comparison")
+    S, inv = _series_group(ref)
+    M = cluster_bootstrap_counts(S, config.BOOT_B, SEED)               # ONE resample -> paired stages
+    boot_mase = {lbl: _boot_mean(M, p["mase_pw"], inv, S) for lbl, p in parts.items()}
+    boot_wql = {lbl: _boot_ratio(M, p["wql_num"], p["wql_den"], inv, S) for lbl, p in parts.items()}
+    pt, ft = target_status(tag)
+    row = {"analysis": "B5_native_forgetting", "target": tag, "short": SHORT[tag],
+           "pt_status": pt, "ft_status": ft, "ft_source": FT_SOURCE, "quantile_set": QSET,
+           "n_windows": int(ref.size), "n_series": int(S),
+           "direction": "delta = FT - pretrained; POSITIVE = worse (forgetting)"}
+    for lbl in (STAGE0, *FT_STAGES):
+        mlo, mhi = ci_bounds(boot_mase[lbl])
+        wlo, whi = ci_bounds(boot_wql[lbl])
+        row[f"{lbl}__mase"] = round(float(parts[lbl]["mase_pw"].mean()), 6)
+        row[f"{lbl}__mase_ci_lo"] = round(float(mlo), 6)
+        row[f"{lbl}__mase_ci_hi"] = round(float(mhi), 6)
+        row[f"{lbl}__wql"] = round(float(parts[lbl]["wql_num"].sum()
+                                         / max(parts[lbl]["wql_den"].sum(), 1e-12)), 6)
+        row[f"{lbl}__wql_ci_lo"] = round(float(wlo), 6)
+        row[f"{lbl}__wql_ci_hi"] = round(float(whi), 6)
+    for lbl in FT_STAGES:
+        dm = boot_mase[lbl] - boot_mase[STAGE0]
+        dw = boot_wql[lbl] - boot_wql[STAGE0]
+        mlo, mhi = ci_bounds(dm)
+        wlo, whi = ci_bounds(dw)
+        row[f"{lbl}__dmase"] = round(float(dm.mean()), 6)
+        row[f"{lbl}__dmase_ci_lo"] = round(float(mlo), 6)
+        row[f"{lbl}__dmase_ci_hi"] = round(float(mhi), 6)
+        row[f"{lbl}__dmase_sig"] = bool(mlo > 0 or mhi < 0)
+        row[f"{lbl}__dwql"] = round(float(dw.mean()), 6)
+        row[f"{lbl}__dwql_ci_lo"] = round(float(wlo), 6)
+        row[f"{lbl}__dwql_ci_hi"] = round(float(whi), 6)
+        row[f"{lbl}__dwql_sig"] = bool(wlo > 0 or whi < 0)
+    return row
+
+
+def _entrance_pw_b2(stage_label, tag, l_start):
+    """B2 fresh-probe per-window loss AT the entrance layer (seed-mean), + series ids."""
+    runs = [_probe_run_curves(stage_label, tag, s) for s in PROBE_SEEDS]
+    wl_mean = np.mean([wl for _, wl, _ in runs], axis=0)
+    return wl_mean[l_start], runs[0][2]
+
+
+def _entrance_pw_b4(stage_label, tag, l_start):
+    """B4 frozen-BOOM per-window loss AT the entrance layer (seed-mean), + series ids."""
+    runs = _transfer_runs(stage_label, tag, PROBE_SEEDS)
+    wl_mean = np.mean([wl for wl, _ in runs], axis=0)
+    return wl_mean[l_start], runs[0][1]
+
+
+def _b2_vs_b4_row(stage_label, tag, l_start):
+    """Fresh target probe (B2) vs frozen BOOM readout (B4) at the stage's BOOM tunnel entrance, both
+    on the target's OWN test windows (paired). b4_minus_b2 > 0 & significant = the info is recoverable
+    by a fresh probe but the BOOM readout does not transfer."""
+    b2_pw, sid2 = _entrance_pw_b2(stage_label, tag, l_start)
+    b4_pw, sid4 = _entrance_pw_b4(stage_label, tag, l_start)
+    if not np.array_equal(sid2, sid4):
+        raise RuntimeError(f"{stage_label}/{tag}: B2 and B4 windows differ — cannot pair")
+    S, inv = _series_group(sid2)
+    M = cluster_bootstrap_counts(S, config.BOOT_B, SEED)
+    boot2 = _boot_mean(M, b2_pw, inv, S)
+    boot4 = _boot_mean(M, b4_pw, inv, S)
+    diff = boot4 - boot2
+    lo, hi = ci_bounds(diff)
+    pt, ft = target_status(tag)
+    return {"analysis": "B5_b2_vs_b4", "stage": stage_label, "target": tag, "short": SHORT[tag],
+            "pt_status": pt, "ft_status": ft, "quantile_set": QSET,
+            "l_start": l_start, "l_start_label": LAYER_LABELS[l_start],
+            "b2_fresh_loss": round(float(b2_pw.mean()), 6),
+            "b4_frozen_boom_loss": round(float(b4_pw.mean()), 6),
+            "b4_minus_b2": round(float(diff.mean()), 6),
+            "b4_minus_b2_ci_lo": round(float(lo), 6), "b4_minus_b2_ci_hi": round(float(hi), 6),
+            "b4_minus_b2_sig": bool(lo > 0 or hi < 0), "n_series": int(S),
+            "interpretation": "b4_minus_b2 > 0 & sig: info recoverable by a fresh probe but the BOOM "
+                              "readout does not transfer"}
+
+
+def _forgetting_heatmap(native_rows):
+    """Rows = targets, cols = {ft_early, ft_late}, cell = ΔMASE vs pretrained (>0 = worse). Diverging
+    colormap centered at 0; * = 95% paired CI excludes 0."""
+    targets = [r["target"] for r in native_rows]
+    Mv = np.array([[r[f"{st}__dmase"] for st in FT_STAGES] for r in native_rows], float)
+    sig = np.array([[r[f"{st}__dmase_sig"] for st in FT_STAGES] for r in native_rows])
+    vmax = float(np.abs(Mv).max()) or 1.0
+    fig, ax = plt.subplots(figsize=(5.4, 0.62 * len(targets) + 1.8))
+    im = ax.imshow(Mv, cmap="RdBu_r", vmin=-vmax, vmax=vmax, aspect="auto")
+    ax.set_xticks(range(len(FT_STAGES))); ax.set_xticklabels(["ft_early\n(300 steps)", "ft_late\n(1000 steps)"])
+    ax.set_yticks(range(len(targets))); ax.set_yticklabels([SHORT[t] for t in targets])
+    for i in range(len(targets)):
+        for j in range(len(FT_STAGES)):
+            ax.text(j, i, f"{Mv[i, j]:+.3f}" + ("*" if sig[i, j] else ""), ha="center", va="center",
+                    color=("white" if abs(Mv[i, j]) > 0.6 * vmax else "black"), fontsize=8)
+    cb = fig.colorbar(im, ax=ax); cb.set_label("ΔMASE (FT − pretrained)\n>0 = worse = forgetting")
+    ax.set_title("Native catastrophic forgetting: ΔMASE vs pretrained\n"
+                 "(* = 95% paired cluster bootstrap CI excludes 0)", fontsize=10)
+    FORGET_DIR.mkdir(parents=True, exist_ok=True)
+    fig.tight_layout(); fig.savefig(FORGET_DIR / f"native_forgetting_heatmap__{QSET}.png", dpi=140)
+    plt.close(fig)
+
+
+def _native_bars(native_rows):
+    """Per target: native MASE for pretrained / ft_early / ft_late with 95% CI whiskers."""
+    stages = (STAGE0, *FT_STAGES)
+    targets = [r["target"] for r in native_rows]
+    x = np.arange(len(targets)); w = 0.26
+    fig, ax = plt.subplots(figsize=(1.5 * len(targets) + 3, 5))
+    for k, st in enumerate(stages):
+        vals = [r[f"{st}__mase"] for r in native_rows]
+        lo = [r[f"{st}__mase"] - r[f"{st}__mase_ci_lo"] for r in native_rows]
+        hi = [r[f"{st}__mase_ci_hi"] - r[f"{st}__mase"] for r in native_rows]
+        ax.bar(x + (k - 1) * w, vals, w, yerr=[lo, hi], capsize=2, label=st,
+               color=STAGE_COLOR.get(st))
+    ax.set_xticks(x); ax.set_xticklabels([SHORT[t] for t in targets], rotation=20, ha="right")
+    ax.set_ylabel("native MASE (original scale; lower = better)")
+    ax.set_title(f"Native forecasting MASE per stage x target [{QSET}]  "
+                 "(error bars = 95% paired cluster bootstrap)", fontsize=10)
+    ax.legend(fontsize=8, title="backbone stage"); ax.grid(alpha=0.25, axis="y")
+    FORGET_DIR.mkdir(parents=True, exist_ok=True)
+    fig.tight_layout(); fig.savefig(FORGET_DIR / f"native_mase_bars__{QSET}.png", dpi=140)
+    plt.close(fig)
+
+
+def _b2_vs_b4_figure(b2b4_rows, stage_label="stage2_ft_late"):
+    """Fresh probe (B2) vs frozen-BOOM readout (B4) at the BOOM tunnel entrance, for one stage."""
+    sub = [r for r in b2b4_rows if r["stage"] == stage_label]
+    targets = [r["target"] for r in sub]
+    x = np.arange(len(targets)); w = 0.38
+    fig, ax = plt.subplots(figsize=(1.3 * len(targets) + 3, 4.6))
+    ax.bar(x - w / 2, [r["b2_fresh_loss"] for r in sub], w, label="B2 fresh target probe (probe-ID)",
+           color="tab:green")
+    ax.bar(x + w / 2, [r["b4_frozen_boom_loss"] for r in sub], w,
+           label="B4 frozen BOOM probe (probe-OOD)", color="tab:red")
+    ax.set_xticks(x); ax.set_xticklabels([SHORT[t] for t in targets], rotation=20, ha="right")
+    ax.set_ylabel("Chronos-2 quantile loss at BOOM tunnel entrance (lower = better)")
+    ax.set_title(f"{stage_label}: fresh probe (B2) vs frozen-BOOM readout (B4)\n"
+                 "large B4−B2 gap = info recoverable but the BOOM readout does not transfer",
+                 fontsize=10)
+    ax.legend(fontsize=8); ax.grid(alpha=0.25, axis="y")
+    FORGET_DIR.mkdir(parents=True, exist_ok=True)
+    fig.tight_layout(); fig.savefig(FORGET_DIR / f"b2_vs_b4_entrance__{QSET}.png", dpi=140)
+    plt.close(fig)
+
+
+def run_forgetting(stages, targets):
+    """B5: paired cluster-bootstrap forgetting stats (native, B3) + the B2-vs-B4 readout comparison +
+    the headline figures/tables. PURE aggregation over B2/B3/B4 outputs on disk (CPU)."""
+    if {s.label for s in stages} != {STAGE0, *FT_STAGES}:
+        raise RuntimeError("B5 forgetting needs all 3 stages (pretrained / ft_early / ft_late)")
+    FORGET_DIR.mkdir(parents=True, exist_ok=True)
+    native_rows = [_paired_native_stats(tag, stages) for tag in targets]
+    _dump_rows(str(FORGET_DIR / f"native_forgetting__{QSET}"), native_rows)
+    _forgetting_heatmap(native_rows)
+    _native_bars(native_rows)
+    tunnels = {s.label: _load_stage_tunnel(s.label) for s in stages}   # BOOM entrance = the lens
+    b2b4_rows = [_b2_vs_b4_row(stage.label, tag, tunnels[stage.label]["l_start"])
+                 for stage in stages for tag in TRANSFER_TARGETS]
+    _dump_rows(str(FORGET_DIR / f"b2_vs_b4__{QSET}"), b2b4_rows)
+    _b2_vs_b4_figure(b2b4_rows, "stage2_ft_late")
+    print(f"[B5 forgetting] native_forgetting ({len(native_rows)} targets) + b2_vs_b4 "
+          f"({len(b2b4_rows)} cells) + 3 figures -> {FORGET_DIR}")
+    return native_rows, b2b4_rows
+
+
 # --------------------------------------------------------------------------- #
 # CLI
 # --------------------------------------------------------------------------- #
@@ -508,6 +962,14 @@ def _parse_args(argv=None):
                     help="B2: per-stage BOOM (FT-ID/probe-ID) tunnels (needs --probe output)")
     ap.add_argument("--figures", action="store_true",
                     help="B2: layerwise curves + stage x target table (needs --tunnels output)")
+    ap.add_argument("--native", action="store_true",
+                    help="B3: each stage's NATIVE head on identical target-test windows (MASE/WQL); "
+                         "GPU on a cold native cache")
+    ap.add_argument("--transfer", action="store_true",
+                    help="B4: frozen BOOM readout applied to the 6 non-BOOM targets (probe-OOD); "
+                         "CPU / warm fslot caches")
+    ap.add_argument("--forgetting", action="store_true",
+                    help="B5: paired-bootstrap forgetting stats + B2-vs-B4 + figures (needs B2/B3/B4)")
     ap.add_argument("--stages", nargs="+", default=[STAGE0, "stage1_ft_early", "stage2_ft_late"],
                     help="backbone stages to run (default all 3)")
     ap.add_argument("--targets", nargs="+", default=list(ALL_TARGETS),
@@ -532,9 +994,15 @@ def main(argv=None):
         run_tunnels(stages); did = True
     if args.figures:
         run_figures(stages, args.targets); did = True
+    if args.native:
+        run_native(stages, args.targets, _select_device(args.device)); did = True
+    if args.transfer:
+        run_transfer(stages, args.seeds, _select_device(args.device)); did = True
+    if args.forgetting:
+        run_forgetting(stages, args.targets); did = True
     if not did:
-        raise SystemExit("nothing to do — pass --extract/--smoke (B0/B1) or "
-                         "--probe/--tunnels/--figures (B2). B3-B5 not built yet.")
+        raise SystemExit("nothing to do — pass --extract/--smoke (B0/B1), --probe/--tunnels/--figures "
+                         "(B2), --native (B3), --transfer (B4), or --forgetting (B5)")
 
 
 if __name__ == "__main__":
