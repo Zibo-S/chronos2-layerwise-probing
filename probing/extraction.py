@@ -395,7 +395,8 @@ def extract_window_features(tag, split, contexts, y, pooling="content", batch_si
 # ``K<K>_H<horizon>`` tag so different horizons never collide.
 # ----------------------------------------------------------------------- #
 
-def extract_kout_features(tag, split, contexts, y, horizon, batch_size=128):
+def extract_kout_features(tag, split, contexts, y, horizon, batch_size=128,
+                          pipeline=None, cache_prefix=None):
     """content / REG / forecast-slot states from ONE num_output_patches=K forward pass,
     with K = ceil(horizon / OUTPUT_PATCH_SIZE) derived here (NOT passed in) so extraction
     and the shared probe can never disagree on the slot count.
@@ -409,12 +410,23 @@ def extract_kout_features(tag, split, contexts, y, horizon, batch_size=128):
     real final output (= the last block L12 run through the final norm). The L0..L12 block-hook
     states are PRE-final-norm and are NOT native-head-compatible except for L12 fed through it.
 
+    Dependency-injection kwargs (both default None -> BYTE-IDENTICAL legacy behavior; used by the
+    FT-specialization line to extract off a fine-tuned checkpoint without touching the frozen
+    ``get_pipeline`` singleton or the pretrained cache namespace):
+      pipeline     : a loaded Chronos2Pipeline to extract with. None -> the frozen ``get_pipeline``
+                     singleton (default). When a fine-tuned pipeline is passed, the 'final' state
+                     (L12+LN) is that checkpoint's OWN final_layer_norm output.
+      cache_prefix : full cache-namespace stem to write/read under (e.g.
+                     ``IDF_<tag>__ft__<source>__<stage>__<hash8>``). None -> ``_idf_prefix(tag)``
+                     (default), so a fine-tuned run can never collide with the pretrained cache.
+
     Returns (feats, final, y):
       feats = {"content": {L:(n,768)}, "reg": {L:(n,768)}, "fslot": {L:(n,K,768)}}  L in 0..12 (L0=embed, L1..L12=blocks)
       final = {"content": (n,768),     "reg": (n,768),     "fslot": (n,K,768)}       post-final-norm
     """
     K = math.ceil(horizon / OUTPUT_PATCH_SIZE)   # native rule: pipeline.get_num_output_patches
-    cache_path = _cache_path(_idf_prefix(tag), split, None, f"K{K}_H{horizon}")
+    prefix = _idf_prefix(tag) if cache_prefix is None else cache_prefix
+    cache_path = _cache_path(prefix, split, None, f"K{K}_H{horizon}")
     types = ("content", "reg", "fslot")
     if cache_path.exists():
         d = np.load(cache_path, allow_pickle=True)
@@ -442,7 +454,8 @@ def extract_kout_features(tag, split, contexts, y, horizon, batch_size=128):
     contexts = np.asarray(contexts, dtype=np.float32)
     n, C = contexts.shape
 
-    pipeline, cfg = get_pipeline()
+    if pipeline is None:                       # default: the frozen pretrained singleton
+        pipeline, _cfg = get_pipeline()
     model = pipeline.model
     device = next(model.parameters()).device               # eval()/restore handled per-batch below
     patch_size = model.chronos_config.input_patch_size
