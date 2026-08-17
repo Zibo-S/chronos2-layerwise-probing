@@ -1,0 +1,256 @@
+{
+  "experiment": "ft_specialization_stageA",
+  "source": "electricity",
+  "tag": "monash_electricity_hourly",
+  "model_id": "amazon/chronos-2",
+  "finetune_mode": "full",
+  "trainable_params": 119477664,
+  "model_config": {
+    "d_model": 768,
+    "d_ff": 3072,
+    "num_layers": 12,
+    "num_quantiles": 21,
+    "output_patch_size": 16,
+    "dropout_rate": 0.1
+  },
+  "hyperparameters": {
+    "learning_rate": 3e-06,
+    "num_steps": 1000,
+    "batch_size": 64,
+    "min_past": 512,
+    "lr_scheduler_type": "linear",
+    "warmup_steps": 0,
+    "max_grad_norm": 1.0,
+    "gradient_accumulation_steps": 1,
+    "optimizer": "adamw_torch_fused",
+    "adam_betas": [
+      0.9,
+      0.999
+    ],
+    "adam_eps": 1e-08,
+    "weight_decay": 0.0,
+    "seed": 0,
+    "bf16": true,
+    "tf32": true,
+    "matches_official_fit_defaults": false,
+    "batch_size_note": "reduced from official 256 to 64 (locked; see PLAN)"
+  },
+  "geometry": {
+    "C": 512,
+    "H": 64,
+    "P": 16,
+    "K": 4
+  },
+  "stage_labels": {
+    "300": "stage1_ft_early",
+    "1000": "stage2_ft_late"
+  },
+  "coverage_fraction": 0.007825888651055242,
+  "data": {
+    "tag": "monash_electricity_hourly",
+    "C": 512,
+    "H": 64,
+    "min_past": 512,
+    "n_series_total": 321,
+    "n_eligible_series": 321,
+    "n_ft_train_series": 321,
+    "n_ft_val": 321,
+    "n_eligible_train_origins": 128199,
+    "n_unique_train_windows": 8177985,
+    "rejected_fixed_window_corpus": 1073,
+    "leakage_rule": "train history truncated at ft_val target start (starts[-3]+C); probe-val (starts[-2]) and test (starts[-1]) windows untouched",
+    "sampler": "chronos.chronos2.Chronos2Dataset TRAIN random cut points (dataset.py:193-195)"
+  },
+  "checkpoints": {
+    "stage1_ft_early": {
+      "step": 300,
+      "stage": "stage1_ft_early",
+      "checkpoint_hash": "87ee1664",
+      "checkpoint_dir": "/scratch/eserebri/chronos2/ft_specialization/electricity/stage1_ft_early",
+      "cache_prefix": "IDF_monash_electricity_hourly__ft__electricity__stage1_ft_early__87ee1664",
+      "ft_val_loss": 10.364807984539281,
+      "coverage_fraction": 0.0023477665953165723,
+      "param_drift": {
+        "block_00": {
+          "l2": 0.11089757074289401,
+          "relative": 0.0023136438276745394,
+          "changed": true
+        },
+        "block_01": {
+          "l2": 0.11477544837983691,
+          "relative": 0.002833883040149413,
+          "changed": true
+        },
+        "block_02": {
+          "l2": 0.12153538649152751,
+          "relative": 0.0032629301413874628,
+          "changed": true
+        },
+        "block_03": {
+          "l2": 0.11451454709763892,
+          "relative": 0.0031160577310741155,
+          "changed": true
+        },
+        "block_04": {
+          "l2": 0.11746207521918586,
+          "relative": 0.0031107478874691525,
+          "changed": true
+        },
+        "block_05": {
+          "l2": 0.1193083684514555,
+          "relative": 0.0031328405788427567,
+          "changed": true
+        },
+        "block_06": {
+          "l2": 0.13230607824430213,
+          "relative": 0.0030842582689396664,
+          "changed": true
+        },
+        "block_07": {
+          "l2": 0.1320020225125713,
+          "relative": 0.003108255942262516,
+          "changed": true
+        },
+        "block_08": {
+          "l2": 0.1302504120624802,
+          "relative": 0.0028711701207932323,
+          "changed": true
+        },
+        "block_09": {
+          "l2": 0.12903007745402267,
+          "relative": 0.0028457012392284196,
+          "changed": true
+        },
+        "block_10": {
+          "l2": 0.12876350375244008,
+          "relative": 0.0025932083822892615,
+          "changed": true
+        },
+        "block_11": {
+          "l2": 0.11164413323468853,
+          "relative": 0.0020539337592377434,
+          "changed": true
+        },
+        "final_layer_norm": {
+          "l2": 0.0009969527283219854,
+          "relative": 3.264079351579616e-05,
+          "changed": true
+        },
+        "input_patch_embedding": {
+          "l2": 0.055200861626531386,
+          "relative": 0.003079728146293255,
+          "changed": true
+        },
+        "native_head": {
+          "l2": 0.0606126121074827,
+          "relative": 0.0009983226551160912,
+          "changed": true
+        },
+        "reg_embedding": {
+          "l2": 0.0010925324721547407,
+          "relative": 0.002547936503512471,
+          "changed": true
+        }
+      }
+    },
+    "stage2_ft_late": {
+      "step": 1000,
+      "stage": "stage2_ft_late",
+      "checkpoint_hash": "b0ebaa4d",
+      "checkpoint_dir": "/scratch/eserebri/chronos2/ft_specialization/electricity/stage2_ft_late",
+      "cache_prefix": "IDF_monash_electricity_hourly__ft__electricity__stage2_ft_late__b0ebaa4d",
+      "ft_val_loss": 10.316024257386585,
+      "coverage_fraction": 0.007825888651055242,
+      "param_drift": {
+        "block_00": {
+          "l2": 0.1389084711630869,
+          "relative": 0.0028980321639622223,
+          "changed": true
+        },
+        "block_01": {
+          "l2": 0.14477630029082866,
+          "relative": 0.003574624258072891,
+          "changed": true
+        },
+        "block_02": {
+          "l2": 0.15380819032352372,
+          "relative": 0.004129376592996404,
+          "changed": true
+        },
+        "block_03": {
+          "l2": 0.1476785709148997,
+          "relative": 0.004018484675322427,
+          "changed": true
+        },
+        "block_04": {
+          "l2": 0.1520850421578895,
+          "relative": 0.004027667847051944,
+          "changed": true
+        },
+        "block_05": {
+          "l2": 0.15291325118975602,
+          "relative": 0.004015249261957357,
+          "changed": true
+        },
+        "block_06": {
+          "l2": 0.17011582506562584,
+          "relative": 0.003965661646831755,
+          "changed": true
+        },
+        "block_07": {
+          "l2": 0.1708200148885284,
+          "relative": 0.004022304478585352,
+          "changed": true
+        },
+        "block_08": {
+          "l2": 0.1684100887076034,
+          "relative": 0.0037123415356679315,
+          "changed": true
+        },
+        "block_09": {
+          "l2": 0.16979170625710333,
+          "relative": 0.0037446809181271483,
+          "changed": true
+        },
+        "block_10": {
+          "l2": 0.1703888500821802,
+          "relative": 0.0034315142210734136,
+          "changed": true
+        },
+        "block_11": {
+          "l2": 0.14509929495181378,
+          "relative": 0.0026694133557080366,
+          "changed": true
+        },
+        "final_layer_norm": {
+          "l2": 0.0013462357448855867,
+          "relative": 4.40765160915458e-05,
+          "changed": true
+        },
+        "input_patch_embedding": {
+          "l2": 0.06882125994499132,
+          "relative": 0.003839627952728979,
+          "changed": true
+        },
+        "native_head": {
+          "l2": 0.08049346888751228,
+          "relative": 0.0013257711684952346,
+          "changed": true
+        },
+        "reg_embedding": {
+          "l2": 0.0012579387381821802,
+          "relative": 0.002933686743310668,
+          "changed": true
+        }
+      }
+    }
+  },
+  "best_ft_val_ckpt": {
+    "step": 500,
+    "ft_val_loss": 10.27748535726672,
+    "note": "DIAGNOSTIC only \u2014 both stage checkpoints are kept regardless"
+  },
+  "device": "cuda",
+  "wall_seconds": 71.23477530479431,
+  "timestamp": "2026-08-11_22-44-19"
+}

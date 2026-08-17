@@ -1,0 +1,257 @@
+{
+  "experiment": "ft_specialization_stageA",
+  "source": "boom",
+  "tag": "boom_hourly",
+  "model_id": "amazon/chronos-2",
+  "finetune_mode": "full",
+  "trainable_params": 119477664,
+  "model_config": {
+    "d_model": 768,
+    "d_ff": 3072,
+    "num_layers": 12,
+    "num_quantiles": 21,
+    "output_patch_size": 16,
+    "dropout_rate": 0.1
+  },
+  "hyperparameters": {
+    "learning_rate": 1e-06,
+    "num_steps": 1000,
+    "batch_size": 64,
+    "min_past": 512,
+    "lr_scheduler_type": "linear",
+    "warmup_steps": 0,
+    "max_grad_norm": 1.0,
+    "gradient_accumulation_steps": 1,
+    "optimizer": "adamw_torch_fused",
+    "adam_betas": [
+      0.9,
+      0.999
+    ],
+    "adam_eps": 1e-08,
+    "weight_decay": 0.0,
+    "seed": 0,
+    "bf16": true,
+    "tf32": true,
+    "matches_official_fit_defaults": false,
+    "batch_size_note": "reduced from official 256 to 64 (locked; see PLAN)"
+  },
+  "geometry": {
+    "C": 512,
+    "H": 64,
+    "P": 16,
+    "K": 4
+  },
+  "stage_labels": {
+    "300": "stage1_ft_early",
+    "1000": "stage2_ft_late"
+  },
+  "coverage_fraction": 0.04926954056923256,
+  "data": {
+    "tag": "boom_hourly",
+    "source_kind": "pt_ood:metric_query",
+    "C": 512,
+    "H": 64,
+    "min_past": 512,
+    "n_series_total": 356,
+    "n_eligible_series": 354,
+    "n_ft_train_series": 353,
+    "n_ft_val": 354,
+    "n_eligible_train_origins": 20151,
+    "n_unique_train_windows": 1298977,
+    "rejected_fixed_window_corpus": 1073,
+    "leakage_rule": "train history truncated at ft_val target start (starts[-3]+C); probe-val (starts[-2]) and test (starts[-1]) windows untouched",
+    "sampler": "chronos.chronos2.Chronos2Dataset TRAIN random cut points (dataset.py:193-195)"
+  },
+  "checkpoints": {
+    "stage1_ft_early": {
+      "step": 300,
+      "stage": "stage1_ft_early",
+      "checkpoint_hash": "18c93f86",
+      "checkpoint_dir": "/scratch/eserebri/chronos2/ft_specialization/boom/stage1_ft_early",
+      "cache_prefix": "IDF_boom_hourly__ft__boom__stage1_ft_early__18c93f86",
+      "ft_val_loss": 3.5842346579341564,
+      "coverage_fraction": 0.014780862170769767,
+      "param_drift": {
+        "block_00": {
+          "l2": 0.05025941497734588,
+          "relative": 0.0010485566497616056,
+          "changed": true
+        },
+        "block_01": {
+          "l2": 0.05300387375334742,
+          "relative": 0.001308701303389718,
+          "changed": true
+        },
+        "block_02": {
+          "l2": 0.05605858189603097,
+          "relative": 0.0015050368607232628,
+          "changed": true
+        },
+        "block_03": {
+          "l2": 0.05239340860128316,
+          "relative": 0.0014256781349373175,
+          "changed": true
+        },
+        "block_04": {
+          "l2": 0.05568844976688261,
+          "relative": 0.0014747970963862795,
+          "changed": true
+        },
+        "block_05": {
+          "l2": 0.05638779109683453,
+          "relative": 0.001480650204108264,
+          "changed": true
+        },
+        "block_06": {
+          "l2": 0.07003280327283233,
+          "relative": 0.0016325724067825299,
+          "changed": true
+        },
+        "block_07": {
+          "l2": 0.06730047248874625,
+          "relative": 0.0015847264272810552,
+          "changed": true
+        },
+        "block_08": {
+          "l2": 0.06518198986036502,
+          "relative": 0.0014368367726249774,
+          "changed": true
+        },
+        "block_09": {
+          "l2": 0.06659434478054777,
+          "relative": 0.0014687087941579876,
+          "changed": true
+        },
+        "block_10": {
+          "l2": 0.06594670388345154,
+          "relative": 0.0013281212479562836,
+          "changed": true
+        },
+        "block_11": {
+          "l2": 0.05940603758560581,
+          "relative": 0.0010929017276987635,
+          "changed": true
+        },
+        "final_layer_norm": {
+          "l2": 0.0009051162549124872,
+          "relative": 2.963401568108002e-05,
+          "changed": true
+        },
+        "input_patch_embedding": {
+          "l2": 0.026164909362674748,
+          "relative": 0.0014597744570478135,
+          "changed": true
+        },
+        "native_head": {
+          "l2": 0.031050520759980632,
+          "relative": 0.0005114189481369403,
+          "changed": true
+        },
+        "reg_embedding": {
+          "l2": 0.0006234809456123097,
+          "relative": 0.0014540436106553342,
+          "changed": true
+        }
+      }
+    },
+    "stage2_ft_late": {
+      "step": 1000,
+      "stage": "stage2_ft_late",
+      "checkpoint_hash": "f734bbc4",
+      "checkpoint_dir": "/scratch/eserebri/chronos2/ft_specialization/boom/stage2_ft_late",
+      "cache_prefix": "IDF_boom_hourly__ft__boom__stage2_ft_late__f734bbc4",
+      "ft_val_loss": 3.5535264553996804,
+      "coverage_fraction": 0.04926954056923256,
+      "param_drift": {
+        "block_00": {
+          "l2": 0.06857368524161632,
+          "relative": 0.0014306452570362403,
+          "changed": true
+        },
+        "block_01": {
+          "l2": 0.07456224914429863,
+          "relative": 0.0018409920960286404,
+          "changed": true
+        },
+        "block_02": {
+          "l2": 0.07742955537760475,
+          "relative": 0.0020787956279172144,
+          "changed": true
+        },
+        "block_03": {
+          "l2": 0.07312708622807018,
+          "relative": 0.001989862669566457,
+          "changed": true
+        },
+        "block_04": {
+          "l2": 0.07756949332640191,
+          "relative": 0.0020542727262981664,
+          "changed": true
+        },
+        "block_05": {
+          "l2": 0.07790753729069182,
+          "relative": 0.0020457231742406503,
+          "changed": true
+        },
+        "block_06": {
+          "l2": 0.09431517032540354,
+          "relative": 0.002198631747102718,
+          "changed": true
+        },
+        "block_07": {
+          "l2": 0.0926085374530295,
+          "relative": 0.0021806562608933213,
+          "changed": true
+        },
+        "block_08": {
+          "l2": 0.09118850988670202,
+          "relative": 0.0020101105309422358,
+          "changed": true
+        },
+        "block_09": {
+          "l2": 0.0948666757556824,
+          "relative": 0.0020922425382223133,
+          "changed": true
+        },
+        "block_10": {
+          "l2": 0.0951415334881558,
+          "relative": 0.0019160850315139445,
+          "changed": true
+        },
+        "block_11": {
+          "l2": 0.08581119933144198,
+          "relative": 0.0015786814239224694,
+          "changed": true
+        },
+        "final_layer_norm": {
+          "l2": 0.0012935768011034308,
+          "relative": 4.2352432630089905e-05,
+          "changed": true
+        },
+        "input_patch_embedding": {
+          "l2": 0.034776100025443485,
+          "relative": 0.0019402040278152395,
+          "changed": true
+        },
+        "native_head": {
+          "l2": 0.04531841449214642,
+          "relative": 0.0007464189103288279,
+          "changed": true
+        },
+        "reg_embedding": {
+          "l2": 0.0007901913871111057,
+          "relative": 0.0018428353676396528,
+          "changed": true
+        }
+      }
+    }
+  },
+  "best_ft_val_ckpt": {
+    "step": 700,
+    "ft_val_loss": 3.550987634281654,
+    "note": "DIAGNOSTIC only \u2014 both stage checkpoints are kept regardless"
+  },
+  "device": "cuda",
+  "wall_seconds": 72.2241382598877,
+  "timestamp": "2026-08-11_23-36-25"
+}
