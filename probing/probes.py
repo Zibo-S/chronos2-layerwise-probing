@@ -906,6 +906,137 @@ def predict_shared_forecast_probe(fitted, feats, labels, quantiles=CHRONOS2_QUAN
     return (out, diag) if diag is not None else out
 
 
+# ========== Layerwise LINEAR classification probe (TASK-SHIFT Exp A) ============== #
+# A strictly-linear Linear(d, n_classes) + cross-entropy probe, the classification twin of the
+# fit/predict_shared_forecast_probe pair: wd selected on an EXPLICIT validation split, fit on FULL
+# train, frozen predict on test. Two design points that matter here:
+#   * it iterates ``sorted(feats)`` (the extracted feature-dict keys), NEVER range(NUM_LAYERS), so the
+#     14th point (post-final-LN, L12+LN) is probed and never silently dropped — unlike the 13-point
+#     ``linear_probe``/``fit_layerwise_probes`` reference used by the UEA baseline.
+#   * ``init_seed`` selects the Linear init (the only randomness in the deterministic full-batch fit),
+#     so N independent probe seeds give genuine SEED BANDS for Plot A (matches the fslot probe + the
+#     classification FT head). wd is chosen by validation CROSS-ENTROPY (smooth), never by test.
+
+def _fit_linear_cls(Xtr, ytr, n_classes, weight_decay, epochs, lr, device,
+                    Xval=None, yval=None, history=None, init_seed=SEED):
+    """Fit one strictly-linear map (d -> n_classes) with cross-entropy; return the trained module in
+    eval() mode. Re-seeded each call (init_seed) so every layer / wd candidate starts from the same
+    init and the 3 probe seeds are independent. AdamW decays the WEIGHT only (the bias is free), same
+    convention as _fit_quantile_linear. If ``history`` (dict with 'train'/'val' lists) is passed,
+    per-epoch train CE (and val CE when Xval/yval given) is appended for the training-curve diagnostic.
+    """
+    torch.manual_seed(init_seed)
+    lin = torch.nn.Linear(Xtr.shape[1], n_classes).to(device)
+    opt = torch.optim.AdamW(
+        [{"params": [lin.weight], "weight_decay": weight_decay},
+         {"params": [lin.bias],   "weight_decay": 0.0}],
+        lr=lr)
+    ce = torch.nn.CrossEntropyLoss()
+    lin.train()
+    for _ in range(epochs):
+        loss = ce(lin(Xtr), ytr)
+        if history is not None:
+            history["train"].append(loss.item())
+            if Xval is not None:
+                with torch.no_grad():
+                    history["val"].append(ce(lin(Xval), yval).item())
+        opt.zero_grad(set_to_none=True)
+        loss.backward()
+        opt.step()
+    if history is not None:                       # final converged point (epoch = epochs)
+        with torch.no_grad():
+            history["train"].append(ce(lin(Xtr), ytr).item())
+            if Xval is not None:
+                history["val"].append(ce(lin(Xval), yval).item())
+    lin.eval()
+    return lin
+
+
+def fit_linear_cls_probe_explicit_val(train_feats, train_labels, val_feats, val_labels,
+                                      n_classes=2, epochs=300, lr=1e-2, weight_decay=1e-3,
+                                      wd_grid=None, device=None, init_seed=SEED):
+    """Train the per-layer LINEAR classification probe (Linear+CE) with wd selected on an EXPLICIT
+    validation split, and RETURN the frozen fitted probes (not scores).
+
+    train_feats / val_feats  : {layer: (n, d)} pooled features. Iterated via ``sorted(...)`` so a
+                               14-key dict (L0..L12 + L12+LN) is fully probed.
+    train_labels / val_labels: 1-D integer class labels; raises on non-1-D.
+    Per layer: a StandardScaler is fit on FULL train (val/test never touch it); the Linear+CE head is
+    fit on FULL train for each wd candidate and scored on val by CROSS-ENTROPY; the chosen-wd
+    full-train model is kept (no refit). Returns
+    {layer: {"scaler", "linear" (nn.Linear, eval), "wd", "selection": {val_ce_by_wd, chosen_wd}|None,
+             "in_features", "n_classes", "family": "linear_cls", "device"}}."""
+    device = device or ("cuda" if torch.cuda.is_available() else "cpu")
+    ytr_np = np.asarray(train_labels)
+    yva_np = np.asarray(val_labels)
+    if ytr_np.ndim != 1 or yva_np.ndim != 1:
+        raise ValueError("fit_linear_cls_probe_explicit_val needs 1-D integer class labels for BOTH "
+                         f"train and val -- got {ytr_np.shape} / {yva_np.shape}")
+    ytr = torch.as_tensor(ytr_np.astype(np.int64), dtype=torch.long, device=device)
+    yva = torch.as_tensor(yva_np.astype(np.int64), dtype=torch.long, device=device)
+    ce = torch.nn.CrossEntropyLoss()
+
+    fitted = {}
+    for i in sorted(train_feats):          # feature-dict keys, NOT range(NUM_LAYERS): keep L12+LN (key 13)
+        sc = StandardScaler().fit(train_feats[i])                     # scaler on FULL train only
+        Xtr = torch.as_tensor(sc.transform(train_feats[i]), dtype=torch.float32, device=device)
+        Xva = torch.as_tensor(sc.transform(val_feats[i]), dtype=torch.float32, device=device)
+        if wd_grid is None:
+            wd, selection = weight_decay, None
+            m = _fit_linear_cls(Xtr, ytr, n_classes, wd, epochs, lr, device, init_seed=init_seed)
+        else:
+            best_wd, best_val, best_m, sel = wd_grid[0], float("inf"), None, {}
+            for cand in wd_grid:
+                cm = _fit_linear_cls(Xtr, ytr, n_classes, cand, epochs, lr, device,   # FULL train
+                                     init_seed=init_seed)
+                with torch.no_grad():
+                    v = ce(cm(Xva), yva).item()                       # select wd by VAL cross-entropy
+                sel[cand] = v
+                if v < best_val:
+                    best_val, best_wd, best_m = v, cand, cm
+            wd, m = best_wd, best_m                                   # keep the chosen-wd full-train model
+            selection = {"val_ce_by_wd": {float(k): float(v) for k, v in sel.items()},
+                         "chosen_wd": float(best_wd)}
+        m.eval()
+        fitted[i] = {"scaler": sc, "linear": m, "wd": float(wd), "selection": selection,
+                     "in_features": int(m.in_features), "n_classes": int(n_classes),
+                     "family": "linear_cls", "device": str(device)}
+    return fitted
+
+
+def predict_linear_cls_probe(fitted, feats, labels, device=None,
+                             collect_test_correct=False, collect_test_ce=False):
+    """Apply a FROZEN linear classification probe (from fit_linear_cls_probe_explicit_val) to
+    feats/labels; NEVER trains. Returns {layer: test_accuracy} (higher = better). With any collect_*
+    flag returns (out, diag) where diag carries per-window correctness (for a test bootstrap) and/or
+    per-layer test cross-entropy. Iterates ``sorted(feats)`` so the 14th point is scored. Frozen
+    weights are not mutated (one probe can score many splits)."""
+    yte_np = np.asarray(labels)
+    if yte_np.ndim != 1:
+        raise ValueError(f"predict_linear_cls_probe needs 1-D integer class labels, got {yte_np.shape}")
+    ce = torch.nn.CrossEntropyLoss()
+    out = {}
+    diag = ({"test_correct": {}, "test_ce": {}}
+            if (collect_test_correct or collect_test_ce) else None)
+    for i in sorted(feats):
+        dev = device or fitted[i]["device"]
+        m = fitted[i]["linear"].to(dev)
+        m.eval()
+        sc = fitted[i]["scaler"]
+        Xte = torch.as_tensor(sc.transform(feats[i]), dtype=torch.float32, device=dev)
+        yte = torch.as_tensor(yte_np.astype(np.int64), dtype=torch.long, device=dev)
+        with torch.no_grad():
+            logits = m(Xte)
+            correct = (logits.argmax(dim=1) == yte).to(torch.float64).cpu().numpy()
+            out[i] = float(correct.mean())
+            if diag is not None:
+                if collect_test_correct:
+                    diag["test_correct"][i] = correct.astype(np.float64)
+                if collect_test_ce:
+                    diag["test_ce"][i] = float(ce(logits, yte).item())
+    return (out, diag) if diag is not None else out
+
+
 # ========== Higher-capacity forecasting probes (capacity controls) ================ #
 # Nonlinear ResidualBlock heads (probing.heads) trained FROM SCRATCH — capacity controls
 # for the linear quantile probe. They are NOT linear-accessibility measures: they quantify

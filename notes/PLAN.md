@@ -8,18 +8,51 @@ Self-contained handoff: a fresh session can begin from THIS section. Repo state 
 NOT be modified. This new experiment COEXISTS with it in a separate namespace. Login-node discipline applies
 (no model load / probe fits / extraction on login node — salloc/sbatch). [[submit-slurm-jobs-self]]
 
-### 0. STATUS + TWO OPEN DECISIONS (asked 2026-08-17; user routed the answer into this PLAN)
-- **STATUS: repo inspected, architecture designed, NOTHING implemented yet.** Next action after the two
-  decisions below = build `probing/cls_data.py` first (C0 smoke), then classification FT.
-- **DECISION A — delivery mode (governs how I hand code over; CLAUDE.md forbids file edits w/o go-ahead):**
-  (a) *edit files + show git diffs* (fastest for ~5 new files; nothing committed / no SLURM without user) —
-  RECOMMENDED and matches [[scoped-go-ahead-with-diff]]; (b) copy-paste snippets (teaching mode, slow at
-  ~2000 lines); (c) one file at a time with review. **← user to pick.**
-- **DECISION B — classification-probe estimator:** (a) *torch `Linear(768,2)` + cross-entropy*, AdamW,
-  wd-grid on val, `init_seed` varied over probe seeds → genuine seed bands, mirrors the fslot forecasting
-  probe + the FT head (RECOMMENDED — matches the spec's "Linear+CE" and Plot A's seed bands); (b) sklearn
-  `LogisticRegression` C-grid on val (convex/deterministic, seed bands collapse → uncertainty from a
-  test-set bootstrap instead; reuses `linear_probe`/`fit_layerwise_probes`). **← user to pick.**
+### 0. STATUS + TWO DECISIONS RESOLVED (2026-08-18) + REUSE RE-VERIFIED FROM SOURCE
+- **STATUS: ALL 5 FILES + 1 additive probes.py edit BUILT & CPU-VERIFIED 2026-08-18 (NOT committed;
+  user reviewing diff). NEXT = C1 classification FT on GPU + validity gate.**
+  Built: `probing/cls_data.py` (FordA loader + C0 smoke), `probing/finetune_cls.py` (Linear(768,2)+CE
+  full-FT, epoch-1/best-val-after-stage1 rule, validity gate), `probing/probes.py` +=
+  `fit_linear_cls_probe_explicit_val`/`predict_linear_cls_probe` (14-pt, sorted-keys, seed bands, wd on
+  val-CE — additive, existing probes byte-identical), `experiments/run_task_shift.py` (Exp A + Exp B via
+  import of run_ft_specialization's `target_windows`/`_role_split`/`_load_fslot`/`_fslot_feats_stage`;
+  own Stage duck-types run_ft_specialization.Stage; Plots A/B/C + CKA; namespace
+  results/task_shift_classification/), `tests/test_task_shift.py` (15 tests), `job_task_shift.sh`.
+  VERIFIED (login CPU, OMP=2): 15/15 task_shift tests PASS; regressions green (ft_specialization 18,
+  shared_forecast 8, quantile_sets 11, fslot_transfer 13, tunnel 13); C0 smoke RAN on real FordA
+  (2881 train / 720 val / 1320 test, ~51/49 balanced, ncp=32, split invariants hold); full import chain
+  + synthetic cls-probe end-to-end OK. run_ft_specialization / finetune.py / tunnel.py UNTOUCHED.
+  COMMIT PENDING (user reviews diff first; code + results SEPARATE commits, NO Co-Authored-By
+  [[no-coauthor-trailer]]). Do NOT run C1–C4 on the login node.
+- **DECISION A = (a) EDIT FILES + SHOW GIT DIFFS** (user, 2026-08-18). I write the ~5 files directly and
+  show `git diff` before ANY SLURM submit or commit; nothing committed/submitted without the user.
+  [[scoped-go-ahead-with-diff]].
+- **DECISION B = (a) TORCH `Linear(768,2)` + CROSS-ENTROPY** (user, 2026-08-18). AdamW, wd-grid on VAL,
+  `init_seed` varied over probe seeds → genuine SEED BANDS (Plot A uncertainty). NOT sklearn LogReg.
+- **STAGE-CHECKPOINT RULE (user amendment, 2026-08-18, OVERRIDES §5's fuzzy version):**
+  `stage1_cls_early` = **end-of-epoch-1 checkpoint (deterministic)**. `stage2_cls_late` = **best-val
+  checkpoint STRICTLY AFTER stage1, provided backbone drift has INCREASED vs stage1**. If no such later
+  stage exists (best-val ≤ stage1 step, or drift did not grow) → **FAIL/REPORT** it (do NOT force a late
+  stage). This is an FT-side validity gate; decided on val-acc + drift only, never on a probe curve.
+- **FordA split-overlap TEST is SOURCE-AWARE (user amendment):** UCR TRAIN and TEST have SEPARATE index
+  spaces, so the test asserts train∩val=∅ WITHIN the TRAIN index space and treats TEST as a disjoint
+  array (never compares raw indices across TRAIN/TEST). Store split source + indices in meta accordingly.
+- **14-pt probe loop keys off `sorted(feats)` / extracted keys** (never `range(NUM_LAYERS)`) so L12+LN
+  (index 13) is never dropped — enforced in `fit_linear_cls_probe_explicit_val` and the driver.
+- **RE-VERIFIED FACTS (source, 2026-08-18) that pin the implementation:**
+  - `extract_kout_features` returns `feats["content"]={0..12}` (13 block pts) + `final["content"]` (post-LN)
+    → the 14-pt cls feature dict = `[feats["content"][i] for i in range(13)] + [final["content"]]`.
+    Content pooling inside extraction = `hs[:, :ncp, :].mean(1)`, `ncp=ceil(500/16)=32`.
+  - `model.encode(ctx, num_output_patches=1)[0]` = the POST-final-LN state. So the cls-FT head forward
+    `pooled = enc[:, :ncp, :].mean(1)` trains on EXACTLY the L12+LN probe point (index 13) — consistent,
+    K=1 identical FT↔extraction.
+  - **GOTCHA:** stock `linear_probe`/`fit_layerwise_probes` loop `range(NUM_LAYERS)=13` and would DROP the
+    14th point (L12+LN). The cls probe (Decision B torch head) MUST loop `sorted(feats)` (14 keys), like the
+    fslot probes already do. → new small `fit_linear_cls_probe_explicit_val` in `probing/probes.py`.
+  - Import-only (source-agnostic) for Exp B: `run_ft_specialization.target_windows`, `._fslot_feats_stage`;
+    `probes.fit/predict_shared_forecast_probe`. Build my OWN `Stage` with source=`forda_cls` (NOT reuse
+    run_ft_specialization.Stage, which hard-codes FT_SOURCE="boom"); cache prefix via
+    `ft_cache_prefix(tag,"forda_cls",stage,hash8)`. finetune.py helpers reused verbatim (no edits).
 
 ### 1. SCIENTIFIC OBJECTIVE
 Two specialization axes, SAME frozen-then-fine-tuned Chronos-2, SAME layerwise-linear-probe lens:
