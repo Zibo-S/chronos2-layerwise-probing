@@ -8,6 +8,52 @@ Self-contained handoff: a fresh session can begin from THIS section. Repo state 
 NOT be modified. This new experiment COEXISTS with it in a separate namespace. Login-node discipline applies
 (no model load / probe fits / extraction on login node — salloc/sbatch). [[submit-slurm-jobs-self]]
 
+### 0a. UEA MULTI-SOURCE EXTENSION — uwave + handwriting (2026-08-18) [BUILT & CPU-VERIFIED, NOT committed]
+FordA is DONE (checkpoints 80c232d9/b7564c4b, all probes/figures on disk, relocated to
+`results/task_shift_classification/forda/`). Extension adds TWO more classification FT sources so the
+task-shift story is not FordA-only: **uwave** (UWaveGestureLibrary, 3-ch, len 315, 8-class) and
+**handwriting** (Handwriting, 3-ch, len 152, 26-class) — both identified in the OLD UEA probing
+(`results/uea/perdataset_summary.json`) as non-saturated with an intermediate-layer probe PEAK (uwave
+0.841→0.925@L4→0.825; handwriting 0.249→0.380@L6→0.318), NOT chosen for a desired FT outcome.
+- **DECISIONS (user, AskUserQuestion 2026-08-18):** (1) **MULTIVARIATE = per-channel univariate encode →
+  content-pool 768 → CONCAT across channels → c*768** (exactly the old UEA `extract_features`
+  interpretation; group-attention path unused). Head = `Linear(c*768, C)`. FordA (c=1) numerically
+  identical. (2) **Symmetric output layout** `results/task_shift_classification/{forda,uwave,handwriting}/`
+  (FordA physically relocated; it was untracked so no tracked move). (3) **Per-source FT budget via CLI +
+  registry defaults** (tiny sets: uwave 120 / handwriting 150 train vs FordA 3601 → epochs 60 / batch 16;
+  FordA keeps 10 / 64). Budget/checkpoints decided on cls-side evidence ONLY (val CE/acc + drift).
+- **SCIENTIFIC NOTES (stated in code/writeup):** the old UEA curves are the MOTIVATION, not a numeric
+  anchor — they used sklearn-LogReg on 13 pts (L0..L12); this experiment's stage0 CONTROL is torch
+  Linear+CE on 14 pts (adds L12+LN), same lens as the FT stages. Apples-to-apples early/late = stage0 vs
+  stage1 vs stage2 WITHIN this experiment. Handwriting is fragile (150 train / 26 classes → some classes
+  ~1 train example; val=32 → val-acc granularity ~3%) — report plainly, do NOT tune to force a shape.
+  `ncp = ceil(L/16)` per source (forda 32 / uwave 20 / handwriting 10); multivariate does NOT change it
+  (per-channel univariate tokenization).
+- **CODE (all additive; run_ft_specialization / finetune.py / tunnel.py UNTOUCHED; BOOM experiment safe):**
+  `probing/cls_data.py` — `CLS_SPECS` registry (aeon_name/n_classes/channels/length + FT defaults) +
+  generic `load_cls(tag)` returning `(n,c,L)` + contiguous-label assert + generalized C0 smoke
+  (`--cls-source`). `probing/finetune_cls.py` — `Linear(c*768,C)`, `encode_pool_concat` (per-channel
+  shared-backbone loop), `cls_source_label(tag)`, `--cls-source` + spec-driven epochs/batch/lrs (CLI
+  overridable), per-source checkpoint/manifest namespace (`<src>_cls`). `experiments/run_task_shift.py` —
+  `--cls-source` + `configure(src)` rebinds all source globals; multivariate `cls_feats` (per-channel
+  concat, univariate keeps bare cache prefix / MV gets `__ch{ch}`); per-source dirs; NEW `--compare`
+  cross-source DOMAIN-vs-TASK figure (grid of Δ-vs-stage0 curves + late-layer L9..L12+LN scalar heatmap +
+  JSON). `tests/test_task_shift.py` — 23 tests (multiclass/multivariate). `job_task_shift.sh` —
+  `--cls-source`, order-independent `--finetune` routing.
+- **VERIFIED (login CPU, OMP=2):** 23/23 task_shift PASS incl. REAL multivariate loaders (uwave (96,3,315)
+  train / handwriting (118,3,152) train, perfectly/near-stratified); regressions green (ft_specialization
+  18, shared_forecast 8, quantile_sets 10, fslot_transfer 13, tunnel 13); py_compile clean; C0 smokes for
+  all 3 sources pass split invariants. `probes.py` NOT re-touched (existing cls probe already
+  n_classes-/width-generic, iterates sorted(feats)).
+- **RUN RECIPE (per source, user submits SLURM — [[submit-slurm-jobs-self]]; inspect C1 validity BEFORE C2):**
+  C0 `python -m probing.cls_data --smoke --cls-source uwave` (login OK) → C1
+  `sbatch job_task_shift.sh --cls-source uwave --finetune` → inspect
+  `results/ft_specialization/uwave_cls/manifest.json` validity verdict (PASS?) → C2
+  `sbatch job_task_shift.sh --cls-source uwave --extract --forecast-extract` → C3 `... --probe` → C4
+  `... --forecast-probe` → C5 `python -m experiments.run_task_shift --cls-source uwave --figures --cka`.
+  Repeat for handwriting. Cross-source: `python -m experiments.run_task_shift --compare` (login/CPU).
+  Do NOT run C1–C4 on the login node. Commit code + results separately, NO Co-Authored-By [[no-coauthor-trailer]].
+
 ### 0. STATUS + TWO DECISIONS RESOLVED (2026-08-18) + REUSE RE-VERIFIED FROM SOURCE
 - **STATUS: ALL 5 FILES + 1 additive probes.py edit BUILT & CPU-VERIFIED 2026-08-18 (NOT committed;
   user reviewing diff). NEXT = C1 classification FT on GPU + validity gate.**
