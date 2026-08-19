@@ -35,8 +35,16 @@ own Stage duck-types run_ft_specialization.Stage so _load_fslot works unchanged)
     python -m experiments.run_task_shift --cls-source uwave --forecast-extract  # C2 Exp-B fslot features (GPU)
     python -m experiments.run_task_shift --cls-source uwave --probe             # C3 cls probes (14 layers x seeds)
     python -m experiments.run_task_shift --cls-source uwave --forecast-probe    # C4 fslot probes (warm caches)
+    python -m experiments.run_task_shift --cls-source uwave --forecast-frozen-probe  # C4b FROZEN PT readout (compute)
     python -m experiments.run_task_shift --cls-source uwave --figures [--cka]   # C5 Plots A/B/C (+CKA); CPU/login
+    python -m experiments.run_task_shift --cls-source uwave --frozen-figures    # C5 fresh-vs-frozen readout; CPU/login
     python -m experiments.run_task_shift --compare                              # C5 cross-source comparison; CPU/login
+
+Exp B-frozen (--forecast-frozen-probe / --frozen-figures) — the FROZEN pretrained-readout diagnostic:
+fresh Exp B refits a probe per stage (is forecasting info still linearly RECOVERABLE?); this trains ONE
+fslot probe on the PRETRAINED representation, freezes it, reuses those exact weights on the early/late FT
+reps (does the OLD readout still WORK?). Namespaced disjoint under frozen_readout/; reuses Exp B's fslot
+caches (no extraction). Δ>0 = the pretrained readout got worse after cls-FT.
 
 Everything is namespaced disjoint per source and from BOOM (results/task_shift_classification/<source>/;
 caches carry source=<source>_cls). CPU/synthetic contracts: tests/test_task_shift.py (no GPU/model/download).
@@ -55,9 +63,10 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
+import torch
 
 from probing import config
-from probing.config import NUM_LAYERS, OUTPUT_PATCH_SIZE
+from probing.config import NUM_LAYERS, OUTPUT_PATCH_SIZE, SEED
 from probing.cls_data import CLS_SPECS, load_cls
 from probing.extraction import extract_kout_features, _cache_path, _idf_prefix
 from probing.finetune import ft_cache_prefix, checkpoint_hash
@@ -66,10 +75,12 @@ from probing.probes import (QUANTILE_SETS, validate_quantiles,
                             fit_linear_cls_probe_explicit_val, predict_linear_cls_probe,
                             fit_shared_forecast_probe_explicit_val, predict_shared_forecast_probe)
 from probing.tunnel import val_curve_from_selection
+from probing.stats import cluster_bootstrap_counts, ci_bounds
 # Exp-B reuse (source-agnostic helpers; NEVER read a hardcoded FT source): windowing + fslot cache I/O.
+# _series_group/_boot_mean = the SAME paired series-cluster bootstrap the fresh-probe pipeline uses.
 from experiments.run_ft_specialization import (target_windows, _role_split, _load_fslot,
                                                _fslot_feats_stage, load_ft_pipeline, SHORT,
-                                               target_status)
+                                               target_status, _series_group, _boot_mean)
 from experiments.run_ft_specialization import H as FCAST_H, K as FCAST_K  # 64 / 4
 
 STAGE0 = "stage0_pretrained"
@@ -101,6 +112,7 @@ CLS_SOURCE = CLS_TAG = FT_SOURCE = CLS_STAGE0_PREFIX = None
 SPEC = None
 N_CLASSES = CHANNELS = None
 SRC_OUT = CLS_PROBE_DIR = FCAST_PROBE_DIR = FIG_DIR = TABLE_DIR = FT_MANIFEST = None
+FROZEN_DIR = None                      # results/.../<src>/frozen_readout (frozen-pretrained-readout diagnostic)
 
 
 def configure(src: str) -> None:
@@ -109,7 +121,7 @@ def configure(src: str) -> None:
     results/ft_specialization/<src>_cls/manifest.json, and the stage0 cls cache prefix + FT_SOURCE carry
     the source so caches/checkpoints can never collide across sources or with BOOM."""
     global CLS_SOURCE, CLS_TAG, FT_SOURCE, SPEC, N_CLASSES, CHANNELS, CLS_STAGE0_PREFIX
-    global SRC_OUT, CLS_PROBE_DIR, FCAST_PROBE_DIR, FIG_DIR, TABLE_DIR, FT_MANIFEST
+    global SRC_OUT, CLS_PROBE_DIR, FCAST_PROBE_DIR, FIG_DIR, TABLE_DIR, FT_MANIFEST, FROZEN_DIR
     if src not in CLS_SPECS:
         raise ValueError(f"unknown cls source {src!r}; known: {sorted(CLS_SPECS)}")
     CLS_SOURCE = src
@@ -124,6 +136,7 @@ def configure(src: str) -> None:
     FCAST_PROBE_DIR = SRC_OUT / "forecast_probes"
     FIG_DIR = SRC_OUT / "figures"
     TABLE_DIR = SRC_OUT / "tables"
+    FROZEN_DIR = SRC_OUT / "frozen_readout"     # disjoint from forecast_probes/ (fresh) — cannot collide
     FT_MANIFEST = config.REPO_ROOT / "results" / "ft_specialization" / FT_SOURCE / "manifest.json"
 
 
@@ -352,6 +365,175 @@ def run_fcast_probe(stages, targets, seeds, device):
 
 
 # --------------------------------------------------------------------------- #
+# Exp B-frozen — FROZEN PRETRAINED READOUT diagnostic (does the OLD readout still work?)
+# --------------------------------------------------------------------------- #
+# The fresh Exp B (run_fcast_probe) RE-FITS a probe on EACH stage's representation, so it answers
+# "is forecasting information still LINEARLY RECOVERABLE?" — a fresh readout can silently absorb a
+# changed coordinate system, hiding representational incompatibility. This mode instead trains ONE
+# probe on the PRETRAINED (stage0) representation, FREEZES it, and reuses those exact weights on the
+# early/late FT representations (no retraining, no wd re-selection on FT reps). It answers the
+# complementary question: "has the representation changed enough that the OLD pretrained forecasting
+# readout no longer works?"  delta_frozen = loss(FT through frozen PT probe) - loss(PT through the SAME
+# frozen PT probe): 0 = old readout still compatible; >0 = incompatibility/forgetting; <0 = FT rep works
+# BETTER with the old readout. Namespaced under results/.../<src>/frozen_readout/ so it can NEVER collide
+# with the fresh forecast_probes/. Warm caches only — NO model load, NO extraction (reuses Exp B's fslot
+# caches). One probe FIT per (target, seed) on PT features; every other stage is predict-only.
+
+def _fdir(sub):
+    return FROZEN_DIR / sub
+
+
+def _frozen_weight_path(tag, seed):
+    return _fdir("weights") / f"{tag}__{QSET}__seed{seed}.pt"
+
+
+def _frozen_input_path(tag, stage_label, seed):
+    return _fdir("inputs") / f"{tag}__{stage_label}__{QSET}__seed{seed}.npz"
+
+
+def _frozen_record_path(tag, seed):
+    return _fdir("records") / f"{tag}__{QSET}__seed{seed}.json"
+
+
+def _scaler_from_arrays(mean, scale):
+    """Rebuild the frozen slot StandardScaler from stored mean_/scale_ (we persist the arrays, not the
+    pickled sklearn object) — mirrors run_ptood_probing_ftok._scaler_from_arrays."""
+    from sklearn.preprocessing import StandardScaler
+    sc = StandardScaler()
+    sc.mean_ = np.asarray(mean, np.float64)
+    sc.scale_ = np.asarray(scale, np.float64)
+    sc.var_ = sc.scale_ ** 2
+    sc.n_features_in_ = int(sc.mean_.shape[0])
+    return sc
+
+
+def _save_frozen_probe(path, fitted):
+    """Persist the frozen PT shared-forecast probe (per layer: Linear state_dict + slot-scaler arrays +
+    wd + PT-val selection + dims). One file per (target, seed). ``probe_source_stage`` records that it
+    was fit ONLY on the pretrained representation (§17 cache key: target, seed, wd, source-stage, q9)."""
+    layers = {}
+    for i, f in fitted.items():
+        layers[int(i)] = {"state_dict": f["linear"].state_dict(),
+                          "scaler_mean": np.asarray(f["scaler"].mean_, np.float64),
+                          "scaler_scale": np.asarray(f["scaler"].scale_, np.float64),
+                          "wd": float(f["wd"]), "selection": f["selection"],
+                          "in_features": int(f["in_features"]), "out_features": int(f["out_features"]),
+                          "output_patch_size": int(f["output_patch_size"]), "K": int(f["K"])}
+    path.parent.mkdir(parents=True, exist_ok=True)
+    torch.save({"probe_source_stage": STAGE0, "cls_source": CLS_SOURCE, "readout": "fslot",
+                "quantile_set": QSET, "layers": layers}, path)
+
+
+def _load_frozen_probe(path, device="cpu"):
+    """Rebuild a predict-ready frozen probe {layer: {...}} from _save_frozen_probe. NEVER trains — the
+    early/late stages are scored through exactly these loaded weights. Fail loud if the expected weight
+    file is absent (§17: never silently refit a frozen probe)."""
+    if not path.exists():
+        raise FileNotFoundError(
+            f"missing frozen PT probe weights {path.name} — the pretrained readout must be fit + saved "
+            "before it can be evaluated on FT stages (never silently refit for early/late)")
+    ck = torch.load(path, map_location=device, weights_only=False)
+    fitted = {}
+    for i, b in ck["layers"].items():
+        lin = torch.nn.Linear(b["in_features"], b["out_features"])
+        lin.load_state_dict(b["state_dict"])
+        lin.eval()
+        fitted[int(i)] = {"scaler": _scaler_from_arrays(b["scaler_mean"], b["scaler_scale"]),
+                          "linear": lin, "wd": b["wd"], "selection": b["selection"],
+                          "in_features": b["in_features"], "out_features": b["out_features"],
+                          "output_patch_size": b["output_patch_size"], "K": b["K"],
+                          "family": "shared_forecast", "pooling_or_token_type": "forecast_slot",
+                          "device": str(device)}
+    return fitted
+
+
+def _frozen_score_stage(frozen, f_te, Y_test_traj, series_test, tag, stage_label, seed, device):
+    """Score ONE stage's TEST features through the frozen PT probe (predict-only), saving the per-window
+    loss (14, n) + series ids so the paired cluster bootstrap can be added cleanly (§13). Returns the
+    14-point test-loss curve."""
+    out, diag = predict_shared_forecast_probe(frozen, f_te, Y_test_traj, quantiles=QUANTILES,
+                                             device=device, collect_test_window_loss=True)
+    wl = np.stack([diag["test_window_loss"][i]
+                   for i in sorted(diag["test_window_loss"])]).astype(np.float64)
+    p = _frozen_input_path(tag, stage_label, seed)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    np.savez(p, window_loss=wl, series_test=np.asarray(series_test, np.int64))
+    return [float(out[i]) for i in sorted(out)]
+
+
+def run_forecast_frozen_probe(stages, targets, seeds, device):
+    """Frozen-pretrained-readout diagnostic (warm caches; NO model / NO extraction). Per (target, seed):
+    fit the fslot probe ONCE on stage0 (PT) train/val with wd on PT val, SAVE the weights, then LOAD
+    them and score stage0/early/late TEST predict-only. The SAME seed-specific PT probe is reused across
+    all three stages (seed 0 PT -> PT/early/late, seed 1 PT -> PT/early/late, ...), so the comparison is
+    genuinely paired. This is a COMPUTE-node job (probe fits over 14 layers x wd-grid), not a login task."""
+    if not any(s.label == STAGE0 for s in stages):
+        raise RuntimeError("frozen-readout needs stage0_pretrained in --stages (it trains the PT probe)")
+    stage0 = next(s for s in stages if s.label == STAGE0)
+    ft_stages = [s for s in stages if s.label != STAGE0]
+    _fdir("weights").mkdir(parents=True, exist_ok=True)
+    _fdir("records").mkdir(parents=True, exist_ok=True)
+    for tag in targets:
+        w, _ = target_windows(tag)                 # sets config.DATASET_SET for PT-ID cache namespacing
+        roles = _role_split(tag)
+        # stage0 train/val fit the PT probe; every stage's TEST scores it (cache-hit only -> fail loud).
+        f_tr = _load_fslot(stage0, tag, roles["train"], w["X_train"], w["y_train"])
+        f_va = _load_fslot(stage0, tag, roles["val"], w["X_val"], w["y_val"])
+        f_te = {s.label: _load_fslot(s, tag, roles["test"], w["X_test"], w["y_test"]) for s in stages}
+        # PAIRED-ROW CONTRACT (§5): every stage's test features must be the SAME windows in the SAME
+        # order. The cache label-guard already checked each cache against w["y_test"]; assert the row
+        # counts agree across stages so a frozen comparison can never align two stages by array length.
+        n0 = f_te[STAGE0][0].shape[0]
+        for lbl, fe in f_te.items():
+            if fe[0].shape[0] != n0:
+                raise RuntimeError(f"{tag}/{lbl}: {fe[0].shape[0]} test windows != stage0 {n0} — the "
+                                   "stages are not row-aligned; a paired frozen comparison is invalid")
+        for seed in seeds:
+            rec_p, wt_p = _frozen_record_path(tag, seed), _frozen_weight_path(tag, seed)
+            if rec_p.exists() and wt_p.exists() and all(
+                    _frozen_input_path(tag, s.label, seed).exists() for s in stages):
+                print(f"  [skip] frozen {SHORT[tag]} / seed {seed}: record + weights + inputs on disk")
+                continue
+            print(f"\n[frozen] {SHORT[tag]} ({'/'.join(target_status(tag))}) / seed {seed}: fit PT "
+                  f"probe (wd on PT val) -> freeze -> score {len(stages)} stage(s) predict-only")
+            if not wt_p.exists():
+                fitted = fit_shared_forecast_probe_explicit_val(         # the ONLY fit: PT train, PT val
+                    f_tr, w["Y_train_traj"], f_va, w["Y_val_traj"], quantiles=QUANTILES,
+                    epochs=CLS_EPOCHS, wd_grid=WD_GRID, device=device, init_seed=seed)
+                _save_frozen_probe(wt_p, fitted)
+                del fitted
+            frozen = _load_frozen_probe(wt_p, device=device)    # ALWAYS score through the SAVED weights
+            stage_loss = {s.label: _frozen_score_stage(
+                frozen, f_te[s.label], w["Y_test_traj"], w["series_test"], tag, s.label, seed, device)
+                for s in stages}
+            base = np.asarray(stage_loss[STAGE0], float)         # PT-through-frozen-PT = the zero line
+            delta = {s.label: (np.asarray(stage_loss[s.label], float) - base).tolist() for s in ft_stages}
+            rel = {s.label: ((np.asarray(stage_loss[s.label], float) - base)
+                             / base).tolist() for s in ft_stages}   # (loss_FT - loss_PT) / loss_PT (§12)
+            pt, ft = target_status(tag)
+            rec = {"experiment": "task_shift_forecast_frozen_readout", "cls_source": CLS_SOURCE,
+                   "aeon_name": SPEC["aeon_name"], "target": tag, "short": SHORT[tag],
+                   "pt_status": pt, "ft_status": ft, "ft_source": FT_SOURCE, "quantile_set": QSET,
+                   "readout": "fslot_frozen_pretrained", "probe_source_stage": STAGE0,
+                   "run_seed": int(seed), "H": FCAST_H, "K": FCAST_K, "layer_labels": LAYER_LABELS,
+                   "checkpoint_hash_by_stage": {s.label: s.hash8 for s in stages},
+                   "pt_chosen_wd_by_layer": [frozen[i]["wd"] for i in sorted(frozen)],
+                   "pt_val_loss_by_layer": val_curve_from_selection(
+                       {i: frozen[i]["selection"] for i in sorted(frozen)}, num_layers=len(frozen)),
+                   "stage_test_loss_by_layer": stage_loss,
+                   "frozen_delta_by_layer": delta, "relative_delta_by_layer": rel,
+                   "sign_convention": "delta = loss(FT through frozen PT) - loss(PT through frozen PT); "
+                                      "+ = OLD pretrained readout WORSENED, - = it IMPROVED"}
+            rec_p.parent.mkdir(parents=True, exist_ok=True)
+            rec_p.write_text(json.dumps(rec, indent=2))
+            print("  [saved] " + rec_p.name + "  " + "  ".join(     # [-1] = the final readout (L12+LN)
+                f"Δ{STAGE_SHORT[s.label]}@{LAYER_LABELS[len(delta[s.label]) - 1]}"
+                f"={delta[s.label][-1]:+.3f}" for s in ft_stages))
+        del f_tr, f_va, f_te
+        gc.collect()
+
+
+# --------------------------------------------------------------------------- #
 # aggregation helpers
 # --------------------------------------------------------------------------- #
 def _stack_seed_curves(json_glob, key):
@@ -496,6 +678,183 @@ def make_plot_c(stages, targets):
     fig.tight_layout()
     fig.savefig(FIG_DIR / "plotC_domain_vs_task_delta.png", dpi=150); plt.close(fig)
     print(f"[figures] Plot C -> {FIG_DIR/'plotC_domain_vs_task_delta.png'}")
+
+
+# --------------------------------------------------------------------------- #
+# frozen-readout figures + paired bootstrap (fresh-vs-frozen is the headline output)
+# --------------------------------------------------------------------------- #
+def _frozen_stage_curves(tag, records_dir=None):
+    """{stage_label: (n_seed, 14)} of frozen-readout test-loss curves for `tag`, from the per-(target,
+    seed) records. records_dir defaults to the ACTIVE source; the cross-source heatmap passes another
+    source's dir so it can read every source regardless of the active configure()."""
+    rd = records_dir if records_dir is not None else _fdir("records")
+    per_stage = {}
+    for p in sorted(Path(rd).glob(f"{tag}__{QSET}__seed*.json")):
+        d = json.load(open(p))
+        for st, curve in d["stage_test_loss_by_layer"].items():
+            per_stage.setdefault(st, []).append(np.asarray(curve, float))
+    return {st: np.stack(v) for st, v in per_stage.items() if v}
+
+
+def _frozen_delta(tag, records_dir=None):
+    """{ft_stage: (14,)} mean-over-seed frozen-readout Δ vs stage0 (= loss(FT through frozen PT) -
+    loss(PT through frozen PT)). None if no stage0 frozen curve is present."""
+    return _delta_vs_stage0(_frozen_stage_curves(tag, records_dir))
+
+
+def make_frozen_figure_a(targets):
+    """Figure A (§10): one panel per forecasting target; early/late Δ(forecasting loss) vs pretrained
+    through the FROZEN pretrained readout. Zero line = 'pretrained compatibility'; + = old readout worse."""
+    present = [(t, _frozen_delta(t)) for t in targets]
+    present = [(t, d) for t, d in present if d]
+    if not present:
+        print("[frozen] Figure A skipped (no frozen records — run --forecast-frozen-probe)"); return
+    _fdir("figures").mkdir(parents=True, exist_ok=True)
+    fig, axes = plt.subplots(1, len(present), figsize=(5.2 * len(present), 4.5), squeeze=False)
+    for ax, (tag, delta) in zip(axes[0], present):
+        for st, d in delta.items():
+            ax.plot(np.arange(len(d)), d, "-o", ms=3, color=STAGE_COLOR[st], label=STAGE_SHORT[st])
+        ax.axhline(0, ls=":", c="gray", lw=1, label="pretrained compatibility")
+        _xaxis(ax)
+        ax.set_title(f"{SHORT[tag]} ({'/'.join(target_status(tag))})")
+        ax.set_ylabel("Δ forecasting loss vs pretrained\n(+ = old readout works worse)")
+    axes[0][0].legend(fontsize=8)
+    fig.suptitle(f"Forecasting with a frozen pretrained readout after {SPEC['aeon_name']} "
+                 f"classification fine-tuning")
+    fig.tight_layout()
+    out = _fdir("figures") / "figA_frozen_readout_delta.png"
+    fig.savefig(out, dpi=150); plt.close(fig)
+    print(f"[frozen] Figure A -> {out}")
+
+
+def make_fresh_vs_frozen_figure(stages, targets):
+    """Figure B (§9, the headline): per target, LEFT = fresh probe (retrained per stage) Δ vs pretrained,
+    RIGHT = frozen pretrained readout Δ vs pretrained, early/late within each. Both share the SAME
+    stage0 zero (the PT-through-frozen-PT curve IS the fresh stage0 curve), so the panels are directly
+    comparable. The question: does fresh RETRAINING rescue performance the OLD readout has lost?"""
+    _fdir("figures").mkdir(parents=True, exist_ok=True)
+    drawn = 0
+    for tag in targets:
+        fresh = _delta_vs_stage0(_fcast_curves(stages, tag))    # existing fresh Exp B records
+        frozen = _frozen_delta(tag)
+        if not (fresh and frozen):
+            print(f"[frozen] Figure B skipped for {SHORT.get(tag, tag)} "
+                  "(need BOTH fresh --forecast-probe and frozen --forecast-frozen-probe deltas)")
+            continue
+        fig, axes = plt.subplots(1, 2, figsize=(11, 4.5), sharey=True, squeeze=True)
+        for ax, (title, delta) in zip(axes, [("fresh probe (retrained per stage)", fresh),
+                                             ("frozen pretrained readout", frozen)]):
+            for st, d in delta.items():
+                ax.plot(np.arange(len(d)), d, "-o", ms=3, color=STAGE_COLOR[st], label=STAGE_SHORT[st])
+            ax.axhline(0, ls=":", c="gray", lw=1)
+            _xaxis(ax)
+            ax.set_title(title)
+        axes[0].set_ylabel("Δ forecasting loss vs pretrained")
+        axes[0].legend(fontsize=8)
+        fig.suptitle(f"{SPEC['aeon_name']} cls-FT — fresh vs frozen readout on {SHORT[tag]} "
+                     f"({'/'.join(target_status(tag))})\ndoes retraining rescue what the old readout lost?")
+        fig.tight_layout()
+        out = _fdir("figures") / f"figB_fresh_vs_frozen__{tag}.png"
+        fig.savefig(out, dpi=150); plt.close(fig)
+        drawn += 1
+        print(f"[frozen] Figure B -> {out}")
+    if drawn == 0:
+        print("[frozen] Figure B produced nothing (fresh + frozen must both be on disk for a target)")
+
+
+def _frozen_seed_mean_pw(tag, stage_label, seeds):
+    """(seed-mean per-window loss (14, n), series ids) for one (target, stage) from the frozen inputs;
+    None if any seed is missing. Windows must be identical across seeds (asserted)."""
+    wls, sids = [], []
+    for s in seeds:
+        p = _frozen_input_path(tag, stage_label, s)
+        if not p.exists():
+            return None
+        z = np.load(p)
+        wls.append(z["window_loss"]); sids.append(z["series_test"])
+    assert all(np.array_equal(sid, sids[0]) for sid in sids), f"{tag}/{stage_label}: seeds differ in windows"
+    return np.mean(wls, axis=0), sids[0]
+
+
+def make_frozen_bootstrap(targets, seeds):
+    """Paired cluster-bootstrap CIs (§13) for loss(FT through frozen PT) - loss(PT through frozen PT),
+    over the LATE band L9..L12+LN, per (target, ft_stage). Same windows under PT and FT => naturally
+    paired; reuses the existing series-cluster bootstrap (never a new implementation)."""
+    late = list(LATE_LAYERS)
+    rows = []
+    for tag in targets:
+        pt = _frozen_seed_mean_pw(tag, STAGE0, seeds)
+        if pt is None:
+            continue
+        wl_pt, sid = pt
+        late_pt = wl_pt[late].mean(0)                       # (n,) late-layer mean per window
+        S, inv = _series_group(sid)
+        M = cluster_bootstrap_counts(S, config.BOOT_B, SEED)
+        for st in (STAGE1, STAGE2):
+            ft = _frozen_seed_mean_pw(tag, st, seeds)
+            if ft is None:
+                continue
+            wl_ft, sid_ft = ft
+            if not np.array_equal(sid_ft, sid):
+                raise RuntimeError(f"{tag}/{st}: frozen FT windows differ from PT — not paired")
+            diff = wl_ft[late].mean(0) - late_pt            # paired per-window Δ
+            boot = _boot_mean(M, diff, inv, S)
+            lo, hi = ci_bounds(boot)
+            rows.append({"cls_source": CLS_SOURCE, "target": tag, "short": SHORT[tag], "stage": st,
+                         "late_layers": late, "late_mean_delta_frozen": float(diff.mean()),
+                         "ci_lo": float(lo), "ci_hi": float(hi),
+                         "excludes_zero": bool(lo > 0 or hi < 0),
+                         "n_windows": int(sid.size), "n_series": int(S),
+                         "direction": "delta = FT - PT through the frozen PT readout; + = old readout worse"})
+    if rows:
+        _fdir("tables").mkdir(parents=True, exist_ok=True)
+        (_fdir("tables") / f"frozen_bootstrap__{QSET}.json").write_text(json.dumps(rows, indent=2))
+        print(f"[frozen] bootstrap -> {_fdir('tables')/f'frozen_bootstrap__{QSET}.json'} ({len(rows)} rows)")
+    else:
+        print("[frozen] bootstrap skipped (need frozen per-window inputs for all seeds)")
+
+
+def make_frozen_late_heatmap(targets):
+    """Cross-source compact summary (§11): mean frozen-readout Δ over L9..L12+LN, rows = source x
+    {early,late}, cols = target. Sign is deliberately labelled: + = the OLD pretrained readout WORSENED
+    after that source's cls-FT, - = it improved. Reads every source's frozen_readout/records on disk."""
+    row_keys = [(src, st) for src in ALL_CLS_SOURCES for st in (STAGE1, STAGE2)]
+    M = np.full((len(row_keys), len(targets)), np.nan)
+    table = []
+    for i, (src, st) in enumerate(row_keys):
+        rd = OUT_ROOT / src / "frozen_readout" / "records"
+        for j, tag in enumerate(targets):
+            delta = _frozen_delta(tag, records_dir=rd)
+            if delta and st in delta:
+                val = float(np.asarray(delta[st], float)[list(LATE_LAYERS)].mean())
+                M[i, j] = val
+                table.append({"cls_source": src, "aeon_name": CLS_SPECS[src]["aeon_name"],
+                              "target": tag, "short": SHORT.get(tag, tag), "stage": st,
+                              "late_layers": list(LATE_LAYERS), "late_mean_frozen_delta": val})
+    if not np.isfinite(M).any():
+        print("[frozen] late-layer heatmap skipped (no frozen records on disk for any source)"); return
+    COMPARE_DIR.mkdir(parents=True, exist_ok=True)
+    (COMPARE_DIR / "figures").mkdir(exist_ok=True); (COMPARE_DIR / "tables").mkdir(exist_ok=True)
+    vmax = np.nanmax(np.abs(M))
+    fig, ax = plt.subplots(figsize=(1.8 + 1.5 * len(targets), 0.7 + 0.5 * len(row_keys)))
+    im = ax.imshow(M, cmap="RdBu_r", vmin=-vmax, vmax=vmax, aspect="auto")
+    ax.set_xticks(range(len(targets))); ax.set_xticklabels([SHORT.get(t, t) for t in targets])
+    ax.set_yticks(range(len(row_keys)))
+    ax.set_yticklabels([f"{CLS_SPECS[src]['aeon_name']} · {STAGE_SHORT[st]}" for src, st in row_keys],
+                       fontsize=8)
+    for i in range(M.shape[0]):
+        for j in range(M.shape[1]):
+            if np.isfinite(M[i, j]):
+                ax.text(j, i, f"{M[i, j]:+.3f}", ha="center", va="center", fontsize=8,
+                        color="white" if abs(M[i, j]) > 0.5 * vmax else "black")
+    ax.set_title("Frozen pretrained readout — late-layer (L9..L12+LN) mean Δ vs pretrained\n"
+                 "(+ = OLD readout WORSENED after cls-FT;  - = it improved)", fontsize=10)
+    fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
+    fig.tight_layout()
+    out = COMPARE_DIR / "figures" / "frozen_late_layer_heatmap.png"
+    fig.savefig(out, dpi=150); plt.close(fig)
+    (COMPARE_DIR / "tables" / f"frozen_late_layer__{QSET}.json").write_text(json.dumps(table, indent=2))
+    print(f"[frozen] late-layer heatmap -> {out} ({len(table)} cells)")
 
 
 # --------------------------------------------------------------------------- #
@@ -651,7 +1010,11 @@ def _parse_args(argv=None):
     ap.add_argument("--forecast-extract", action="store_true", help="C2 Exp-B: fslot features (GPU)")
     ap.add_argument("--probe", action="store_true", help="C3 Exp-A: cls probes (14 layers x seeds)")
     ap.add_argument("--forecast-probe", action="store_true", help="C4 Exp-B: fslot probes (warm caches)")
+    ap.add_argument("--forecast-frozen-probe", action="store_true",
+                    help="C4b Exp-B-frozen: FROZEN pretrained readout on all stages (warm caches; compute node)")
     ap.add_argument("--figures", action="store_true", help="C5: per-source Plots A/B/C (CPU)")
+    ap.add_argument("--frozen-figures", action="store_true",
+                    help="C5: frozen-readout Fig A/B + fresh-vs-frozen + cross-source heatmap + bootstrap (CPU)")
     ap.add_argument("--compare", action="store_true", help="C5: cross-source DOMAIN-vs-TASK comparison (CPU)")
     ap.add_argument("--cka", action="store_true", help="C5: optional linear CKA vs stage0")
     ap.add_argument("--stages", nargs="+", default=list(CLS_STAGES))
@@ -666,9 +1029,10 @@ def main(argv=None):
     configure(a.cls_source)
     from probing.finetune import _select_device
     device = str(_select_device(a.device))
-    if not any([a.extract, a.forecast_extract, a.probe, a.forecast_probe, a.figures, a.compare, a.cka]):
-        print("nothing to do; pass one of --extract / --forecast-extract / --probe / "
-              "--forecast-probe / --figures / --compare [--cka]"); return
+    if not any([a.extract, a.forecast_extract, a.probe, a.forecast_probe, a.forecast_frozen_probe,
+                a.figures, a.frozen_figures, a.compare, a.cka]):
+        print("nothing to do; pass one of --extract / --forecast-extract / --probe / --forecast-probe / "
+              "--forecast-frozen-probe / --figures / --frozen-figures / --compare [--cka]"); return
 
     if a.extract:
         run_cls_extract(load_stages(a.stages))
@@ -678,11 +1042,19 @@ def main(argv=None):
         run_cls_probe(load_stages(a.stages), a.seeds, device)
     if a.forecast_probe:
         run_fcast_probe(load_stages(a.stages), a.targets, a.seeds, device)
+    if a.forecast_frozen_probe:
+        run_forecast_frozen_probe(load_stages(a.stages), a.targets, a.seeds, device)
     if a.figures:
         stages = load_stages(a.stages)
         make_plot_a(stages)
         make_plot_b(stages, a.targets)
         make_plot_c(stages, a.targets)
+    if a.frozen_figures:
+        stages = load_stages(a.stages)
+        make_frozen_figure_a(a.targets)
+        make_fresh_vs_frozen_figure(stages, a.targets)
+        make_frozen_bootstrap(a.targets, a.seeds)
+        make_frozen_late_heatmap(a.targets)
     if a.compare:
         make_comparison(a.targets)
     if a.cka:

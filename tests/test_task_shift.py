@@ -461,6 +461,287 @@ def test_uwave_handwriting_loader_smoke():
         print(f"    ({src} real load OK: {d['X_train'].shape})")
 
 
+# =========================================================================== #
+# FROZEN-READOUT diagnostic (Exp B-frozen): train probe on PT, freeze, reuse on FT stages.
+# The fresh probe asks "is forecasting info still RECOVERABLE?"; the frozen PT probe asks "does the
+# OLD pretrained readout still WORK?". These CPU/synthetic tests cover the notes/PLAN.md §18 contract.
+# =========================================================================== #
+def _fslot_regression(n, d=5, K=4, P=16, seed=0, R=None):
+    """A slot-linear regression where ONE FIXED shared Linear(d, P) maps each of K slots to its P-step
+    patch; the K patches concatenate to a (n, K*P) trajectory. The map W is drawn from a FIXED seed
+    (not the sample seed) so train/val/test share the SAME map — a probe fit on train generalizes to
+    test. If R (d,d) is given, the FEATURES are rotated (X@R) while the TARGET is unchanged — the SAME
+    window re-encoded in a rotated coordinate system (what late-layer FT can do). A fresh probe can undo
+    R (learns R^-1 W); a frozen PT probe cannot."""
+    rng = np.random.default_rng(seed)
+    X = rng.standard_normal((n, K, d)).astype(np.float32)
+    W = np.random.default_rng(9999).standard_normal((d, P)).astype(np.float32)   # SHARED across splits
+    Y = np.concatenate([X[:, k, :] @ W for k in range(K)], axis=1).astype(np.float32)   # (n, K*P)
+    if R is not None:
+        X = np.einsum("nkd,de->nke", X, R).astype(np.float32)
+    return {0: X}, Y
+
+
+def _orthogonal(d, seed=7):
+    q, _ = np.linalg.qr(np.random.default_rng(seed).standard_normal((d, d)))
+    return q.astype(np.float32)
+
+
+def _fake_fitted_probe(d=5, K=4, P=16, seed=0):
+    """A minimal in-memory shared-forecast fitted dict (scaler + nn.Linear) for the save/load test."""
+    from sklearn.preprocessing import StandardScaler
+    rng = np.random.default_rng(seed)
+    sc = StandardScaler().fit(rng.standard_normal((20, d)))
+    lin = nn.Linear(d, P)                                   # Q=1 -> out = Q*P = P
+    return {0: {"scaler": sc, "linear": lin.eval(), "wd": 1e-3,
+                "selection": {"val_loss_by_wd": {1e-3: 0.5}, "chosen_wd": 1e-3},
+                "in_features": d, "out_features": P, "output_patch_size": P, "K": K,
+                "family": "shared_forecast", "pooling_or_token_type": "forecast_slot", "device": "cpu"}}
+
+
+# 17. weight save/load round-trip: reloaded probe reproduces the in-memory probe's predictions exactly
+def test_frozen_weight_roundtrip():
+    q = probes.validate_quantiles([0.5])
+    fitted = _fake_fitted_probe()
+    feats, Y = _fslot_regression(12, seed=3)
+    ref = probes.predict_shared_forecast_probe(fitted, feats, Y, quantiles=q, device="cpu")
+    tmp = Path(tempfile.mkdtemp())
+    p = tmp / "probe.pt"
+    rt._save_frozen_probe(p, fitted)
+    reloaded = rt._load_frozen_probe(p, device="cpu")
+    got = probes.predict_shared_forecast_probe(reloaded, feats, Y, quantiles=q, device="cpu")
+    assert np.allclose(ref[0], got[0], rtol=1e-6, atol=1e-6), "reloaded probe changed the prediction"
+    assert torch.allclose(reloaded[0]["linear"].weight, fitted[0]["linear"].weight)
+    assert np.allclose(reloaded[0]["scaler"].mean_, fitted[0]["scaler"].mean_)
+
+
+# 17b. missing weight file fails loud (§17: never silently refit a frozen probe)
+def test_frozen_missing_weights_fail_loud():
+    raised = False
+    try:
+        rt._load_frozen_probe(Path(tempfile.mkdtemp()) / "nope.pt")
+    except FileNotFoundError:
+        raised = True
+    assert raised, "loading an absent frozen probe must fail loud, not refit"
+
+
+# 18. rotated FT representation: fresh probe RECOVERS, frozen PT probe DEGRADES (the headline contract)
+def test_frozen_rotated_fresh_recovers_frozen_degrades():
+    q = probes.validate_quantiles([0.5])
+    d = 5
+    R = _orthogonal(d, seed=11)
+    f_tr, Y_tr = _fslot_regression(80, d=d, seed=0)             # stage0 (PT) train
+    f_va, Y_va = _fslot_regression(24, d=d, seed=1)             # stage0 (PT) val
+    f_te, Y_te = _fslot_regression(40, d=d, seed=2)             # stage0 test
+    f_te_rot = {0: np.einsum("nkd,de->nke", f_te[0], R).astype(np.float32)}   # FT test (rotated rep)
+    f_tr_rot = {0: np.einsum("nkd,de->nke", f_tr[0], R).astype(np.float32)}
+    pt = probes.fit_shared_forecast_probe_explicit_val(f_tr, Y_tr, f_va, Y_va, quantiles=q,
+                                                       epochs=200, wd_grid=(1e-4,), device="cpu")
+    loss_pt_on_pt = probes.predict_shared_forecast_probe(pt, f_te, Y_te, quantiles=q, device="cpu")[0]
+    loss_pt_on_ft = probes.predict_shared_forecast_probe(pt, f_te_rot, Y_te, quantiles=q, device="cpu")[0]
+    fresh = probes.fit_shared_forecast_probe_explicit_val(f_tr_rot, Y_tr, f_va, Y_va, quantiles=q,
+                                                          epochs=200, wd_grid=(1e-4,), device="cpu")
+    loss_fresh_on_ft = probes.predict_shared_forecast_probe(fresh, f_te_rot, Y_te, quantiles=q,
+                                                            device="cpu")[0]
+    assert loss_pt_on_ft > 2.0 * loss_pt_on_pt, "frozen readout should DEGRADE on the rotated rep"
+    assert loss_fresh_on_ft < 0.5 * loss_pt_on_ft, "a fresh probe should RECOVER on the rotated rep"
+
+
+# 18b. identical FT representation -> frozen delta is exactly 0
+def test_frozen_identity_zero_delta():
+    q = probes.validate_quantiles([0.5])
+    f_tr, Y_tr = _fslot_regression(60, seed=0)
+    f_va, Y_va = _fslot_regression(20, seed=1)
+    f_te, Y_te = _fslot_regression(30, seed=2)
+    pt = probes.fit_shared_forecast_probe_explicit_val(f_tr, Y_tr, f_va, Y_va, quantiles=q,
+                                                       epochs=60, wd_grid=(1e-3,), device="cpu")
+    a = probes.predict_shared_forecast_probe(pt, f_te, Y_te, quantiles=q, device="cpu")[0]
+    b = probes.predict_shared_forecast_probe(pt, f_te, Y_te, quantiles=q, device="cpu")[0]   # same rep
+    assert abs(a - b) < 1e-9, "identical representations must give frozen delta 0"
+
+
+# 19. delta + relative-delta sign convention are computed exactly (§8, §12)
+def test_frozen_delta_and_relative_math():
+    base = np.array([1.0, 2.0, 4.0])
+    ft = np.array([2.0, 2.0, 2.0])
+    delta = (ft - base)
+    rel = (ft - base) / base
+    assert delta.tolist() == [1.0, 0.0, -2.0], "delta = FT - PT (per layer)"
+    assert rel.tolist() == [1.0, 0.0, -0.5], "relative = (FT - PT)/PT"
+    assert list(rt.LATE_LAYERS) == [9, 10, 11, 12, 13], "late band must be exactly L9..L12+LN"
+
+
+# 20. namespaces cannot collide: frozen vs fresh forecast probes are disjoint dirs
+def test_frozen_fresh_namespaces_disjoint():
+    for src in ("forda", "uwave", "handwriting"):
+        rt.configure(src)
+        assert rt.FROZEN_DIR != rt.FCAST_PROBE_DIR
+        assert "frozen_readout" in str(rt.FROZEN_DIR) and "forecast_probes" in str(rt.FCAST_PROBE_DIR)
+        assert not str(rt.FROZEN_DIR).startswith(str(rt.FCAST_PROBE_DIR))
+    rt.configure("forda")
+
+
+def _fake_load_fslot_factory(feats_by_key):
+    """Return a stand-in for rt._load_fslot that dispatches on (stage.label, split)."""
+    def _f(stage, tag, split, X, y):
+        return feats_by_key[(stage.label, split)]
+    return _f
+
+
+def _tiny_windows(n_tr=40, n_va=12, n_te=20, seed=0):
+    _, Ytr = _fslot_regression(n_tr, seed=seed)
+    _, Yva = _fslot_regression(n_va, seed=seed + 1)
+    _, Yte = _fslot_regression(n_te, seed=seed + 2)
+    sid = np.repeat(np.arange(4), n_te // 4).astype(np.int64)
+    return {"X_train": np.zeros(n_tr), "y_train": np.zeros(n_tr), "Y_train_traj": Ytr,
+            "X_val": np.zeros(n_va), "y_val": np.zeros(n_va), "Y_val_traj": Yva,
+            "X_test": np.zeros(n_te), "y_test": np.zeros(n_te), "Y_test_traj": Yte,
+            "series_test": sid}
+
+
+# 21. driver flow: PT probe fit ONCE per seed (PT only), FT stages predict-only from SAVED weights,
+#     seed pairing preserved, idempotent resume, records/inputs/weights all written
+def test_frozen_driver_flow_fit_once_reuse_saved():
+    rt.configure("forda")
+    stages = [rt.Stage(rt.STAGE0, None, None), rt.Stage(rt.STAGE1, "d", "h1"),
+              rt.Stage(rt.STAGE2, "d", "h2")]
+    n_te = 20
+    f_tr, _ = _fslot_regression(40, seed=0)
+    f_va, _ = _fslot_regression(12, seed=1)
+    f_te0, _ = _fslot_regression(n_te, seed=2)
+    f_te1 = {0: (f_te0[0] * 1.5).astype(np.float32)}          # FT test rep -> different loss (delta != 0)
+    f_te2 = {0: (f_te0[0] * 2.0).astype(np.float32)}
+    feats = {(rt.STAGE0, "train"): f_tr, (rt.STAGE0, "val"): f_va, (rt.STAGE0, "test"): f_te0,
+             (rt.STAGE1, "test"): f_te1, (rt.STAGE2, "test"): f_te2}
+    w = _tiny_windows(n_te=n_te)
+
+    o_load, o_win, o_role, o_stat = rt._load_fslot, rt.target_windows, rt._role_split, rt.target_status
+    o_fit, o_pred, o_q, o_ep, o_wd, o_frozen = (rt.fit_shared_forecast_probe_explicit_val,
+        rt.predict_shared_forecast_probe, rt.QUANTILES, rt.CLS_EPOCHS, rt.WD_GRID, rt.FROZEN_DIR)
+    calls = {"fit": 0, "pred": 0}
+    try:
+        rt.FROZEN_DIR = Path(tempfile.mkdtemp())
+        rt.QUANTILES = probes.validate_quantiles([0.5]); rt.CLS_EPOCHS = 12; rt.WD_GRID = (1e-3,)
+        rt._load_fslot = _fake_load_fslot_factory(feats)
+        rt.target_windows = lambda tag: (w, None)
+        rt._role_split = lambda tag: {"train": "train", "val": "val", "test": "test"}
+        rt.target_status = lambda tag: ("PT-OOD", "FT-OOD")
+
+        def spy_fit(*a, **k):
+            calls["fit"] += 1; return o_fit(*a, **k)
+
+        def spy_pred(*a, **k):
+            calls["pred"] += 1; return o_pred(*a, **k)
+        rt.fit_shared_forecast_probe_explicit_val = spy_fit
+        rt.predict_shared_forecast_probe = spy_pred
+
+        rt.run_forecast_frozen_probe(stages, ["boom_hourly"], [0, 1], "cpu")
+        assert calls["fit"] == 2, f"PT probe must be fit ONCE per seed (PT only), got {calls['fit']}"
+        assert calls["pred"] == 2 * 3, f"predict once per (seed, stage), got {calls['pred']}"
+        for seed in (0, 1):
+            assert rt._frozen_weight_path("boom_hourly", seed).exists(), "PT weights not saved"
+            assert rt._frozen_record_path("boom_hourly", seed).exists()
+            for st in (rt.STAGE0, rt.STAGE1, rt.STAGE2):
+                assert rt._frozen_input_path("boom_hourly", st, seed).exists(), f"no per-window npz {st}"
+            rec = json.load(open(rt._frozen_record_path("boom_hourly", seed)))
+            assert set(rec["stage_test_loss_by_layer"]) == {rt.STAGE0, rt.STAGE1, rt.STAGE2}
+            assert rec["probe_source_stage"] == rt.STAGE0 and rec["run_seed"] == seed
+            base = np.asarray(rec["stage_test_loss_by_layer"][rt.STAGE0])
+            for st in (rt.STAGE1, rt.STAGE2):
+                d = np.asarray(rec["frozen_delta_by_layer"][st])
+                r = np.asarray(rec["relative_delta_by_layer"][st])
+                f = np.asarray(rec["stage_test_loss_by_layer"][st])
+                assert np.allclose(d, f - base), "delta must equal FT - PT per layer"
+                assert np.allclose(r, (f - base) / base), "relative must equal (FT - PT)/PT"
+
+        # idempotent resume: a second call fits NOTHING new (reuses the SAVED weights)
+        calls["fit"] = 0
+        rt.run_forecast_frozen_probe(stages, ["boom_hourly"], [0, 1], "cpu")
+        assert calls["fit"] == 0, "resume must skip already-computed (target, seed) — no refit"
+    finally:
+        (rt._load_fslot, rt.target_windows, rt._role_split, rt.target_status) = (o_load, o_win, o_role, o_stat)
+        (rt.fit_shared_forecast_probe_explicit_val, rt.predict_shared_forecast_probe) = (o_fit, o_pred)
+        (rt.QUANTILES, rt.CLS_EPOCHS, rt.WD_GRID, rt.FROZEN_DIR) = (o_q, o_ep, o_wd, o_frozen)
+
+
+# 22. row-alignment mismatch across stages fails loud (§5 paired-row contract)
+def test_frozen_row_alignment_fail_loud():
+    rt.configure("forda")
+    stages = [rt.Stage(rt.STAGE0, None, None), rt.Stage(rt.STAGE1, "d", "h1")]
+    f_tr, _ = _fslot_regression(30, seed=0)
+    f_va, _ = _fslot_regression(10, seed=1)
+    f_te0, _ = _fslot_regression(20, seed=2)
+    f_te1, _ = _fslot_regression(19, seed=3)                  # MISMATCH: 19 != 20 test windows
+    feats = {(rt.STAGE0, "train"): f_tr, (rt.STAGE0, "val"): f_va, (rt.STAGE0, "test"): f_te0,
+             (rt.STAGE1, "test"): f_te1}
+    w = _tiny_windows(n_te=20)
+    o_load, o_win, o_role, o_stat, o_frozen = (rt._load_fslot, rt.target_windows, rt._role_split,
+                                               rt.target_status, rt.FROZEN_DIR)
+    try:
+        rt.FROZEN_DIR = Path(tempfile.mkdtemp())
+        rt._load_fslot = _fake_load_fslot_factory(feats)
+        rt.target_windows = lambda tag: (w, None)
+        rt._role_split = lambda tag: {"train": "train", "val": "val", "test": "test"}
+        rt.target_status = lambda tag: ("PT-OOD", "FT-OOD")
+        raised = False
+        try:
+            rt.run_forecast_frozen_probe(stages, ["boom_hourly"], [0], "cpu")
+        except RuntimeError as e:
+            raised = "row-aligned" in str(e) or "test windows" in str(e)
+        assert raised, "mismatched window counts across stages must fail loud"
+    finally:
+        (rt._load_fslot, rt.target_windows, rt._role_split, rt.target_status, rt.FROZEN_DIR) = (
+            o_load, o_win, o_role, o_stat, o_frozen)
+
+
+# 22b. frozen mode without stage0 in --stages fails loud (it trains the PT probe)
+def test_frozen_requires_stage0():
+    rt.configure("forda")
+    raised = False
+    try:
+        rt.run_forecast_frozen_probe([rt.Stage(rt.STAGE1, "d", "h1")], ["boom_hourly"], [0], "cpu")
+    except RuntimeError as e:
+        raised = "stage0" in str(e)
+    assert raised, "frozen-readout must require stage0_pretrained (the probe source)"
+
+
+# 23. figure smoke: synthetic frozen + fresh records -> Fig A, Fig B, cross-source late heatmap render
+def test_frozen_figures_smoke():
+    rt.configure("forda")
+    tmp = Path(tempfile.mkdtemp())
+    o_out, o_cmp, o_frozen, o_fcast = rt.OUT_ROOT, rt.COMPARE_DIR, rt.FROZEN_DIR, rt.FCAST_PROBE_DIR
+    try:
+        rt.OUT_ROOT = tmp
+        rt.COMPARE_DIR = tmp / "comparison"
+        rt.FROZEN_DIR = tmp / "forda" / "frozen_readout"
+        rt.FCAST_PROBE_DIR = tmp / "forda" / "forecast_probes"
+        (rt.FROZEN_DIR / "records").mkdir(parents=True)
+        rt.FCAST_PROBE_DIR.mkdir(parents=True)
+        curve0 = list(np.linspace(1.0, 0.8, 14))
+        stages = [rt.Stage(rt.STAGE0, None, None), rt.Stage(rt.STAGE1, "d", "h1"),
+                  rt.Stage(rt.STAGE2, "d", "h2")]
+        for tag in ("boom_hourly", "m4_hourly", "coastal_ts"):
+            for seed in (0, 1):
+                stl = {rt.STAGE0: curve0,
+                       rt.STAGE1: list(np.asarray(curve0) + 0.02 + 0.01 * seed),
+                       rt.STAGE2: list(np.asarray(curve0) + np.linspace(0, 0.1, 14))}   # late worsens
+                rt._frozen_record_path(tag, seed).write_text(json.dumps(
+                    {"stage_test_loss_by_layer": stl}))
+                for st, curve in stl.items():                                  # matching fresh records
+                    (rt.FCAST_PROBE_DIR / f"{st}__{tag}__q9__seed{seed}.json").write_text(
+                        json.dumps({"test_loss_by_layer": curve}))
+        rt.make_frozen_figure_a(list(rt.FORECAST_TARGETS))
+        rt.make_fresh_vs_frozen_figure(stages, list(rt.FORECAST_TARGETS))
+        rt.make_frozen_late_heatmap(list(rt.FORECAST_TARGETS))
+        assert (rt.FROZEN_DIR / "figures" / "figA_frozen_readout_delta.png").exists()
+        assert (rt.FROZEN_DIR / "figures" / "figB_fresh_vs_frozen__boom_hourly.png").exists()
+        assert (rt.COMPARE_DIR / "figures" / "frozen_late_layer_heatmap.png").exists()
+        heat = json.load(open(rt.COMPARE_DIR / "tables" / "frozen_late_layer__q9.json"))
+        assert any(r["cls_source"] == "forda" and r["stage"] == rt.STAGE2 for r in heat)
+    finally:
+        rt.OUT_ROOT, rt.COMPARE_DIR, rt.FROZEN_DIR, rt.FCAST_PROBE_DIR = o_out, o_cmp, o_frozen, o_fcast
+
+
 if __name__ == "__main__":
     tests = [
         test_split_determinism_and_stratification,
@@ -486,6 +767,16 @@ if __name__ == "__main__":
         test_resume_idempotent_skip,
         test_end_to_end_synthetic_and_plot_a,
         test_uwave_handwriting_loader_smoke,
+        test_frozen_weight_roundtrip,
+        test_frozen_missing_weights_fail_loud,
+        test_frozen_rotated_fresh_recovers_frozen_degrades,
+        test_frozen_identity_zero_delta,
+        test_frozen_delta_and_relative_math,
+        test_frozen_fresh_namespaces_disjoint,
+        test_frozen_driver_flow_fit_once_reuse_saved,
+        test_frozen_row_alignment_fail_loud,
+        test_frozen_requires_stage0,
+        test_frozen_figures_smoke,
     ]
     for t in tests:
         t()

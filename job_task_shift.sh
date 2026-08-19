@@ -18,10 +18,13 @@
 #   sbatch job_task_shift.sh --cls-source uwave --extract --forecast-extract   # C2: cls + fslot features [GPU]
 #   sbatch job_task_shift.sh --cls-source uwave --probe                  # C3: cls probes (14 layers x seeds)
 #   sbatch job_task_shift.sh --cls-source uwave --forecast-probe         # C4: fslot probes (warm caches)
+#   sbatch job_task_shift.sh --cls-source uwave --forecast-frozen-probe  # C4b: FROZEN PT readout (warm-cache probe fits)
 #   python -m experiments.run_task_shift --cls-source uwave --figures --cka    # C5: per-source Plots A/B/C (LOGIN/CPU)
+#   python -m experiments.run_task_shift --cls-source uwave --frozen-figures   # C5: fresh-vs-frozen readout (LOGIN/CPU)
 #   python -m experiments.run_task_shift --compare                       # C5: cross-source comparison (LOGIN/CPU)
 #
-# Do NOT run C1-C4 (FT / extraction / probe fits) on the login node.
+# Do NOT run C1-C4/C4b (FT / extraction / probe fits) on the login node — probe fitting is compute work.
+# C5 (--figures / --frozen-figures / --compare) is post-hoc aggregation and is login-node OK.
 
 module load gcc python/3.11 arrow/24.0.0
 source .venv/bin/activate

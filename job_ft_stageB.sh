@@ -2,7 +2,7 @@
 #SBATCH --account=def-irina          # the only account we have on Narval
 #SBATCH --gres=gpu:1                 # one GPU (A100): fslot extraction off the 3 backbones
 #SBATCH --cpus-per-task=2
-#SBATCH --mem=32G                    # BOOM/SG/Coastal series load + windowing; be generous
+#SBATCH --mem=16G                    # BOOM/SG/Coastal series load + windowing (16G schedules faster than 32G)
 #SBATCH --time=2:30:00               # B1 full extract (3 backbones x 7 targets x 3 splits); B0 is minutes
 #SBATCH --output=logs/%x-%j.out      # %x = job name (sbatch -J), %j = job id
 

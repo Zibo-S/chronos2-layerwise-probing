@@ -54,6 +54,50 @@ task-shift story is not FordA-only: **uwave** (UWaveGestureLibrary, 3-ch, len 31
   Repeat for handwriting. Cross-source: `python -m experiments.run_task_shift --compare` (login/CPU).
   Do NOT run C1–C4 on the login node. Commit code + results separately, NO Co-Authored-By [[no-coauthor-trailer]].
 
+### 0c. FROZEN PRETRAINED READOUT DIAGNOSTIC — 2026-08-19 [BUILT & CPU-VERIFIED, NOT committed]
+**Question:** the fresh-probe Exp B is remarkably stable (forecasting recovers ~fully after cls-FT). Does a
+fresh probe HIDE specialization by ADAPTING to the new coordinate system? New diagnostic: train the fslot
+probe ONCE on the PRETRAINED rep, FREEZE it, reuse those exact weights on early/late FT reps (NO retrain, NO
+wd re-selection). Fresh probe asks "is forecasting info still RECOVERABLE?"; frozen PT probe asks "does the
+OLD readout still WORK?". `delta_frozen = loss(FT thru frozen PT) − loss(PT thru frozen PT)`: 0 = old readout
+still compatible; >0 = incompatibility/forgetting; <0 = FT rep works better with the old readout. NOT trying
+to manufacture a U-shape — any of {both stable / frozen worsens while fresh stable / both degrade} is valid.
+- **USER DECISIONS (AskUserQuestion 2026-08-19):** (a) EDIT FILES + SHOW GIT DIFFS; (b) NEW MODE in
+  `run_task_shift.py` (`--forecast-frozen-probe` + `--frozen-figures`), NOT a separate driver.
+- **§19 PRE-INSPECTION (answered from source before editing):** (1) trained fslot probe weights were NOT
+  saved anywhere (only per-layer scalar loss JSONs; B4 re-derives deterministically) → **added weight
+  persistence** (the one wrong user assumption). (2) `fit_shared_forecast_probe_explicit_val` already returns
+  the reusable probe {layer:{scaler,linear,wd,selection,...}}, wd on explicit val. (3)
+  `predict_shared_forecast_probe(fitted,feats,labels,collect_test_window_loss=True)` already scores frozen
+  weights on ANY stage's feats predict-only + gives per-window losses. (4) row order IS identical across
+  stage0/early/late (windows are backbone-independent; extraction preserves order; extract_kout_features
+  label-guard fails loud on mismatch) — VERIFIED on real boom_hourly caches (n=354, 14pts, K=4, identical y).
+  (5) minimal = add the mode to run_task_shift; NO GPU/extraction (all 27 forda_cls fslot caches on disk).
+- **CODE (all additive; fresh Exp B / BOOM domain-FT UNTOUCHED):** `experiments/run_task_shift.py` +=
+  `FROZEN_DIR` global (rebound in configure → `results/task_shift_classification/<src>/frozen_readout/`,
+  disjoint from forecast_probes/); `run_forecast_frozen_probe` (fit PT once/seed → `_save_frozen_probe`
+  (Linear state_dict + slot-scaler arrays, mirrors run_ptood_probing_ftok) → `_load_frozen_probe` (fail-loud
+  if weights absent) → predict-only on all stages, saving per-window npz + record JSON with stage_test_loss
+  /frozen_delta/relative_delta/pt_val/pt_wd + full identifiers for later CKA join §14); PAIRED-ROW assert
+  across stages; `make_frozen_figure_a` (per-target early/late Δ vs 0), `make_fresh_vs_frozen_figure` (§9
+  headline: L=fresh R=frozen), `make_frozen_bootstrap` (paired series-cluster CI of late-band FT−PT, reuses
+  cluster_bootstrap_counts/_boot_mean/_series_group/ci_bounds), `make_frozen_late_heatmap` (cross-source
+  L9..L12+LN mean Δ → COMPARE_DIR; +=old readout worse). CLI `--forecast-frozen-probe`/`--frozen-figures`
+  wired in main(). `tests/test_task_shift.py` += 10 tests (weight round-trip, missing-weights fail-loud,
+  ROTATED rep → fresh recovers/frozen degrades, identity→Δ0, delta+relative math, namespace disjoint,
+  driver flow fit-ONCE-per-seed + reuse-saved + idempotent resume, row-align fail-loud, requires-stage0,
+  figure smoke). `job_task_shift.sh` += C4b sbatch line.
+- **VERIFIED (login CPU, OMP=2):** 33/33 task_shift PASS (23 old + 10 new); regressions green
+  (ft_specialization 18, shared_forecast 8, quantile_sets 10, fslot_transfer 13, tunnel 13); py_compile clean;
+  real-cache paired-row contract OK. Frozen fit is COMPUTE work (14 layers × 5 wd × 3 seeds × 3 targets) →
+  salloc/sbatch, NOT login. --frozen-figures is post-hoc aggregation (login OK).
+- **RUN RECIPE (user submits SLURM — [[submit-slurm-jobs-self]]):** per source:
+  `sbatch job_task_shift.sh --cls-source <src> --forecast-frozen-probe` (warm caches; needs the fresh
+  `--forecast-probe` records already on disk for the fresh-vs-frozen figure) → login:
+  `python -m experiments.run_task_shift --cls-source <src> --frozen-figures`. Repeat forda/uwave/handwriting;
+  the cross-source late-layer heatmap fills in as sources land. Commit code + results separately, NO
+  Co-Authored-By [[no-coauthor-trailer]]. **NOT YET RUN on real caches / NOT committed** (user reviews diff).
+
 ### 0. STATUS + TWO DECISIONS RESOLVED (2026-08-18) + REUSE RE-VERIFIED FROM SOURCE
 - **STATUS: ALL 5 FILES + 1 additive probes.py edit BUILT & CPU-VERIFIED 2026-08-18 (NOT committed;
   user reviewing diff). NEXT = C1 classification FT on GPU + validity gate.**
