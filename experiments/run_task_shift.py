@@ -71,7 +71,7 @@ from probing.cls_data import CLS_SPECS, load_cls
 from probing.extraction import extract_kout_features, _cache_path, _idf_prefix
 from probing.finetune import ft_cache_prefix, checkpoint_hash
 from probing.finetune_cls import cls_source_label, STAGE1, STAGE2
-from probing.probes import (QUANTILE_SETS, validate_quantiles,
+from probing.probes import (QUANTILE_SETS, PROBE_PROTOCOL_VERSION, WD_GRID_V2, validate_quantiles,
                             fit_linear_cls_probe_explicit_val, predict_linear_cls_probe,
                             fit_shared_forecast_probe_explicit_val, predict_shared_forecast_probe)
 from probing.tunnel import val_curve_from_selection
@@ -91,9 +91,14 @@ CLS_HORIZON = 16                       # -> K=1 (num_output_patches=1); matches 
 CLS_KTAG = f"K{math.ceil(CLS_HORIZON / OUTPUT_PATCH_SIZE)}_H{CLS_HORIZON}"     # "K1_H16"
 
 FORECAST_TARGETS = ("boom_hourly", "m4_hourly", "coastal_ts")   # PT-OOD / PT-ID / PT-OOD
+# QSET defaults to q9 but is set from --quantile-set in main() so the SAME driver reruns q9 and q1.
+# Only the FORECASTING probes (Exp B) + frozen readout carry Q; the classification probes (Exp A) do
+# not and are untouched. QVER stamps the wide-grid protocol into forecasting filenames so a legacy
+# narrow-grid q9 result can never satisfy the new q9 skip (§10/§25). WD_GRID is the shared wide grid.
 QSET = "q9"
 QUANTILES = validate_quantiles(QUANTILE_SETS[QSET])
-WD_GRID = (1e-5, 1e-4, 1e-3, 1e-2, 1e-1)
+QVER = f"{QSET}__{PROBE_PROTOCOL_VERSION}"     # versioned tag for forecasting filenames; reset in main()
+WD_GRID = WD_GRID_V2                            # wide weight-decay grid (shared source of truth)
 PROBE_SEEDS = (0, 1, 2)
 CLS_EPOCHS = 300                       # probe-fit epochs (NOT the FT epochs)
 CLS_LR = 1e-2                          # probe-fit lr
@@ -113,6 +118,7 @@ SPEC = None
 N_CLASSES = CHANNELS = None
 SRC_OUT = CLS_PROBE_DIR = FCAST_PROBE_DIR = FIG_DIR = TABLE_DIR = FT_MANIFEST = None
 FROZEN_DIR = None                      # results/.../<src>/frozen_readout (frozen-pretrained-readout diagnostic)
+FCAST_FIG_DIR = FCAST_TAB_DIR = None   # results/.../<src>/forecasting/<qset>/{figures,tables} (Exp B, q-aware)
 
 
 def configure(src: str) -> None:
@@ -134,10 +140,31 @@ def configure(src: str) -> None:
     SRC_OUT = OUT_ROOT / src
     CLS_PROBE_DIR = SRC_OUT / "cls_probes"
     FCAST_PROBE_DIR = SRC_OUT / "forecast_probes"
-    FIG_DIR = SRC_OUT / "figures"
+    FIG_DIR = SRC_OUT / "figures"                # Exp-A classification + CKA (NOT q-namespaced; unchanged)
     TABLE_DIR = SRC_OUT / "tables"
     FROZEN_DIR = SRC_OUT / "frozen_readout"     # disjoint from forecast_probes/ (fresh) — cannot collide
     FT_MANIFEST = config.REPO_ROOT / "results" / "ft_specialization" / FT_SOURCE / "manifest.json"
+    _bind_fcast_dirs()                          # Exp-B forecasting figures/tables in forecasting/<qset>/
+
+
+def _bind_fcast_dirs():
+    """Bind the q-aware forecasting presentation dirs from the current source (SRC_OUT) and QSET.
+    Called whenever the source OR the quantile set changes so Exp-B (forecasting) figures/tables land
+    in the browsable results/task_shift_classification/<src>/forecasting/<qset>/ tree while Exp-A
+    (classification) + CKA keep the source-level figures/ (Section 16: classification plots unchanged)."""
+    global FCAST_FIG_DIR, FCAST_TAB_DIR
+    FCAST_FIG_DIR = SRC_OUT / "forecasting" / QSET / "figures"
+    FCAST_TAB_DIR = SRC_OUT / "forecasting" / QSET / "tables"
+
+
+def _configure_qset(qset: str) -> None:
+    """Rebind the forecasting quantile-config globals from --quantile-set: QSET drives the Exp-B probe
+    head, QUANTILES/QVER follow, and the forecasting dirs re-derive. Classification (Exp A) is untouched."""
+    global QSET, QUANTILES, QVER
+    QSET = qset
+    QUANTILES = validate_quantiles(QUANTILE_SETS[QSET])
+    QVER = f"{QSET}__{PROBE_PROTOCOL_VERSION}"
+    _bind_fcast_dirs()
 
 
 configure("forda")     # default binding at import time
@@ -319,7 +346,22 @@ def run_fcast_extract(stages, targets):
 
 
 def _fcast_probe_stem(stage_label, tag, seed):
-    return f"{stage_label}__{tag}__{QSET}__seed{seed}"
+    return f"{stage_label}__{tag}__{QVER}__seed{seed}"
+
+
+def _fcast_run_compatible(path):
+    """Skip predicate for an Exp-B per-run JSON: False if absent; True if present AND its recorded
+    (quantile_set, probe_protocol_version, wd_grid) match this run; RAISE if present-but-incompatible
+    so a stale/foreign result never silently satisfies the new run (§10/§25)."""
+    if not path.exists():
+        return False
+    meta = json.loads(path.read_text())
+    want = (QSET, PROBE_PROTOCOL_VERSION, [float(w) for w in WD_GRID])
+    got = (meta.get("quantile_set"), meta.get("probe_protocol_version"), meta.get("wd_grid"))
+    if got != want:
+        raise RuntimeError(f"incompatible forecast result {path.name}: got (qset,protocol,wd_grid)="
+                           f"{got} but this run wants {want}. Delete it or bump the protocol version.")
+    return True
 
 
 def run_fcast_probe(stages, targets, seeds, device):
@@ -331,9 +373,9 @@ def run_fcast_probe(stages, targets, seeds, device):
         roles, w = _role_split(tag), None
         for stage in stages:
             pending = [s for s in seeds
-                       if not (FCAST_PROBE_DIR / f"{_fcast_probe_stem(stage.label, tag, s)}.json").exists()]
+                       if not _fcast_run_compatible(FCAST_PROBE_DIR / f"{_fcast_probe_stem(stage.label, tag, s)}.json")]
             if not pending:
-                print(f"  [skip] {stage.label}/{SHORT[tag]}: all fslot seeds fit")
+                print(f"  [skip] {stage.label}/{SHORT[tag]}: all fslot seeds fit ({QVER})")
                 continue
             if w is None:
                 w, _ = target_windows(tag)
@@ -351,6 +393,8 @@ def run_fcast_probe(stages, targets, seeds, device):
                 rec = {"experiment": "task_shift_forecast", "cls_source": CLS_SOURCE,
                        "stage": stage.label, "target": tag, "short": SHORT[tag], "pt_status": pt,
                        "ft_status": ft, "ft_source": FT_SOURCE, "quantile_set": QSET, "readout": "fslot",
+                       "probe_protocol_version": PROBE_PROTOCOL_VERSION,
+                       "wd_grid": [float(x) for x in WD_GRID], "Q": len(QUANTILES),
                        "run_seed": int(seed), "H": FCAST_H, "K": FCAST_K, "layer_labels": LAYER_LABELS,
                        "val_loss_by_layer": val_curve_from_selection(
                            {i: fitted[i]["selection"] for i in sorted(fitted)}, num_layers=len(fitted)),
@@ -384,15 +428,15 @@ def _fdir(sub):
 
 
 def _frozen_weight_path(tag, seed):
-    return _fdir("weights") / f"{tag}__{QSET}__seed{seed}.pt"
+    return _fdir("weights") / f"{tag}__{QVER}__seed{seed}.pt"
 
 
 def _frozen_input_path(tag, stage_label, seed):
-    return _fdir("inputs") / f"{tag}__{stage_label}__{QSET}__seed{seed}.npz"
+    return _fdir("inputs") / f"{tag}__{stage_label}__{QVER}__seed{seed}.npz"
 
 
 def _frozen_record_path(tag, seed):
-    return _fdir("records") / f"{tag}__{QSET}__seed{seed}.json"
+    return _fdir("records") / f"{tag}__{QVER}__seed{seed}.json"
 
 
 def _scaler_from_arrays(mean, scale):
@@ -421,7 +465,8 @@ def _save_frozen_probe(path, fitted):
                           "output_patch_size": int(f["output_patch_size"]), "K": int(f["K"])}
     path.parent.mkdir(parents=True, exist_ok=True)
     torch.save({"probe_source_stage": STAGE0, "cls_source": CLS_SOURCE, "readout": "fslot",
-                "quantile_set": QSET, "layers": layers}, path)
+                "quantile_set": QSET, "probe_protocol_version": PROBE_PROTOCOL_VERSION,
+                "wd_grid": [float(w) for w in WD_GRID], "layers": layers}, path)
 
 
 def _load_frozen_probe(path, device="cpu"):
@@ -514,6 +559,8 @@ def run_forecast_frozen_probe(stages, targets, seeds, device):
             rec = {"experiment": "task_shift_forecast_frozen_readout", "cls_source": CLS_SOURCE,
                    "aeon_name": SPEC["aeon_name"], "target": tag, "short": SHORT[tag],
                    "pt_status": pt, "ft_status": ft, "ft_source": FT_SOURCE, "quantile_set": QSET,
+                   "probe_protocol_version": PROBE_PROTOCOL_VERSION,
+                   "wd_grid": [float(w) for w in WD_GRID], "Q": len(QUANTILES),
                    "readout": "fslot_frozen_pretrained", "probe_source_stage": STAGE0,
                    "run_seed": int(seed), "H": FCAST_H, "K": FCAST_K, "layer_labels": LAYER_LABELS,
                    "checkpoint_hash_by_stage": {s.label: s.hash8 for s in stages},
@@ -552,14 +599,14 @@ def _cls_curves(stages):
 
 
 def _fcast_curves(stages, tag):
-    g = {s.label: sorted(FCAST_PROBE_DIR.glob(f"{s.label}__{tag}__{QSET}__seed*.json")) for s in stages}
+    g = {s.label: sorted(FCAST_PROBE_DIR.glob(f"{s.label}__{tag}__{QVER}__seed*.json")) for s in stages}
     return _stack_seed_curves(g, "test_loss_by_layer")
 
 
 def _fcast_curves_dir(fcast_dir, tag):
     """{stage_label: (n_seed, 14)} test-loss curves read from an ARBITRARY forecast_probes dir (used by
     the cross-source comparison, which reads every source's dir regardless of the active configure())."""
-    g = {lbl: sorted(Path(fcast_dir).glob(f"{lbl}__{tag}__{QSET}__seed*.json")) for lbl in CLS_STAGES}
+    g = {lbl: sorted(Path(fcast_dir).glob(f"{lbl}__{tag}__{QVER}__seed*.json")) for lbl in CLS_STAGES}
     return _stack_seed_curves(g, "test_loss_by_layer")
 
 
@@ -607,7 +654,7 @@ def make_plot_a(stages):
 
 
 def make_plot_b(stages, targets):
-    FIG_DIR.mkdir(parents=True, exist_ok=True)
+    FCAST_FIG_DIR.mkdir(parents=True, exist_ok=True)
     present = [t for t in targets if _fcast_curves(stages, t)]
     if not present:
         print("[figures] Plot B skipped (no forecast probe JSONs — run --forecast-probe)"); return
@@ -620,10 +667,11 @@ def make_plot_b(stages, targets):
         _xaxis(ax)
         ax.set_title(f"{SHORT[tag]} ({'/'.join(target_status(tag))})")
         ax.set_ylabel(f"fslot quantile loss ({QSET}, lower=better)")
-    fig.suptitle(f"Exp B — forecasting accessibility after {SPEC['aeon_name']} classification FT")
+    q_lbl = "Q=1 (median, q=0.5)" if QSET == "q1" else f"Q={len(QUANTILES)}"
+    fig.suptitle(f"Exp B — forecasting accessibility after {SPEC['aeon_name']} classification FT  [{q_lbl}]")
     axes[0][0].legend(fontsize=8); fig.tight_layout()
-    fig.savefig(FIG_DIR / "plotB_forecast_accessibility.png", dpi=150); plt.close(fig)
-    print(f"[figures] Plot B -> {FIG_DIR/'plotB_forecast_accessibility.png'}")
+    fig.savefig(FCAST_FIG_DIR / "plotB_forecast_accessibility.png", dpi=150); plt.close(fig)
+    print(f"[figures] Plot B -> {FCAST_FIG_DIR/'plotB_forecast_accessibility.png'}")
 
 
 # BOOM (domain-shift) stage-B probes use ft_early/ft_late labels; alias them to THIS run's cls
@@ -638,7 +686,7 @@ def _boom_delta(tag):
     shares colors. None if the stage-B probes for `tag` are absent."""
     g = {}
     for st in _BOOM_STAGES:
-        paths = sorted(STAGEB_PROBE_DIR.glob(f"{st}__{tag}__{QSET}__seed*.json"))
+        paths = sorted(STAGEB_PROBE_DIR.glob(f"{st}__{tag}__{QVER}__seed*.json"))
         if paths:
             g[st] = paths
     curves = _stack_seed_curves(g, "test_loss_by_layer")
@@ -651,7 +699,7 @@ def _boom_delta(tag):
 def make_plot_c(stages, targets):
     """Per-source Domain (BOOM-FT, from stageB) vs Task (this source's FT): normalized Delta vs stage0.
     Only targets present under BOTH conditions are drawn; if none overlap, the panel is honestly skipped."""
-    FIG_DIR.mkdir(parents=True, exist_ok=True)
+    FCAST_FIG_DIR.mkdir(parents=True, exist_ok=True)
     rows = []
     for tag in targets:
         task = _delta_vs_stage0(_fcast_curves(stages, tag))
@@ -676,8 +724,8 @@ def make_plot_c(stages, targets):
                 ax.legend(fontsize=8)
     fig.suptitle(f"Plot C — DOMAIN vs TASK ({SPEC['aeon_name']}) specialization (normalized Δ vs pretrained)")
     fig.tight_layout()
-    fig.savefig(FIG_DIR / "plotC_domain_vs_task_delta.png", dpi=150); plt.close(fig)
-    print(f"[figures] Plot C -> {FIG_DIR/'plotC_domain_vs_task_delta.png'}")
+    fig.savefig(FCAST_FIG_DIR / "plotC_domain_vs_task_delta.png", dpi=150); plt.close(fig)
+    print(f"[figures] Plot C -> {FCAST_FIG_DIR/'plotC_domain_vs_task_delta.png'}")
 
 
 # --------------------------------------------------------------------------- #
@@ -689,7 +737,7 @@ def _frozen_stage_curves(tag, records_dir=None):
     source's dir so it can read every source regardless of the active configure()."""
     rd = records_dir if records_dir is not None else _fdir("records")
     per_stage = {}
-    for p in sorted(Path(rd).glob(f"{tag}__{QSET}__seed*.json")):
+    for p in sorted(Path(rd).glob(f"{tag}__{QVER}__seed*.json")):
         d = json.load(open(p))
         for st, curve in d["stage_test_loss_by_layer"].items():
             per_stage.setdefault(st, []).append(np.asarray(curve, float))
@@ -722,7 +770,7 @@ def make_frozen_figure_a(targets):
     fig.suptitle(f"Forecasting with a frozen pretrained readout after {SPEC['aeon_name']} "
                  f"classification fine-tuning")
     fig.tight_layout()
-    out = _fdir("figures") / "figA_frozen_readout_delta.png"
+    out = _fdir("figures") / f"figA_frozen_readout_delta__{QVER}.png"
     fig.savefig(out, dpi=150); plt.close(fig)
     print(f"[frozen] Figure A -> {out}")
 
@@ -754,7 +802,7 @@ def make_fresh_vs_frozen_figure(stages, targets):
         fig.suptitle(f"{SPEC['aeon_name']} cls-FT — fresh vs frozen readout on {SHORT[tag]} "
                      f"({'/'.join(target_status(tag))})\ndoes retraining rescue what the old readout lost?")
         fig.tight_layout()
-        out = _fdir("figures") / f"figB_fresh_vs_frozen__{tag}.png"
+        out = _fdir("figures") / f"figB_fresh_vs_frozen__{tag}__{QVER}.png"
         fig.savefig(out, dpi=150); plt.close(fig)
         drawn += 1
         print(f"[frozen] Figure B -> {out}")
@@ -808,7 +856,7 @@ def make_frozen_bootstrap(targets, seeds):
                          "direction": "delta = FT - PT through the frozen PT readout; + = old readout worse"})
     if rows:
         _fdir("tables").mkdir(parents=True, exist_ok=True)
-        (_fdir("tables") / f"frozen_bootstrap__{QSET}.json").write_text(json.dumps(rows, indent=2))
+        (_fdir("tables") / f"frozen_bootstrap__{QVER}.json").write_text(json.dumps(rows, indent=2))
         print(f"[frozen] bootstrap -> {_fdir('tables')/f'frozen_bootstrap__{QSET}.json'} ({len(rows)} rows)")
     else:
         print("[frozen] bootstrap skipped (need frozen per-window inputs for all seeds)")
@@ -853,7 +901,7 @@ def make_frozen_late_heatmap(targets):
     fig.tight_layout()
     out = COMPARE_DIR / "figures" / "frozen_late_layer_heatmap.png"
     fig.savefig(out, dpi=150); plt.close(fig)
-    (COMPARE_DIR / "tables" / f"frozen_late_layer__{QSET}.json").write_text(json.dumps(table, indent=2))
+    (COMPARE_DIR / "tables" / f"frozen_late_layer__{QVER}.json").write_text(json.dumps(table, indent=2))
     print(f"[frozen] late-layer heatmap -> {out} ({len(table)} cells)")
 
 
@@ -1006,6 +1054,9 @@ def _parse_args(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--cls-source", default="forda", choices=sorted(CLS_SPECS),
                     help="classification source (forda | uwave | handwriting)")
+    ap.add_argument("--quantile-set", default="q9", choices=sorted(QUANTILE_SETS),
+                    help="Exp-B forecasting probe-head quantile vector: q9 (deciles) or q1 (median). "
+                         "Classification probes (Exp A) do not have Q and are unaffected.")
     ap.add_argument("--extract", action="store_true", help="C2 Exp-A: cls features (GPU)")
     ap.add_argument("--forecast-extract", action="store_true", help="C2 Exp-B: fslot features (GPU)")
     ap.add_argument("--probe", action="store_true", help="C3 Exp-A: cls probes (14 layers x seeds)")
@@ -1027,6 +1078,7 @@ def _parse_args(argv=None):
 def main(argv=None):
     a = _parse_args(argv)
     configure(a.cls_source)
+    _configure_qset(a.quantile_set)     # Exp-B forecasting head; rebinds forecasting/<qset>/ dirs
     from probing.finetune import _select_device
     device = str(_select_device(a.device))
     if not any([a.extract, a.forecast_extract, a.probe, a.forecast_probe, a.forecast_frozen_probe,

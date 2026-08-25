@@ -66,7 +66,8 @@ from experiments.run_id_forecasting import M_SEASON, _ctx_stats, _mase_denominat
 # PROBE_FAMILIES routes the readout head (shared_linear default | native_mlp) — same features/windows/
 # tunnels, family-specific checkpoints/predict/output namespace.
 from experiments.run_ptood_probing_ftok import (C, H, K, LAYER_LABELS, OUT_ROOT, PROBE_FAMILIES,
-                                                RUN_SEEDS, RUNS_TAG, SHORT, _fslot_feats)
+                                                PROBE_PROTOCOL_VERSION, RUN_SEEDS, RUNS_TAG, SHORT,
+                                                _fslot_feats)
 
 REF_LABEL = LAYER_LABELS[-1]                                # "L12+LN" — the final reference point
 N_POINTS = NUM_LAYERS + 1                                   # 14 fslot readout points
@@ -89,12 +90,17 @@ def _quadrant(source, target):
     return f"{_pt_label(target)} / {_probe_label(source, target)}"
 
 
-def _derive_dirs(experiment):
+def _derive_dirs(experiment, qset):
+    """Predict-only transfer, so nothing is FIT here — the frozen source probes + tunnels are read
+    from the versioned ext-v4 ID layout (FAMILY.ckpt_dir / FAMILY.tunnel_path already carry the
+    protocol version). Outputs route into the browsable per-quantile tree: the 4x4 cross-dataset grid
+    -> results/ext_v4_future_tokens/<qset>/cross_dataset/, the 4x3 unseen grid -> <qset>/unseen/.
+    Legacy flat fslot_transfer/ + fslot_pt_ood/ (committed q9) are left untouched. MLP unchanged."""
     global OUT_DIR, BOOT_IN_DIR, FIG_DIR, TAB_DIR
     if FAMILY.name == "native_mlp":                     # fslot_mlp/{transfer_4x4,ptood_transfer}/
         OUT_DIR = FAMILY.out_root / ("transfer_4x4" if experiment == "transfer_4x4" else "ptood_transfer")
-    else:                                               # linear: unchanged fslot_transfer / fslot_pt_ood
-        OUT_DIR = OUT_ROOT / ("fslot_transfer" if experiment == "transfer_4x4" else "fslot_pt_ood")
+    else:                                               # linear: browsable per-quantile tree
+        OUT_DIR = OUT_ROOT / qset / ("cross_dataset" if experiment == "transfer_4x4" else "unseen")
     BOOT_IN_DIR = OUT_DIR / "bootstrap_inputs"
     FIG_DIR = OUT_DIR / "figures"
     TAB_DIR = OUT_DIR / "tables"
@@ -346,6 +352,7 @@ def _write_records(sources, targets, cells, mean_ql, mean_mase, ell, tunnels, ga
                 "l_start_sustained": ls_sustained,
                 "val_selected_layer": sel, "final_reference": REF_LABEL,
                 "quantile_set": qset, "readout": FAMILY.artifact_tag, "probe_family": FAMILY.name,
+                "probe_protocol_version": PROBE_PROTOCOL_VERSION,
             }
             summary.append({**base,
                             "val_selected_layer_label": LAYER_LABELS[sel],
@@ -506,7 +513,7 @@ def main():
     args = _parse_args()
     FAMILY = PROBE_FAMILIES[args.probe_family]
     config.set_dataset_set("extended_v3_rolling")     # roster + rolling windows + cache namespace
-    _derive_dirs(args.experiment)
+    _derive_dirs(args.experiment, args.quantile_set)
     quantiles = validate_quantiles(QUANTILE_SETS[args.quantile_set])
     device = "cpu"                                    # predict-only over cached features
     print(f"[run_fslot_transfer] experiment={args.experiment}  family={FAMILY.name}  "

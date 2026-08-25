@@ -355,8 +355,8 @@ def test_stageB_probe_tunnel_figures_synthetic():
         assert rec["dataset"] == rfs.FT_ID_TAG                  # tunnel defined on BOOM only
         assert rec["ft_status"] == "FT-ID" and rec["probe_status"] == "probe-ID"
         assert "d_id_ci" in rec and rec["n_windows"] == n
-        assert (rfs.TUNNEL_DIR / f"tunnel__{lbl}__q9.json").exists()
-        assert (rfs.FIG_DIR / f"tunnel__{lbl}__q9.png").exists()
+        assert (rfs.TUNNEL_DIR / f"tunnel__{lbl}__{rfs.QVER}.json").exists()
+        assert (rfs.FIG_DIR / f"tunnel__{lbl}__{rfs.QVER}.png").exists()
 
     rows = rfs.run_figures(stages, targets)
     assert len(rows) == len(stages) * len(targets)
@@ -365,9 +365,9 @@ def test_stageB_probe_tunnel_figures_synthetic():
         assert r["probe_status"] == "probe-ID"
         assert r["l_start"] == tunnels[r["stage"]]["l_start"]  # FT-OOD cell uses the stage's BOOM lens
         assert np.isfinite(r["D_last_vs_lstart"])
-    assert (rfs.TABLE_DIR / "stageB_layerwise__q9.csv").exists()
+    assert (rfs.TABLE_DIR / f"stageB_layerwise__{rfs.QVER}.csv").exists()
     for tag in targets:
-        assert (rfs.FIG_DIR / f"layerwise__{tag}__q9.png").exists()
+        assert (rfs.FIG_DIR / f"layerwise__{tag}__{rfs.QVER}.png").exists()
 
 
 # ---- B3 native forgetting -------------------------------------------------- #

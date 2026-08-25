@@ -72,7 +72,8 @@ from probing.config import NUM_LAYERS, SEED, OUTPUT_PATCH_SIZE   # last index is
 from probing.extraction import extract_kout_features
 from probing.id_data import build_ood_rolling_windows, build_windows
 from probing.heads import build_head
-from probing.probes import (QUANTILE_SETS, fit_forecast_slot_native_head_explicit_val,
+from probing.probes import (QUANTILE_SETS, PROBE_PROTOCOL_VERSION, WD_GRID_V2,
+                            fit_forecast_slot_native_head_explicit_val,
                             fit_shared_forecast_probe_explicit_val,
                             predict_forecast_slot_native_head, predict_shared_forecast_probe,
                             validate_quantiles)
@@ -87,7 +88,7 @@ OUT_ROOT = config.REPO_ROOT / "results" / "ext_v4_future_tokens"   # v4 output n
 C, H = 512, 64
 K = math.ceil(H / OUTPUT_PATCH_SIZE)   # native slot count, e.g. H=64, P=16 -> K=4
 QUANTILE_EPOCHS = 300
-WD_GRID = (1e-5, 1e-4, 1e-3, 1e-2, 1e-1)
+WD_GRID = WD_GRID_V2               # wide weight-decay grid (q1/q9 rerun; shared source of truth)
 RUN_SEEDS = (0, 1, 2)              # 3 independent probe-init runs; ALL fit fresh (no legacy seed 0)
 RUN_TYPE = "probe_seed"
 RUNS_TAG = "runs" + "-".join(str(s) for s in RUN_SEEDS)
@@ -117,8 +118,14 @@ SHORT = {"monash_electricity_hourly": "Electricity", "uber_tlc_hourly": "Uber",
          "sg_carpark": "SG Carpark", "coastal_ts": "Coastal T-S", "boom_hourly": "BOOM"}
 
 
-def _derive_dirs():
-    global OUT_DIR, TUNNEL_DIR, PER_TARGET_DIR, BOOT_IN_DIR, CKPT_DIR, FIG_DIR, \
+def _derive_dirs(qset):
+    """Resolve the on-disk layout. Compute artifacts (per-seed run JSONs + frozen source probes)
+    keep the existing flat convention but gain the PROBE_PROTOCOL_VERSION token in their FILENAMES
+    (see _run_qtag / _ptid_ckpt_dir), so a legacy narrow-grid q9 file never collides with — or
+    satisfies the skip of — a new wide-grid q9 run. Presentation artifacts (figures / tables /
+    tunnels) route into the browsable per-quantile tree results/ext_v4_future_tokens/<qset>/id/... so
+    q1 and q9 sit side by side. Legacy q9 outputs under the flat layout are left untouched."""
+    global OUT_DIR, TUNNEL_DIR, PER_TARGET_DIR, BOOT_IN_DIR, CKPT_DIR, FIG_DIR, TAB_DIR, \
         PTID_RUN_DIR, PTID_CKPT_DIR
     if FAMILY.name == "native_mlp":
         # flat fslot_mlp/ layout — matches _mlp_ckpt_dir / _mlp_tunnel_path; only --fit-ptid /
@@ -128,18 +135,51 @@ def _derive_dirs():
         PTID_RUN_DIR = MLP_ROOT / "ptid_runs"
         PTID_CKPT_DIR = MLP_ROOT / "ptid_checkpoints"    # == _mlp_ckpt_dir(...).parent
         FIG_DIR = MLP_ROOT / "figures"
+        TAB_DIR = MLP_ROOT / "tables"
     else:
         OUT_DIR = OUT_ROOT / "ptood_probing"
-        TUNNEL_DIR = OUT_ROOT / "tunnels"                # PT-ID artifact, portable by source tag
+        TUNNEL_DIR = OUT_ROOT / qset / "tunnels"         # browsable per-quantile tunnels (versioned name)
         PTID_RUN_DIR = OUT_DIR / "ptid_runs"             # per-seed PT-ID val/test curves + windows
         PTID_CKPT_DIR = OUT_DIR / "ptid_checkpoints"     # per-source frozen PT-ID probes (all seeds)
-        FIG_DIR = OUT_DIR / "figures"
+        FIG_DIR = OUT_ROOT / qset / "id" / "figures"     # browsable per-quantile figures
+        TAB_DIR = OUT_ROOT / qset / "id" / "tables"      # browsable per-quantile tables
     PER_TARGET_DIR = OUT_DIR / "per_target"
     BOOT_IN_DIR = OUT_DIR / "bootstrap_inputs"
     CKPT_DIR = OUT_DIR / "checkpoints"                   # per-PT-OOD-target frozen probes (linear only)
-    for d in (OUT_DIR, TUNNEL_DIR, PER_TARGET_DIR, BOOT_IN_DIR, CKPT_DIR, FIG_DIR,
+    for d in (OUT_DIR, TUNNEL_DIR, PER_TARGET_DIR, BOOT_IN_DIR, CKPT_DIR, FIG_DIR, TAB_DIR,
               PTID_RUN_DIR, PTID_CKPT_DIR):
         d.mkdir(parents=True, exist_ok=True)
+
+
+def _run_qtag(qset):
+    """Quantile tag used in the FILENAMES of the family-shared per-seed run artifacts. The
+    shared-linear fslot readout carries the wide-grid protocol version ('q9__v2'); the frozen /
+    out-of-scope native_mlp family keeps the bare qset so its committed artifacts stay byte-identical."""
+    return f"{qset}__{PROBE_PROTOCOL_VERSION}" if FAMILY.name == "shared_linear" else qset
+
+
+def _protocol_meta(quantiles):
+    """Machine-readable probe-protocol identity stamped into every new forecasting record so
+    superficially-similar result files stay distinguishable and skip logic can verify compatibility."""
+    Q, P = len(quantiles), OUTPUT_PATCH_SIZE
+    return {"probe_protocol_version": PROBE_PROTOCOL_VERSION, "wd_grid": [float(w) for w in WD_GRID],
+            "quantiles": [float(q) for q in quantiles], "Q": int(Q), "P": int(P), "K": int(K),
+            "in_features": 768, "out_features": int(Q * P), "epochs": int(QUANTILE_EPOCHS)}
+
+
+def _run_compatible(path, qset):
+    """Skip predicate for a per-seed run JSON: False if absent (must fit); True if present AND its
+    recorded (quantile_set, probe_protocol_version, wd_grid) match the requested protocol; RAISE if
+    present but incompatible — a stale/foreign result must never silently satisfy a new run (§10/§25)."""
+    if not path.exists():
+        return False
+    meta = json.load(open(path))
+    want = (qset, PROBE_PROTOCOL_VERSION, [float(w) for w in WD_GRID])
+    got = (meta.get("quantile_set"), meta.get("probe_protocol_version"), meta.get("wd_grid"))
+    if got != want:
+        raise RuntimeError(f"incompatible existing result {path.name}: got (qset,protocol,wd_grid)="
+                           f"{got} but this run wants {want}. Delete it or bump the protocol version.")
+    return True
 
 
 def _fslot_feats(tag, split, X, y):
@@ -173,7 +213,7 @@ def _ptid_ckpt_dir(src, qset, seed):
     OUT_ROOT constant (not the _derive_dirs() global), so a SIBLING driver can resolve it without
     running this module's main()."""
     return (OUT_ROOT / "ptood_probing" / "ptid_checkpoints"
-            / f"{src}__{READOUT}__C{C}_H{H}__{qset}__seed{seed}")
+            / f"{src}__{READOUT}__C{C}_H{H}__{qset}__{PROBE_PROTOCOL_VERSION}__seed{seed}")
 
 
 def _scaler_from_arrays(mean, scale):
@@ -219,7 +259,8 @@ def load_ptid_ckpt(src, qset, seed, device="cpu"):
 # Native-MLP family: same fslot features + cache, nonlinear head, PARALLEL artifact namespace
 # --------------------------------------------------------------------------- #
 def _linear_tunnel_path(src, qset):
-    return OUT_ROOT / "tunnels" / f"{src}__{READOUT}__{qset}__{RUNS_TAG}.json"
+    return (OUT_ROOT / qset / "tunnels"
+            / f"{src}__{READOUT}__{qset}__{PROBE_PROTOCOL_VERSION}__{RUNS_TAG}.json")
 
 
 def _mlp_ckpt_dir(src, qset, seed):
@@ -330,11 +371,12 @@ def fit_ptid(qset, quantiles, device):
     already on disk). Features are extracted once per source from the SAME fslot cache for both
     families (run-seed- AND readout-independent) and reused across seeds; only the head + init differ.
     For native_mlp additionally writes a per-seed training-history JSON (§3 overfitting audit)."""
+    qtag = _run_qtag(qset)
     for src in PT_ID_TAGS:
         pending = [s for s in RUN_SEEDS
-                   if not (PTID_RUN_DIR / f"{src}__{qset}__seed{s}.json").exists()]
+                   if not _run_compatible(PTID_RUN_DIR / f"{src}__{qtag}__seed{s}.json", qset)]
         if not pending:
-            print(f"  [skip] {SHORT[src]}: all seeds already fit")
+            print(f"  [skip] {SHORT[src]}: all seeds already fit (protocol {PROBE_PROTOCOL_VERSION}, {qset})")
             continue
         w = build_windows(src)                 # rolling split (window seed fixed at SEED)
         f_tr = _fslot_feats(src, "train", w["X_train"], w["y_train"])
@@ -349,17 +391,18 @@ def fit_ptid(qset, quantiles, device):
                                        device=device, collect_test_window_loss=True)
             wl = np.stack([diag["test_window_loss"][i]
                            for i in sorted(diag["test_window_loss"])]).astype(np.float64)  # 14 rows (fslot)
-            np.savez(PTID_RUN_DIR / f"{src}__{qset}__seed{seed}.npz", window_loss=wl,
+            np.savez(PTID_RUN_DIR / f"{src}__{qtag}__seed{seed}.npz", window_loss=wl,
                      series_test=np.asarray(w["series_test"], np.int64))
             json.dump({"dataset": src, "quantile_set": qset, "run_seed": int(seed),
                        "run_type": RUN_TYPE, "readout": FAMILY.artifact_tag,
                        "probe_family": FAMILY.name, "pooling_or_token_type": "forecast_slot",
+                       **_protocol_meta(quantiles),
                        "val_loss_by_layer": val_curve_from_selection(
                            {i: fitted[i]["selection"] for i in sorted(fitted)}, num_layers=len(fitted)),
                        "test_loss_by_layer": [float(out[i]) for i in sorted(out)]},
-                      open(PTID_RUN_DIR / f"{src}__{qset}__seed{seed}.json", "w"), indent=2)
-            _save_fit_histories(src, qset, seed, fitted)     # MLP §3 diagnostics; no-op for linear
-            print(f"  [saved] {src}__{qset}__seed{seed}.json")
+                      open(PTID_RUN_DIR / f"{src}__{qtag}__seed{seed}.json", "w"), indent=2)
+            _save_fit_histories(src, qtag, seed, fitted)     # MLP §3 diagnostics; no-op for linear
+            print(f"  [saved] {src}__{qtag}__seed{seed}.json")
         del w, f_tr, f_va, f_te
         gc.collect()
 
@@ -395,8 +438,9 @@ def _save_fit_histories(src, qset, seed, fitted):
 def _ptid_run_curves(src, qset, seed):
     """(val_curve list, window_loss (n_points, n), series_test) for ONE PT-ID probe run
     (n_points = NUM_LAYERS+1 = 14 for fslot: L0..L12 + post-final-LN)."""
-    pj = PTID_RUN_DIR / f"{src}__{qset}__seed{seed}.json"
-    pz = PTID_RUN_DIR / f"{src}__{qset}__seed{seed}.npz"
+    qtag = _run_qtag(qset)
+    pj = PTID_RUN_DIR / f"{src}__{qtag}__seed{seed}.json"
+    pz = PTID_RUN_DIR / f"{src}__{qtag}__seed{seed}.npz"
     if not (pj.exists() and pz.exists()):
         raise FileNotFoundError(f"missing PT-ID run artifacts for {src} seed {seed} ({pj.name}) — "
                                 "run --fit-ptid first")
@@ -432,6 +476,8 @@ def compute_ptid_tunnels(qset):
                                          "probe_family": FAMILY.name,
                                          "pooling_or_token_type": "forecast_slot",
                                          "dataset_set": PTID_SET,
+                                         "probe_protocol_version": PROBE_PROTOCOL_VERSION,
+                                         "wd_grid": [float(w) for w in WD_GRID],
                                          "provenance": {"ptid_runs": str(PTID_RUN_DIR)}})
         last = wl_mean.shape[0] - 1        # data-driven last index (=13 for fslot) = post-LN reference
         d_id = d_stat_boot(wl_mean, sid, rec["l_start"], last=last, B=config.BOOT_B, seed=SEED)
@@ -717,7 +763,7 @@ def main():
     args = _parse_args()
     FAMILY = PROBE_FAMILIES[args.probe_family]
     config.set_dataset_set(PTID_SET)     # roster + rolling windows + cache namespace (outputs -> family root)
-    _derive_dirs()
+    _derive_dirs(args.quantile_set)
     quantiles = validate_quantiles(QUANTILE_SETS[args.quantile_set])
     print(f"[run_ptood_probing_ftok] family={FAMILY.name}  readout={FAMILY.artifact_tag}  "
           f"set={PTID_SET}  out={FAMILY.out_root.name}  qset={args.quantile_set}  {RUNS_TAG}  K={K}")

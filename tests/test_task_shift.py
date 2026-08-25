@@ -728,15 +728,15 @@ def test_frozen_figures_smoke():
                 rt._frozen_record_path(tag, seed).write_text(json.dumps(
                     {"stage_test_loss_by_layer": stl}))
                 for st, curve in stl.items():                                  # matching fresh records
-                    (rt.FCAST_PROBE_DIR / f"{st}__{tag}__q9__seed{seed}.json").write_text(
+                    (rt.FCAST_PROBE_DIR / f"{rt._fcast_probe_stem(st, tag, seed)}.json").write_text(
                         json.dumps({"test_loss_by_layer": curve}))
         rt.make_frozen_figure_a(list(rt.FORECAST_TARGETS))
         rt.make_fresh_vs_frozen_figure(stages, list(rt.FORECAST_TARGETS))
         rt.make_frozen_late_heatmap(list(rt.FORECAST_TARGETS))
-        assert (rt.FROZEN_DIR / "figures" / "figA_frozen_readout_delta.png").exists()
-        assert (rt.FROZEN_DIR / "figures" / "figB_fresh_vs_frozen__boom_hourly.png").exists()
+        assert (rt.FROZEN_DIR / "figures" / f"figA_frozen_readout_delta__{rt.QVER}.png").exists()
+        assert (rt.FROZEN_DIR / "figures" / f"figB_fresh_vs_frozen__boom_hourly__{rt.QVER}.png").exists()
         assert (rt.COMPARE_DIR / "figures" / "frozen_late_layer_heatmap.png").exists()
-        heat = json.load(open(rt.COMPARE_DIR / "tables" / "frozen_late_layer__q9.json"))
+        heat = json.load(open(rt.COMPARE_DIR / "tables" / f"frozen_late_layer__{rt.QVER}.json"))
         assert any(r["cls_source"] == "forda" and r["stage"] == rt.STAGE2 for r in heat)
     finally:
         rt.OUT_ROOT, rt.COMPARE_DIR, rt.FROZEN_DIR, rt.FCAST_PROBE_DIR = o_out, o_cmp, o_frozen, o_fcast

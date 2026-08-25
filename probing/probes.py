@@ -157,6 +157,19 @@ QUANTILE_SETS = {
     "q21": CHRONOS2_QUANTILES,
 }
 
+# ------------------------------------------------------------------------------------------------ #
+# Shared forecasting-probe protocol (q1/q9 rerun) — ONE source of truth imported by every fslot
+# fitting driver (run_ptood_probing_ftok / run_fslot_transfer / run_ft_specialization /
+# run_task_shift) so the grid + protocol identity can never drift between experiments.
+#
+# WD_GRID_V2 widens the legacy narrow grid (1e-5..1e-1): the q9 diagnostic showed many layers
+# selecting the old maximum 1e-1 while validation loss was STILL improving (grid clipped), so three
+# stronger candidates are added. PROBE_PROTOCOL_VERSION stamps every new result's path + metadata so
+# a legacy narrow-grid q9 result can NEVER satisfy the skip logic of a new wide-grid q9 run — a fresh
+# probe-protocol identity, disjoint from the committed q9 numbers.
+WD_GRID_V2 = (1e-5, 1e-4, 1e-3, 1e-2, 1e-1, 3e-1, 1.0, 3.0)
+PROBE_PROTOCOL_VERSION = "v2"     # shared-linear fslot readout, wide WD grid
+
 
 def validate_quantiles(quantiles):
     """Validate a quantile vector (non-empty, all strictly inside (0,1), strictly increasing

@@ -1,6 +1,49 @@
 # Working plan — chronos2-layerwise-probing
 _Rolling notes. Edit freely; run `/plan` to fold in recent conversation._
-_Last updated: 2026-08-17_
+_Last updated: 2026-08-20_
+
+## ext_v5 NATIVE-HEAD ADAPTER — 2026-08-20 [BUILT & CPU-VERIFIED, NOT run on GPU, NOT committed]
+NEW exploratory line, fully isolated in `results/ext_v5_native_head_adapter/` (ext_v4 UNTOUCHED). Question:
+at each layer, is the representation usable by Chronos-2's OWN frozen Quantile Head, and can a shared
+linear 768→768 map make it usable? DISTINCT from ext_v4 (which trains a fresh readout from scratch).
+- **3 conditions, all through the ACTUAL pretrained `output_patch_embedding` (never reimplemented):**
+  (1) native baseline `final_slots→head`; (2) zero-shot `h_l→final RMSNorm→head`; (3) linear adapter
+  `h_l→A_l→final RMSNorm→head` (only A_l trains). `A_l=nn.Linear(768,768)`, IDENTITY init (W=I,b=0),
+  shared across K=4 slots. Chronos-2's `encoder.final_layer_norm` is T5-**RMSNorm** → call it "L12+RMS"
+  (NOT "L12+LN"). L12+RMS is the native-head input, so zero-shot@L12+RMS ≡ native; **adapters trained
+  Emb..L12 ONLY**, the curve TERMINATES at native at L12+RMS (do NOT train A_13 = dataset-specific
+  adaptation of the native model, a different experiment — reviewer call).
+- **DECISIONS (user + reviewer, 2026-08-20):** (a) EDIT FILES + SHOW DIFFS [[scoped-go-ahead-with-diff]];
+  (b) **ONE deterministic adapter fit** per dataset×layer×wd (identity init + full-batch ⇒ deterministic;
+  seeds only vary probe INIT in this repo, windows fixed at SEED ⇒ 3 seeds would be identical) — uncertainty
+  = paired series-cluster bootstrap on TEST (÷3 vs seed bands); (c) precise claim: a linear map of layer l
+  is *SUFFICIENT* to make it usable by the native head, NOT "recovers the l→L12 transform" (A_l supervised
+  by Y, not by L12). Parked follow-up: label-free `min_A ||RMS(A h_l)−h_{L12+RMS}||²` (NOT built).
+- **VERIFIED FROM SOURCE (no model load):** native head = `model.output_patch_embedding` ResidualBlock(768→
+  d_ff→21·16=336) consuming POST-final-RMSNorm slots (model.py:190,727-732). `final["fslot"]` (extraction.py:
+  514) == that input → reconstruction reuses `probes._apply_shared_head` for the exact `n k (q p)→n q (k p)`
+  layout. InstanceNorm loc=nanmean/scale=nanstd·arcsinh (chronos_bolt.py:111) == project `_ctx_stats` ⇒ head
+  normalized space == Y_traj; raw = mu+s·sinh(z). config `max_output_patches=64` ⇒ H=64 predict_quantiles is a
+  SINGLE K=4 pass, NO unroll ⇒ reconstruction == pipeline exactly (gate). context_length=8192 ⇒ C=512 not
+  truncated. ALL 7 datasets' pretrained K4_H64 slot caches on disk ⇒ **NO GPU re-extraction** (only model load
+  + adapter fits). Train q21 native pinball (normalized) vs Y_traj; wd on val over WD_GRID_V2; 300 ep; no scaler
+  (identity semantics). Metrics: MASE(median,raw, primary/plotted) + median MAE + WQL + relative-regret vs native.
+- **CODE (all additive; probes.py / ext_v4 drivers UNTOUCHED):** NEW `probing/native_head_adapter.py`
+  (LinearAdapter, native_head_modules, slots_to_normalized_quantiles, fit_adapter_explicit_val); NEW
+  `experiments/run_native_head_adapter.py` (`--sanity`/`--adapt`/`--figures`; namespace + git-hash/config/
+  bootstrap_inputs/adapters saved; own `_native_pipeline_median` cache `__<split>__nha_native_median_H64` so
+  the gate never collides with the legacy 650-window `__ood__test` median cache); NEW `tests/
+  test_native_head_adapter.py` (10 CPU/synthetic); NEW `job_native_head_adapter.sh`.
+- **VERIFIED (login CPU, OMP=2):** 10/10 new tests PASS (identity==zero-shot, shared-A, no-double-RMS,
+  reuses _apply_shared_head, only-adapter-grad, val-only+deterministic, train-loss↓, namespace ext_v5≠ext_v4);
+  regressions green (shared_forecast 8, quantile_sets 11, tunnel 13, fslot_transfer 13); py_compile clean;
+  synthetic figures path renders (per-dataset + 2×4 overview + regret table, native regret==0).
+- **RUN RECIPE (user submits SLURM — [[submit-slurm-jobs-self]]; NOT login):**
+  `sbatch -J nha_sanity --time=0:30:00 job_native_head_adapter.sh --sanity` → inspect gates (native
+  reconstruction rel<5e-3; zero-shot@L12+RMS==native ΔMASE=0; frozen-check 0 model params) → `sbatch -J
+  nha_adapt job_native_head_adapter.sh --adapt` (7 datasets) → login `python -m
+  experiments.run_native_head_adapter --figures`. Adapters ~215MB (91×2.36MB) → gitignore `adapters/` at
+  commit; commit code + results separately, NO Co-Authored-By [[no-coauthor-trailer]]. **NOT YET RUN on GPU.**
 
 ## TASK-SHIFT (FordA CLASSIFICATION) EXPERIMENT — 2026-08-17  [DESIGN CAPTURED — code NOT started]
 Self-contained handoff: a fresh session can begin from THIS section. Repo state at drafting: branch

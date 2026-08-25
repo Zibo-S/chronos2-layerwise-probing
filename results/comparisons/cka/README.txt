@@ -1,0 +1,1 @@
+CKA is independent of the probe quantile set (backbone representations are identical for q1/q9), so it lives OUTSIDE the q1/q9 namespaces. These figures are copied from results/cka/ (source of truth). Blocks: pretrained-transfer (within-dataset layer x layer), domain specialization (pretrained vs BOOM early/late), task specialization (pretrained vs cls early/late).

@@ -71,8 +71,9 @@ from probing.config import NUM_LAYERS, SEED, OUTPUT_PATCH_SIZE, CACHE_DIR
 from probing.extraction import extract_kout_features, get_pipeline, _cache_path, _idf_prefix
 from probing.id_data import build_ood_rolling_windows, build_windows
 from probing.finetune import ft_cache_prefix, checkpoint_hash, _select_device
-from probing.probes import (QUANTILE_SETS, validate_quantiles, median_index,
-                            fit_shared_forecast_probe_explicit_val, predict_shared_forecast_probe)
+from probing.probes import (QUANTILE_SETS, PROBE_PROTOCOL_VERSION, WD_GRID_V2, validate_quantiles,
+                            median_index, fit_shared_forecast_probe_explicit_val,
+                            predict_shared_forecast_probe)
 from probing.stats import cluster_bootstrap_counts, ci_bounds
 from probing.tunnel import d_stat_boot, tunnel_record_multi, val_curve_from_selection
 # B3/B5 reuse the native-forecasting + paired-bootstrap primitives verbatim (NO parallel evaluation
@@ -101,10 +102,14 @@ SHORT = {"monash_electricity_hourly": "Electricity", "uber_tlc_hourly": "Uber",
 OUT_ROOT = config.REPO_ROOT / "results" / "ft_specialization" / "stageB"
 FT_MANIFEST = config.REPO_ROOT / "results" / "ft_specialization" / FT_SOURCE / "manifest.json"
 
-# --- B2 config (fresh shared-forecast-slot LINEAR probes, q9; tunnel.py consumed unchanged) ------ #
+# --- B2 config (fresh shared-forecast-slot LINEAR probes; tunnel.py consumed unchanged) ---------- #
+# QSET defaults to q9 but is set from --quantile-set in main() so the SAME driver reruns q9 and q1.
+# QVER stamps the wide-grid protocol into every B2 filename so a legacy narrow-grid q9 record can
+# never satisfy the new q9 skip (§10/§25). WD_GRID is the shared wide grid (WD_GRID_V2).
 QSET = "q9"                                # probe-head quantile vector (features are qset-independent)
+QVER = f"{QSET}__{PROBE_PROTOCOL_VERSION}"  # versioned tag for B2 filenames; recomputed in main()
 QUANTILE_EPOCHS = 300                      # matches the v4 fslot probe fit
-WD_GRID = (1e-5, 1e-4, 1e-3, 1e-2, 1e-1)   # weight decay selected on the TARGET's own validation split
+WD_GRID = WD_GRID_V2                        # wide weight-decay grid (shared source of truth)
 PROBE_SEEDS = (0, 1, 2)                    # 3 independent probe-init runs; backbone is fixed per stage
 RUN_TYPE = "probe_seed"                    # only the Linear init varies across the 3 runs (tunnel.py field)
 # The fslot line carries NUM_LAYERS+1 = 14 points: Emb, L1..L12, then the POST-final-LN native-head
@@ -113,10 +118,13 @@ POST_LN_LABEL = "L12+LN"
 LAYER_LABELS = ["Emb"] + [f"L{i}" for i in range(1, NUM_LAYERS)] + [POST_LN_LABEL]
 STAGE_COLOR = {STAGE0: "tab:blue", "stage1_ft_early": "tab:orange", "stage2_ft_late": "tab:red"}
 
+# Compute artifacts (per-run probe records) keep the stageB/ location but carry QVER in the filename;
+# B2 presentation (tunnels/figures/tables) routes into the browsable per-quantile domain-shift tree.
+DOMAIN_SHIFT_ROOT = config.REPO_ROOT / "results" / "ft_specialization" / "domain_shift"
 PROBE_DIR = OUT_ROOT / "probes"            # per (stage,target,seed): val/test curves + per-window loss
-TUNNEL_DIR = OUT_ROOT / "tunnels"          # per-stage BOOM (FT-ID/probe-ID) tunnel record + figure
-FIG_DIR = OUT_ROOT / "figures"             # per-stage tunnel + per-target 3-stage overlays
-TABLE_DIR = OUT_ROOT / "tables"            # stage x target D + loss table
+TUNNEL_DIR = DOMAIN_SHIFT_ROOT / QSET / "tunnels"   # per-stage BOOM (FT-ID/probe-ID) tunnel record
+FIG_DIR = DOMAIN_SHIFT_ROOT / QSET / "figures"      # per-stage tunnel + per-target 3-stage overlays
+TABLE_DIR = DOMAIN_SHIFT_ROOT / QSET / "tables"     # stage x target D + loss table
 
 
 def target_status(tag: str) -> tuple[str, str]:
@@ -288,7 +296,22 @@ def _load_fslot(stage, tag, split, X, y):
 
 
 def _run_stem(stage_label, tag, seed):
-    return f"{stage_label}__{tag}__{QSET}__seed{seed}"
+    return f"{stage_label}__{tag}__{QVER}__seed{seed}"
+
+
+def _b2_run_compatible(path):
+    """Skip predicate for a B2 per-run JSON: False if absent; True if present AND its recorded
+    (quantile_set, probe_protocol_version, wd_grid) match this run; RAISE if present-but-incompatible
+    so a stale/foreign result can never silently satisfy the new run (§10/§25)."""
+    if not path.exists():
+        return False
+    meta = json.load(open(path))
+    want = (QSET, PROBE_PROTOCOL_VERSION, [float(w) for w in WD_GRID])
+    got = (meta.get("quantile_set"), meta.get("probe_protocol_version"), meta.get("wd_grid"))
+    if got != want:
+        raise RuntimeError(f"incompatible B2 result {path.name}: got (qset,protocol,wd_grid)={got} "
+                           f"but this run wants {want}. Delete it or bump the protocol version.")
+    return True
 
 
 def _fit_one(stage_label, tag, f_tr, Ytr, f_va, Yva, f_te, Yte, series_test, seed, quantiles, device):
@@ -310,6 +333,8 @@ def _fit_one(stage_label, tag, f_tr, Ytr, f_va, Yva, f_te, Yte, series_test, see
            "short": SHORT[tag], "pt_status": pt, "ft_status": ft, "probe_status": "probe-ID",
            "ft_source": FT_SOURCE, "quantile_set": QSET, "readout": "fslot",
            "pooling_or_token_type": "forecast_slot", "run_type": RUN_TYPE, "run_seed": int(seed),
+           "probe_protocol_version": PROBE_PROTOCOL_VERSION, "wd_grid": [float(w) for w in WD_GRID],
+           "quantiles": [float(q) for q in quantiles], "Q": len(quantiles),
            "C": C, "H": H, "P": OUTPUT_PATCH_SIZE, "K": K,
            "val_loss_by_layer": val_curve_from_selection(
                {i: fitted[i]["selection"] for i in sorted(fitted)}, num_layers=len(fitted)),
@@ -328,9 +353,9 @@ def run_probe(stages, targets, seeds, device):
         roles, w = _role_split(tag), None
         for stage in stages:
             pending = [s for s in seeds
-                       if not (PROBE_DIR / f"{_run_stem(stage.label, tag, s)}.json").exists()]
+                       if not _b2_run_compatible(PROBE_DIR / f"{_run_stem(stage.label, tag, s)}.json")]
             if not pending:
-                print(f"  [skip] {stage.label}/{SHORT[tag]}: all seeds fit")
+                print(f"  [skip] {stage.label}/{SHORT[tag]}: all seeds fit ({QVER})")
                 continue
             if w is None:
                 w, _ = target_windows(tag)          # sets config.DATASET_SET for PT-ID cache namespacing
@@ -399,7 +424,7 @@ def _tunnel_figure(rec, stage_label):
     ax.set_title(f"{stage_label}: BOOM FT-ID / probe-ID tunnel")
     ax.legend(fontsize=7)
     FIG_DIR.mkdir(parents=True, exist_ok=True)
-    fig.tight_layout(); fig.savefig(FIG_DIR / f"tunnel__{stage_label}__{QSET}.png", dpi=140)
+    fig.tight_layout(); fig.savefig(FIG_DIR / f"tunnel__{stage_label}__{QVER}.png", dpi=140)
     plt.close(fig)
 
 
@@ -416,6 +441,7 @@ def _stage_boom_tunnel(stage_label):
         val_split_kind="temporal_rolling",
         extra={"experiment": "ft_specialization_stageB", "stage": stage_label, "ft_source": FT_SOURCE,
                "quantile_set": QSET, "readout": "fslot", "pooling_or_token_type": "forecast_slot",
+               "probe_protocol_version": PROBE_PROTOCOL_VERSION, "wd_grid": [float(w) for w in WD_GRID],
                "defined_on": "BOOM (FT-ID / probe-ID) validation",
                "pt_status": "PT-OOD", "ft_status": "FT-ID", "probe_status": "probe-ID"})
     last = wl_mean.shape[0] - 1
@@ -423,7 +449,7 @@ def _stage_boom_tunnel(stage_label):
     rec["d_id_ci"] = list(d["ci"]); rec["n_clusters"] = d["n_clusters"]; rec["n_windows"] = d["n_windows"]
     rec["d_id_by_run"] = [float((t[-1] - t[rec["l_start"]]) / t[rec["l_start"]]) for t in test_by_run]
     TUNNEL_DIR.mkdir(parents=True, exist_ok=True)
-    out = TUNNEL_DIR / f"tunnel__{stage_label}__{QSET}.json"
+    out = TUNNEL_DIR / f"tunnel__{stage_label}__{QVER}.json"
     json.dump(rec, open(out, "w"), indent=2)
     _tunnel_figure(rec, stage_label)
     print(f"  [{stage_label:>18}] BOOM tunnel [{LAYER_LABELS[rec['l_start']]}, {LAYER_LABELS[last]}]"
@@ -440,7 +466,7 @@ def run_tunnels(stages):
 # B2 — layerwise curves + stage x target table (BOOM tunnel used as the lens)
 # --------------------------------------------------------------------------- #
 def _load_stage_tunnel(stage_label):
-    p = TUNNEL_DIR / f"tunnel__{stage_label}__{QSET}.json"
+    p = TUNNEL_DIR / f"tunnel__{stage_label}__{QVER}.json"
     if not p.exists():
         raise FileNotFoundError(f"missing stage tunnel {p.name} — run --tunnels first")
     return json.load(open(p))
@@ -489,16 +515,16 @@ def _overlay_figure(tag, stages, cells):
     ax.set_title(f"{SHORT[tag]}  ({pt} / {ft} / probe-ID)  —  dotted = each stage's BOOM tunnel entrance")
     ax.legend(fontsize=8, title="backbone stage")
     FIG_DIR.mkdir(parents=True, exist_ok=True)
-    fig.tight_layout(); fig.savefig(FIG_DIR / f"layerwise__{tag}__{QSET}.png", dpi=140)
+    fig.tight_layout(); fig.savefig(FIG_DIR / f"layerwise__{tag}__{QVER}.png", dpi=140)
     plt.close(fig)
 
 
 def _write_table(rows):
     TABLE_DIR.mkdir(parents=True, exist_ok=True)
-    with open(TABLE_DIR / f"stageB_layerwise__{QSET}.csv", "w", newline="") as f:
+    with open(TABLE_DIR / f"stageB_layerwise__{QVER}.csv", "w", newline="") as f:
         wtr = csv.DictWriter(f, fieldnames=list(rows[0].keys()))
         wtr.writeheader(); wtr.writerows(rows)
-    json.dump(rows, open(TABLE_DIR / f"stageB_layerwise__{QSET}.json", "w"), indent=2)
+    json.dump(rows, open(TABLE_DIR / f"stageB_layerwise__{QVER}.json", "w"), indent=2)
 
 
 def run_figures(stages, targets):
@@ -515,7 +541,7 @@ def run_figures(stages, targets):
         _overlay_figure(tag, stages, cells)
     _write_table(rows)
     print(f"[B2 figures] {len(rows)} (stage,target) cells -> "
-          f"{TABLE_DIR}/stageB_layerwise__{QSET}.csv")
+          f"{TABLE_DIR}/stageB_layerwise__{QVER}.csv")
     return rows
 
 
@@ -977,11 +1003,27 @@ def _parse_args(argv=None):
     ap.add_argument("--seeds", nargs="+", type=int, default=list(PROBE_SEEDS),
                     help="probe-init seeds for --probe (default 0 1 2)")
     ap.add_argument("--device", default=None, help="probe-fit device (default: auto — GPU if present)")
+    ap.add_argument("--quantile-set", default="q9", choices=sorted(QUANTILE_SETS),
+                    help="B2 probe-head quantile vector: q9 (deciles) or q1 (median only). Reruns the "
+                         "SAME fslot analysis; features are qset-independent. B3/B4/B5 keep q9.")
     return ap.parse_args(argv)
+
+
+def _configure_qset(qset):
+    """Rebind the B2 quantile-config globals from --quantile-set: QSET drives the probe head, QVER
+    stamps the wide-grid protocol into B2 filenames, and the tunnel/figure/table dirs route into the
+    browsable per-quantile domain-shift tree. Compute artifacts (PROBE_DIR) keep stageB/ + QVER names."""
+    global QSET, QVER, TUNNEL_DIR, FIG_DIR, TABLE_DIR
+    QSET = qset
+    QVER = f"{QSET}__{PROBE_PROTOCOL_VERSION}"
+    TUNNEL_DIR = DOMAIN_SHIFT_ROOT / QSET / "tunnels"
+    FIG_DIR = DOMAIN_SHIFT_ROOT / QSET / "figures"
+    TABLE_DIR = DOMAIN_SHIFT_ROOT / QSET / "tables"
 
 
 def main(argv=None):
     args = _parse_args(argv)
+    _configure_qset(args.quantile_set)
     stages = load_stages(args.stages)
     did = False
     if args.extract or args.smoke:

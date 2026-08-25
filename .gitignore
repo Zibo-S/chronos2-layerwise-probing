@@ -26,3 +26,6 @@ CLAUDE.md
 # ---- SLURM run logs (ephemeral; provenance lives in the committed summaries/tables) ----
 logs/
 results/ext_v4_future_tokens/fslot_mlp/ptid_checkpoints/
+# ext_v5 native-head adapters: 91 x ~2.4MB = ~215MB of Linear(768,768) checkpoints; deterministic
+# (identity init + full-batch), regenerable via `run_native_head_adapter --adapt`. Metrics/plots are committed.
+results/ext_v5_native_head_adapter/adapters/
