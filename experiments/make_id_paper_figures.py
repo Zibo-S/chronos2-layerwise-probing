@@ -68,6 +68,11 @@ SPEC_DIR = V4 / "spectral"
 TRANSFER_SUBS = {"cross_dataset": "transfer_summary__4x4__q1.csv",
                  "unseen": "transfer_summary__pt_ood__q1.csv"}
 TRANSFER_OUT = V4 / QSET / "transfer_summary"
+# BOOM-as-source frozen transfer (5th source; produced by experiments.run_boom_source_transfer). Its
+# same-estimand block REPLACES the old "BOOM pretrained — fresh per-target probe" block in the combined
+# appendix figure, so BOOM is now a genuine transfer source alongside Electricity / Uber / Wind Farms.
+BOOM_SOURCE = "boom_hourly"
+BOOM_SRC_DIR = V4 / QSET / "boom_source"
 # --- BOOM domain-FT (Stage B): same layerwise question, backbone stage instead of probe source
 FT_PROBE_DIR = REPO_ROOT / "results" / "ft_specialization" / "stageB" / "probes"
 FT_OUT = REPO_ROOT / "results" / "ft_specialization" / "domain_shift" / QSET
@@ -295,6 +300,33 @@ def load_transfer_cells(boot_b, seed):
     return out
 
 
+def load_boom_source_cells(boot_b, seed):
+    """The 7 BOOM->target frozen-transfer cells: one probe fit on BOOM, applied unchanged to every
+    target. SAME estimand and SAME point estimator as load_transfer_cells (per-window seed-mean loss
+    via _layer_mean_boot); produced by experiments.run_boom_source_transfer. Keyed (BOOM_SOURCE, target)
+    so make_multi_source_delta_figure can index it exactly like the `by` dict of the other sources."""
+    rows = {r["target_dataset"]: r for r in csv.DictReader(open(_need(
+        BOOM_SRC_DIR / "tables" / f"transfer_summary__boom_src__{QSET}.csv",
+        "python -m experiments.run_boom_source_transfer --quantile-set q1")))}
+    out = {}
+    for tgt in COMBINED_TARGETS:
+        if tgt not in rows:
+            raise ValueError(f"BOOM-source summary is missing target '{tgt}'")
+        ls = int(rows[tgt]["val_selected_layer"])
+        wls, sids = [], []
+        for sd in RUN_SEEDS:
+            z = np.load(_need(BOOM_SRC_DIR / "bootstrap_inputs" /
+                              f"{BOOM_SOURCE}__to__{tgt}__{QSET}__seed{sd}.npz", "as above"))
+            wls.append(np.asarray(z["window_loss"], np.float64))
+            sids.append(np.asarray(z["series_test"], np.int64))
+        assert all(w.shape == wls[0].shape for w in wls), f"BOOM->{tgt}: window mismatch across seeds"
+        assert all(np.array_equal(x, sids[0]) for x in sids), f"BOOM->{tgt}: series mismatch across seeds"
+        point, _ = _layer_mean_boot(np.mean(wls, axis=0), sids[0], B=boot_b, seed=seed)
+        out[(BOOM_SOURCE, tgt)] = {"_curve": point, "source": BOOM_SOURCE, "target": tgt,
+                                   "l_s": ls, "l_s_label": LABELS[ls]}
+    return out
+
+
 def make_transfer_figure(cells, boot_b, stem="main_transfer_advantage", dpi=400,
                          show_title=True):
     """One compact 4x7 heatmap: rows = probe source, columns = evaluation target.
@@ -516,15 +548,17 @@ COMBINED_TARGETS = ["monash_electricity_hourly", "uber_tlc_hourly", "m4_hourly",
 COMBINED_RULE = 4                       # horizontal rule after the 4 PT-ID target rows
 
 
-def make_multi_source_delta_figure(cells, ft, srcs, boot_b, dpi=400, show_title=True,
+def make_multi_source_delta_figure(cells, boom_cells, srcs, boot_b, dpi=400, show_title=True,
                                    ref="final"):
     """One figure, one 7-row panel per block, all sharing the colour scale and reference.
 
-    Blocks 1..n  : frozen transferred probe, one per source (the probe is fit on the source
-                   and applied unchanged to every target).
-    Final block  : BOOM Stage B, stage0_pretrained -- a FRESH probe fit on each target. This is
-                   a DIFFERENT estimand from the transfer blocks and is labelled as such; the
-                   two are not directly comparable cell-for-cell.
+    Every block is the SAME estimand: a frozen transferred probe (fit on one source, applied
+    unchanged to all 7 targets).
+    Blocks 1..n  : one per PT-ID source in `srcs`.
+    Final block  : BOOM as a transfer source (probe fit on BOOM's train split), from
+                   load_boom_source_cells / experiments.run_boom_source_transfer. This replaces the
+                   old "BOOM pretrained -- fresh per-target probe" block, so the panel is now
+                   directly comparable cell-for-cell across all blocks.
     """
     from matplotlib.colors import TwoSlopeNorm
     norm = TwoSlopeNorm(vmin=-12.0, vcenter=0.0, vmax=30.0)
@@ -532,15 +566,15 @@ def make_multi_source_delta_figure(cells, ft, srcs, boot_b, dpi=400, show_title=
 
     blocks = [(f"{SHORT[src]}  \u2014  frozen transferred probe",
                [by[(src, t)] for t in COMBINED_TARGETS]) for src in srcs]
-    blocks.append(("BOOM pretrained  \u2014  fresh per-target probe  (different estimand)",
-                   [ft[("stage0_pretrained", t)] for t in COMBINED_TARGETS]))
+    blocks.append(("BOOM  \u2014  frozen transferred probe",
+                   [boom_cells[(BOOM_SOURCE, t)] for t in COMBINED_TARGETS]))
 
     with plt.rc_context({**PAPER_RC, "xtick.labelsize": 10, "ytick.labelsize": 10.5,
                          "axes.labelsize": 12}):
         fig, axes = plt.subplots(len(blocks), 1, figsize=(8.4, 11.8), layout="constrained",
                                  sharex=True)
         fig.get_layout_engine().set(h_pad=0.05, hspace=0.16)
-        for k, (ax, (title, cs)) in enumerate(zip(axes, blocks)):
+        for ax, (title, cs) in zip(axes, blocks):
             M = np.vstack([delta_curve(c, ref) for c in cs])
             im = ax.imshow(M, cmap="RdBu_r", norm=norm, aspect="auto", interpolation="nearest")
             for i in range(M.shape[0]):
@@ -558,10 +592,6 @@ def make_multi_source_delta_figure(cells, ft, srcs, boot_b, dpi=400, show_title=
             ax.set_title(title, fontsize=11, fontweight="bold", loc="left", pad=4)
             for side in ax.spines.values():
                 side.set_visible(False)
-            if k == len(blocks) - 1:                       # separate the different estimand
-                for side in ("top",):
-                    ax.spines[side].set_visible(True)
-                    ax.spines[side].set_linewidth(1.4)
         ref_idx = len(LABELS) + REF_SPEC[ref][0]
         axes[0].annotate("reference", xy=(ref_idx, -0.62), xycoords="data", ha="center",
                          va="center", fontsize=9.5, style="italic", annotation_clip=False)
@@ -931,9 +961,9 @@ def main():
             print(f"  {SHORT[src]:<12} " + "  ".join(ent))
             print(f"    -> {png.relative_to(REPO_ROOT)}")
         others = [t for t in SRC_COLOR if t != a.main_source]
-        mp, mg = make_multi_source_delta_figure(cells, load_ft_cells(a.boot_b, a.seed), others,
+        mp, mg = make_multi_source_delta_figure(cells, load_boom_source_cells(a.boot_b, a.seed), others,
                                                 a.boot_b, dpi=a.dpi, show_title=not a.no_title)
-        print(f"  [combined] {' + '.join(SHORT[t] for t in others)}\n"
+        print(f"  [combined] {' + '.join(SHORT[t] for t in others)} + BOOM\n"
               f"    -> {mg.relative_to(REPO_ROOT)}")
         rp, rg = make_rms_figure(cells, dpi=a.dpi, show_title=not a.no_title)
         dr = np.array([c["delta_rms"] for c in cells])

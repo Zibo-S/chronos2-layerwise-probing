@@ -1,6 +1,38 @@
 # Working plan — chronos2-layerwise-probing
 _Rolling notes. Edit freely; run `/plan` to fold in recent conversation._
-_Last updated: 2026-08-20_
+_Last updated: 2026-09-01_
+
+## BOOM-AS-SOURCE TRANSFER (q1 appendix 5th source) — 2026-09-01 [BUILT, NOT run, NOT committed]
+Goal (user): "train the linear probe on BOOM, eval on 7 datasets, add to
+`results/ext_v4_future_tokens/q1/transfer_summary/figures/appendix_delta_vs_final__combined.png`."
+BOOM was only ever a transfer TARGET; the committed pipeline fits source probes only on the 4 PT_ID_TAGS.
+This adds BOOM as a genuine 5th frozen-transfer SOURCE (same estimand as the Electricity/Uber/Wind blocks).
+- **USER DECISIONS (AskUserQuestion 2026-09-01):** (a) **REPLACE block 4** — the new "BOOM — frozen
+  transferred probe" block REPLACES the old "BOOM pretrained — fresh per-target probe (different
+  estimand)" block, so all 4 combined-figure blocks share ONE estimand; (b) EDIT FILES + SHOW DIFFS
+  [[scoped-go-ahead-with-diff]].
+- **NO GPU re-extraction:** BOOM pretrained fslot caches `IDF_boom_hourly__ood__{train,val,test}_rolling__
+  clean__K4_H64.npz` + all 7 targets' test caches VERIFIED on disk. Only work = fit BOOM q1 probe
+  (3 seeds, 14 layers, wd on BOOM-val) + 7 predict passes + rolling-window rebuilds (BOOM/SG/Coastal) →
+  COMPUTE node, NOT login (probe fits + heavy rolling builds). GPU only speeds the AdamW fits.
+- **CODE (all additive except the figure swap):** NEW `experiments/run_boom_source_transfer.py` — reuses
+  `build_ood_rolling_windows`/`build_windows`, `_fslot_feats`/`_save_ckpt` (run_ptood_probing_ftok),
+  `fit_/predict_shared_forecast_probe_explicit_val`, `_fslot_mase`/`_quadrant`/`_relative_regret`
+  (run_fslot_transfer). ℓ_s = argmin of the seed-mean BOOM val curve. Writes isolated namespace
+  `results/ext_v4_future_tokens/q1/boom_source/{bootstrap_inputs/boom_hourly__to__<tgt>__q1__seed{s}.npz,
+  tables/transfer_summary__boom_src__q1.csv, checkpoints/}` — committed 28-cell 4×4/pt_ood data untouched.
+  EDIT `experiments/make_id_paper_figures.py`: `+load_boom_source_cells` (mirrors load_transfer_cells;
+  `_curve` via `_layer_mean_boot`, same point estimator) + `make_multi_source_delta_figure(cells,
+  boom_cells, srcs, ...)` appends the BOOM block instead of the fresh-per-target ft block (dropped the
+  "different estimand" top-spine). NEW `job_boom_source_transfer.sh` (GPU:1, mem 16G, 1:00:00; HF offline
+  + OOD_TARGET_ROOT). `load_ft_cells` still used by the `--figure ft_boom` branch.
+- **VERIFIED (login, no venv):** `py_compile` clean on both files; all imported symbols exist; all 7
+  target + BOOM train/val/test K4_H64 caches on disk. NOT yet run.
+- **RUN RECIPE (user submits SLURM — [[submit-slurm-jobs-self]]):** `sbatch -J boom_src
+  job_boom_source_transfer.sh` (compute node; warm caches) → inspect
+  `results/ext_v4_future_tokens/q1/boom_source/tables/transfer_summary__boom_src__q1.csv` → login CPU:
+  `python -m experiments.make_id_paper_figures --figure transfer` (regenerates the combined figure with
+  the BOOM block). Commit code + results separately, NO Co-Authored-By [[no-coauthor-trailer]].
 
 ## ext_v5 NATIVE-HEAD ADAPTER — 2026-08-20 [BUILT & CPU-VERIFIED, NOT run on GPU, NOT committed]
 NEW exploratory line, fully isolated in `results/ext_v5_native_head_adapter/` (ext_v4 UNTOUCHED). Question:
