@@ -1,0 +1,391 @@
+{
+ "provenance": {
+  "seed": 0,
+  "sources": [
+   "m4_hourly",
+   "monash_electricity_hourly",
+   "uber_tlc_hourly",
+   "wind_farms_hourly"
+  ],
+  "targets_far": [
+   "sg_carpark",
+   "coastal_ts",
+   "boom_hourly"
+  ],
+  "max_series": 200,
+  "boom_first_n": 200,
+  "raw_cache": "/Users/apple/Desktop/TS_Experiment/results/distance/raw_cache",
+  "reused_modules": [
+   "probing.dataset_distance (catch22 / energy distance / pooled standardization / <=200 series)",
+   "probing.id_data.load_ood_target_series (manifest-verbatim target preprocessing)"
+  ],
+  "preprocessing": {
+   "sg_carpark": "15min->hourly mean of AVAILABLE samples, >=3 of 4 required, else NaN; no fill / no cross-hour interpolation",
+   "coastal_ts": "TEMP + PSAL only (PRES_REL dropped); 24 stations x 2 = 48 univariate series, fixed variate order",
+   "boom_hourly": "manifest-pinned variate per query; FIRST 200 entries by file order",
+   "missing_data_rule": "longest contiguous finite segment per series, kept iff >= 512 points; no splicing across gaps; applied uniformly to all 7 datasets"
+  },
+  "one_pooled_standardization": "all 7 datasets standardized by a single pooled mean/std, so within-4x4 and source->target distances are on the same scale",
+  "gain_columns": {
+   "near": "results/<version>/ood_transfer/source_val_relative_gain_summary_q9.csv :: relative_gain_pct",
+   "far": "results/<version>/ood_pretrain_transfer/ood_pretrain_transfer_results__q9.csv :: relative_gain_pct where selection_method='source_selected'"
+  },
+  "anchor_provenance": "the three published cross-check values correspond to extended_v3_rolling + source_selected (Egor's shared figure), NOT extended_v2; the gate is pointed there",
+  "note_m4_boom_oracle_degenerate": "m4_hourly->boom_hourly has oracle gain exactly 0.0000 in both versions (the oracle selected L12 itself); the join uses source_selected, so this does not affect any joined cell"
+ },
+ "seed0": {
+  "seed": 0,
+  "datasets": [
+   "m4_hourly",
+   "monash_electricity_hourly",
+   "uber_tlc_hourly",
+   "wind_farms_hourly",
+   "sg_carpark",
+   "coastal_ts",
+   "boom_hourly"
+  ],
+  "matrix": [
+   [
+    0.0,
+    1.4097678083971257,
+    2.9995974268063588,
+    2.332351559325204,
+    0.5124594557879032,
+    4.436581612409084,
+    3.4068725324339617
+   ],
+   [
+    1.4097678083971257,
+    0.0,
+    2.7737894769977967,
+    1.834869462752481,
+    1.1934606318657401,
+    3.9080525690540657,
+    2.3775200098952034
+   ],
+   [
+    2.9995974268063588,
+    2.7737894769977967,
+    0.0,
+    2.6147954165523988,
+    3.1561179674141977,
+    5.637716215490485,
+    2.61208723695178
+   ],
+   [
+    2.332351559325204,
+    1.834869462752481,
+    2.6147954165523988,
+    0.0,
+    1.9364085278936338,
+    2.563193217046468,
+    0.8573026479803847
+   ],
+   [
+    0.5124594557879032,
+    1.1934606318657401,
+    3.1561179674141977,
+    1.9364085278936338,
+    0.0,
+    4.349826292829309,
+    3.1009670531365625
+   ],
+   [
+    4.436581612409084,
+    3.9080525690540657,
+    5.637716215490485,
+    2.563193217046468,
+    4.349826292829309,
+    0.0,
+    1.6629477043867933
+   ],
+   [
+    3.4068725324339617,
+    2.3775200098952034,
+    2.61208723695178,
+    0.8573026479803847,
+    3.1009670531365625,
+    1.6629477043867933,
+    0.0
+   ]
+  ],
+  "n_raw_series": {
+   "m4_hourly": 414,
+   "monash_electricity_hourly": 321,
+   "uber_tlc_hourly": 262,
+   "wind_farms_hourly": 337,
+   "sg_carpark": 354,
+   "coastal_ts": 48,
+   "boom_hourly": 200
+  },
+  "n_series_used": {
+   "m4_hourly": 200,
+   "monash_electricity_hourly": 200,
+   "uber_tlc_hourly": 200,
+   "wind_farms_hourly": 191,
+   "sg_carpark": 200,
+   "coastal_ts": 48,
+   "boom_hourly": 200
+  },
+  "n_series_dropped": {
+   "m4_hourly": 0,
+   "monash_electricity_hourly": 0,
+   "uber_tlc_hourly": 0,
+   "wind_farms_hourly": 9,
+   "sg_carpark": 0,
+   "coastal_ts": 0,
+   "boom_hourly": 0
+  },
+  "segment_rule": {
+   "rule": "per series, take the LONGEST CONTIGUOUS FINITE segment; keep the series iff that segment has >= min_segment_points. Segments are NEVER concatenated across NaN gaps \u2014 splicing would corrupt the autocorrelation-family catch22 features.",
+   "min_segment_points": 512,
+   "applied_to": "all 7 datasets uniformly, before sampling and feature extraction",
+   "supersedes": "the prototype's drop-series-if-any-NaN filter, which discarded 322/337 wind_farms_hourly series (5-7 usable) and caused a seed-stability failure (Spearman 0.9117 < 0.95)",
+   "per_dataset": {
+    "m4_hourly": {
+     "n_raw": 414,
+     "n_kept": 414,
+     "n_dropped_short_segment": 0,
+     "median_segment_length": 1008.0,
+     "min_segment_length": 748.0,
+     "median_raw_length": 1008.0
+    },
+    "monash_electricity_hourly": {
+     "n_raw": 321,
+     "n_kept": 321,
+     "n_dropped_short_segment": 0,
+     "median_segment_length": 26304.0,
+     "min_segment_length": 26304.0,
+     "median_raw_length": 26304.0
+    },
+    "uber_tlc_hourly": {
+     "n_raw": 262,
+     "n_kept": 262,
+     "n_dropped_short_segment": 0,
+     "median_segment_length": 4344.0,
+     "min_segment_length": 4344.0,
+     "median_raw_length": 4344.0
+    },
+    "wind_farms_hourly": {
+     "n_raw": 337,
+     "n_kept": 337,
+     "n_dropped_short_segment": 0,
+     "median_segment_length": 5259.0,
+     "min_segment_length": 1715.0,
+     "median_raw_length": 8784.0
+    },
+    "sg_carpark": {
+     "n_raw": 354,
+     "n_kept": 354,
+     "n_dropped_short_segment": 0,
+     "median_segment_length": 3623.0,
+     "min_segment_length": 3623.0,
+     "median_raw_length": 3623.0
+    },
+    "coastal_ts": {
+     "n_raw": 48,
+     "n_kept": 48,
+     "n_dropped_short_segment": 0,
+     "median_segment_length": 5224.5,
+     "min_segment_length": 2733.0,
+     "median_raw_length": 5224.5
+    },
+    "boom_hourly": {
+     "n_raw": 200,
+     "n_kept": 200,
+     "n_dropped_short_segment": 0,
+     "median_segment_length": 5230.0,
+     "min_segment_length": 732.0,
+     "median_raw_length": 5230.0
+    }
+   }
+  },
+  "catch22_package": "pycatch22",
+  "catch22_version": "unknown",
+  "max_series": 200,
+  "boom_first_n": 200
+ },
+ "seed1": {
+  "seed": 1,
+  "datasets": [
+   "m4_hourly",
+   "monash_electricity_hourly",
+   "uber_tlc_hourly",
+   "wind_farms_hourly",
+   "sg_carpark",
+   "coastal_ts",
+   "boom_hourly"
+  ],
+  "matrix": [
+   [
+    0.0,
+    1.6272000177371293,
+    3.4608391954516735,
+    2.542317753281308,
+    0.6240588883386318,
+    4.228276493910834,
+    3.4925408931914124
+   ],
+   [
+    1.6272000177371293,
+    0.0,
+    2.9387480256691605,
+    1.880965199850019,
+    1.2250727391422065,
+    3.6300350808768647,
+    2.3367461445745192
+   ],
+   [
+    3.4608391954516735,
+    2.9387480256691605,
+    0.0,
+    2.668955688556469,
+    3.361460752271794,
+    5.527093743368943,
+    2.5822761611060763
+   ],
+   [
+    2.542317753281308,
+    1.880965199850019,
+    2.668955688556469,
+    0.0,
+    2.0237572754384847,
+    2.3759753049686223,
+    0.7573692841202959
+   ],
+   [
+    0.6240588883386318,
+    1.2250727391422065,
+    3.361460752271794,
+    2.0237572754384847,
+    0.0,
+    4.1398996724390384,
+    3.048855135945578
+   ],
+   [
+    4.228276493910834,
+    3.6300350808768647,
+    5.527093743368943,
+    2.3759753049686223,
+    4.1398996724390384,
+    0.0,
+    1.5823033759175082
+   ],
+   [
+    3.4925408931914124,
+    2.3367461445745192,
+    2.5822761611060763,
+    0.7573692841202959,
+    3.048855135945578,
+    1.5823033759175082,
+    0.0
+   ]
+  ],
+  "n_raw_series": {
+   "m4_hourly": 414,
+   "monash_electricity_hourly": 321,
+   "uber_tlc_hourly": 262,
+   "wind_farms_hourly": 337,
+   "sg_carpark": 354,
+   "coastal_ts": 48,
+   "boom_hourly": 200
+  },
+  "n_series_used": {
+   "m4_hourly": 200,
+   "monash_electricity_hourly": 200,
+   "uber_tlc_hourly": 200,
+   "wind_farms_hourly": 193,
+   "sg_carpark": 200,
+   "coastal_ts": 48,
+   "boom_hourly": 200
+  },
+  "n_series_dropped": {
+   "m4_hourly": 0,
+   "monash_electricity_hourly": 0,
+   "uber_tlc_hourly": 0,
+   "wind_farms_hourly": 7,
+   "sg_carpark": 0,
+   "coastal_ts": 0,
+   "boom_hourly": 0
+  },
+  "segment_rule": {
+   "rule": "per series, take the LONGEST CONTIGUOUS FINITE segment; keep the series iff that segment has >= min_segment_points. Segments are NEVER concatenated across NaN gaps \u2014 splicing would corrupt the autocorrelation-family catch22 features.",
+   "min_segment_points": 512,
+   "applied_to": "all 7 datasets uniformly, before sampling and feature extraction",
+   "supersedes": "the prototype's drop-series-if-any-NaN filter, which discarded 322/337 wind_farms_hourly series (5-7 usable) and caused a seed-stability failure (Spearman 0.9117 < 0.95)",
+   "per_dataset": {
+    "m4_hourly": {
+     "n_raw": 414,
+     "n_kept": 414,
+     "n_dropped_short_segment": 0,
+     "median_segment_length": 1008.0,
+     "min_segment_length": 748.0,
+     "median_raw_length": 1008.0
+    },
+    "monash_electricity_hourly": {
+     "n_raw": 321,
+     "n_kept": 321,
+     "n_dropped_short_segment": 0,
+     "median_segment_length": 26304.0,
+     "min_segment_length": 26304.0,
+     "median_raw_length": 26304.0
+    },
+    "uber_tlc_hourly": {
+     "n_raw": 262,
+     "n_kept": 262,
+     "n_dropped_short_segment": 0,
+     "median_segment_length": 4344.0,
+     "min_segment_length": 4344.0,
+     "median_raw_length": 4344.0
+    },
+    "wind_farms_hourly": {
+     "n_raw": 337,
+     "n_kept": 337,
+     "n_dropped_short_segment": 0,
+     "median_segment_length": 5259.0,
+     "min_segment_length": 1715.0,
+     "median_raw_length": 8784.0
+    },
+    "sg_carpark": {
+     "n_raw": 354,
+     "n_kept": 354,
+     "n_dropped_short_segment": 0,
+     "median_segment_length": 3623.0,
+     "min_segment_length": 3623.0,
+     "median_raw_length": 3623.0
+    },
+    "coastal_ts": {
+     "n_raw": 48,
+     "n_kept": 48,
+     "n_dropped_short_segment": 0,
+     "median_segment_length": 5224.5,
+     "min_segment_length": 2733.0,
+     "median_raw_length": 5224.5
+    },
+    "boom_hourly": {
+     "n_raw": 200,
+     "n_kept": 200,
+     "n_dropped_short_segment": 0,
+     "median_segment_length": 5230.0,
+     "min_segment_length": 732.0,
+     "median_raw_length": 5230.0
+    }
+   }
+  },
+  "catch22_package": "pycatch22",
+  "catch22_version": "unknown",
+  "max_series": 200,
+  "boom_first_n": 200
+ },
+ "seed_stability_spearman": 0.9909090909090909,
+ "spearman": {
+  "all_cells": {
+   "extended_v2": -0.10257841478478537,
+   "extended_v3_rolling": -0.4105879329754645
+  },
+  "excluding_m4_source": {
+   "extended_v2": 0.09111640951564104,
+   "extended_v3_rolling": -0.2297435182787235
+  }
+ }
+}
