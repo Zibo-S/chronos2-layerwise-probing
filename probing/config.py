@@ -5,11 +5,9 @@ All shared constants and filesystem paths live here so the experiment scripts an
 root (not the current working directory), so cache keys are identical no matter where a
 script is launched from — this is what keeps results reproducible after the reorg.
 
-Layer indexing (L0 included): L0 is the embedded token sequence entering the first transformer
-block (content patches + special tokens, pre-attention); L1..L12 are the outputs of encoder
-blocks 1..12. Hence NUM_LAYERS = 13 and LAST_LAYER = 12 (the final block, whose
-final_layer_norm output is what the native head consumes). Adding L0 shifts every layer label
-by +1 relative to the original committed numbers, which are regenerated under this scheme.
+Nothing here changes the numerical behaviour of the original scripts: SEED, NUM_LAYERS,
+the middle band (L3-8), the last layer (L11) and the bootstrap resample count (2000) are
+exactly the values used to produce the committed results.
 """
 
 from __future__ import annotations
@@ -21,9 +19,29 @@ from pathlib import Path
 SEED = 0                       # global seed (numpy + torch + sklearn random_state)
 
 # ---- model / probe geometry ----
-NUM_LAYERS = 13                # L0 embedding (pre-block-1) + 12 encoder-block outputs (L1..L12)
-MIDDLE_BAND = list(range(4, 10))  # a-priori "middle" layers (same blocks as before, +1 shifted)
-LAST_LAYER = NUM_LAYERS - 1    # L12 = last encoder block; native head consumes its final-norm
+# ============================================================================
+# FROZEN FOR THE FMTS SUBMISSION — DO NOT CHANGE THESE THREE CONSTANTS.
+#
+# Convention: probe arrays are 0-indexed over the 12 encoder-block outputs
+# (probe index k = block output k = paper-axis layer L(k+1); the embedding has
+# no probe point). These exact values produced every published/committed result:
+#   - results/phase0_trio/id_probing_summary.json (ID probe curves + dropoff)
+#   - results/uea/perdataset_summary.json — its run-time config block records
+#     middle_band=[3..8], last_layer=11, i.e. the forest's late-layer deficit
+#     mean(L4:L9) − L12 on the paper axis
+#   - results/extended_v1/**, results/*/bootstrap/** (delta_vs_L11),
+#     results/repr_metrics/** (masarczyk criterion, native head, CKA)
+#
+# A 1-indexed 13-layer scheme (embedding as L0, NUM_LAYERS=13, band [4..10),
+# LAST_LAYER=12) was imported here from the ood-forecasting-pilot repo in
+# commit 673e9f9; no results in THIS repo were ever produced under it, and the
+# rest of this codebase (extraction.py, run_perdataset.py, run_bootstrap.py,
+# run_id_forecasting.py) still assumes the 0-indexed 12-layer convention.
+# Reverted 2026-09-01. Do not re-apply before the FMTS submission is frozen.
+# ============================================================================
+NUM_LAYERS = 12                # Chronos-2 encoder blocks
+MIDDLE_BAND = list(range(3, 9))  # a-priori "middle" layers L3..L8 (inclusive)
+LAST_LAYER = NUM_LAYERS - 1    # L11
 # Chronos-2 output patch size (== input_patch_size; verified from amazon/chronos-2 config.json).
 # The number of native forecast slots for a horizon H is K = ceil(H / OUTPUT_PATCH_SIZE) —
 # Chronos-2's own rule (pipeline.get_num_output_patches); predictions for the last partial
