@@ -17,6 +17,8 @@ dataset; we compare the PATTERNS, never CKA(Electricity, Uber)).
 
 Analyses (select with flags; default = --all):
   --extended-v3     within-dataset 13x13 CKA per dataset + CKA-to-final summary curves
+  --extv4-fslot     within-dataset 14x14 FORECAST-SLOT CKA for all 7 pretrained datasets (the
+                    representation the ext_v4 fslot probes read); writes provenance.json
   --domain-ft       BOOM-FT: within-stage 14x14, cross-stage alignment, same-layer drift (per target)
   --task-ft         FordA-cls-FT: same three, for FordA content AND forecasting fslot targets
   --domain-vs-task  same-layer CKA-to-pretrained drift, DOMAIN (BOOM) vs TASK (FordA), fslot vs fslot
@@ -124,6 +126,81 @@ def read_forda_reps(stage: str, manifest: dict | None) -> list[np.ndarray]:
                                    cka.stage_hash_from_manifest(manifest, stage)))
     path = _cache_path(prefix, "test", None, CLS_POOL)
     return cka.load_npz_reps(path, CONTENT14_KEYS)
+
+
+# ext_v4 forecast-slot line: the SAME 14 representation points the fslot probes read, for all 7
+# pretrained-backbone datasets. Replaces the four ad-hoc matrices committed in 1bf1b56, which had
+# no producer and therefore no recorded split/subsample/seed (see the framework audit).
+EXTV4_TAGS = ["monash_electricity_hourly", "uber_tlc_hourly", "m4_hourly", "wind_farms_hourly",
+              "sg_carpark", "coastal_ts", "boom_hourly"]
+
+
+def _fslot_split(tag: str, split: str) -> str:
+    """Concrete cache split name. PT-OOD targets were windowed by build_ood_rolling_windows and
+    their caches carry the '_rolling' suffix that keeps them disjoint from the legacy eval-only
+    caches (see run_ptood_probing_ftok._fslot_feats)."""
+    if split not in ("train", "test"):
+        raise ValueError(f"unknown split {split!r}; choose train or test")
+    if tag in PT_ID_TAGS:
+        return split
+    return f"{split}_rolling"
+
+
+def read_extv4_fslot_reps(tag: str, split: str) -> list[np.ndarray]:
+    """14 forecast-slot layer matrices for the PRETRAINED backbone, each folded (n,K,768)->(n*K,768).
+
+    Identical representation to read_fslot_reps(stage0) — same committed cache, same keys, same
+    stacking — just addressed by dataset+split instead of by FT stage."""
+    path = _cache_path(_idf_prefix(tag), _fslot_split(tag, split), None, FSLOT_POOL)
+    return [cka.stack_slots(a) for a in cka.load_npz_reps(path, FSLOT14_KEYS)]
+
+
+def run_extv4_fslot(max_rows, seed, split="test", tags=None):
+    """One reproducible 14x14 forecast-slot CKA per dataset + a recorded provenance sidecar."""
+    root = OUT / "ext_v4_future_tokens_fslot"
+    for sub in ("matrices", "figures", "tables"):
+        (root / sub).mkdir(parents=True, exist_ok=True)
+    tofinal_rows, curves, prov = [], [], {}
+    for tag in (tags or EXTV4_TAGS):
+        reps = read_extv4_fslot_reps(tag, split)
+        n_avail = reps[0].shape[0]
+        idx = cka.subsample_indices(n_avail, max_rows, seed)
+        reps = [r[idx] for r in reps]
+        M = cka.cka_matrix(reps)
+        short = SHORT.get(tag, tag)
+        kind = "PT-ID" if tag in PT_ID_TAGS else "PT-OOD"
+        np.save(root / "matrices" / f"{tag}__fslot__layerxlayer.npy", M)
+        cka.save_matrix_csv(M, LABELS_14, LABELS_14,
+                            root / "tables" / f"{tag}__fslot__layerxlayer.csv")
+        cka.heatmap(M, LABELS_14, LABELS_14,
+                    root / "figures" / f"{tag}__fslot__layerxlayer.png",
+                    title=f"{short} — forecast-slot layer x layer CKA ({kind})",
+                    xaxis_label="representation point", yaxis_label="representation point")
+        tf = cka.cka_to_reference(reps, ref_index=-1)          # to L12+LN (the native head's input)
+        curves.append((short, tf))
+        for lab, v in zip(LABELS_14, tf):
+            tofinal_rows.append({"dataset": tag, "short": short, "kind": kind,
+                                 "layer": lab, "cka_to_final": float(v)})
+        prov[tag] = {"kind": kind, "cache_split": _fslot_split(tag, split),
+                     "rows_available": int(n_avail), "rows_used": int(len(idx)),
+                     "windows": int(n_avail // K), "K": K}
+        print(f"[extv4-fslot] {short:<12} ({kind:<6}) 14x14  rows {len(idx)}/{n_avail}  "
+              f"split={_fslot_split(tag, split)}")
+    cka.drift_curve([(lab, v, None) for lab, v in curves], LABELS_14,
+                    root / "figures" / "cka_to_final__fslot_all.png",
+                    title="Forecast-slot CKA to the native head's input (L12+LN)",
+                    ylabel="Linear CKA to L12+LN")
+    with open(root / "tables" / "cka_to_final__fslot.csv", "w", newline="") as fh:
+        w = csv.DictWriter(fh, ["dataset", "short", "kind", "layer", "cka_to_final"])
+        w.writeheader(); w.writerows(tofinal_rows)
+    json.dump({"analysis": "ext_v4_future_tokens_fslot",
+               "representation": "forecast slots (n,K,768) -> (n*K,768), 14 points Emb..L12+LN",
+               "backbone": "pretrained amazon/chronos-2 (frozen)", "C": 512, "H": H, "K": K,
+               "requested_split": split, "max_rows": max_rows, "seed": seed,
+               "probe_independent": "CKA uses no probe: quantile set / weight decay do not enter",
+               "per_dataset": prov},
+              open(root / "provenance.json", "w"), indent=2)
+    print(f"[extv4-fslot] -> {root}  (provenance.json records split/rows/seed)")
 
 
 def read_extv3_reps(tag: str) -> list[np.ndarray]:
@@ -418,6 +495,10 @@ def _probe_scatter(rows, path):
 def _parse_args(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--extended-v3", action="store_true")
+    ap.add_argument("--extv4-fslot", action="store_true",
+                    help="14-pt forecast-slot CKA, all 7 pretrained-backbone datasets")
+    ap.add_argument("--fslot-split", default="test", choices=("test", "train"),
+                    help="which cached split the fslot CKA reads (recorded in provenance.json)")
     ap.add_argument("--domain-ft", action="store_true")
     ap.add_argument("--task-ft", action="store_true")
     ap.add_argument("--domain-vs-task", action="store_true")
@@ -431,17 +512,22 @@ def _parse_args(argv=None):
 
 def main(argv=None):
     a = _parse_args(argv)
-    run_all = a.all or not any([a.extended_v3, a.domain_ft, a.task_ft, a.domain_vs_task, a.probe_relation])
+    run_all = a.all or not any([a.extended_v3, a.extv4_fslot, a.domain_ft, a.task_ft,
+                                a.domain_vs_task, a.probe_relation])
     OUT.mkdir(parents=True, exist_ok=True)
     (OUT / "run_config.json").write_text(json.dumps(
         {"split": "test", "max_rows": a.max_rows, "seed": a.seed,
          "representations": {"extended_v3_rolling": "content-pooled, 13 pts (Emb,L1..L12)",
                              "ft_specialization": "fslot (n*K,768), 14 pts (+L12+LN)",
-                             "task_cls": "FordA content, 14 pts", "task_fcast": "fslot, 14 pts"}}, indent=2))
+                             "task_cls": "FordA content, 14 pts", "task_fcast": "fslot, 14 pts",
+                             "ext_v4_future_tokens_fslot":
+                                 f"fslot (n*K,768), 14 pts (+L12+LN), split={a.fslot_split}"}}, indent=2))
 
     domain_drift, cls_drift, task_fcast_drift = {}, {}, {}
     if run_all or a.extended_v3:
         run_extended_v3(a.max_rows, a.seed)
+    if run_all or a.extv4_fslot:
+        run_extv4_fslot(a.max_rows, a.seed, a.fslot_split)
     if run_all or a.domain_ft or a.domain_vs_task or a.probe_relation:
         domain_drift = run_domain_ft(a.targets, a.max_rows, a.seed)
     if run_all or a.task_ft or a.domain_vs_task or a.probe_relation:

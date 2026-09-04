@@ -165,6 +165,78 @@ def test_figure_smoke():
         assert p3.exists() and p3.read_text().count("\n") == 7   # header + 6 rows
 
 
+# --------------------------------------------------------------------------- #
+# ext_v4 forecast-slot branch (reproducible replacement for the ad-hoc matrices)
+# --------------------------------------------------------------------------- #
+def test_extv4_fslot_split_names():
+    """PT-ID caches are bare 'train'/'test'; PT-OOD rolling caches carry the '_rolling' suffix."""
+    from experiments.run_cka_analysis import _fslot_split
+    assert _fslot_split("m4_hourly", "test") == "test"
+    assert _fslot_split("m4_hourly", "train") == "train"
+    assert _fslot_split("boom_hourly", "test") == "test_rolling"
+    assert _fslot_split("sg_carpark", "train") == "train_rolling"
+    for bad in ("val", "TEST", ""):
+        try:
+            _fslot_split("m4_hourly", bad)
+        except ValueError:
+            continue
+        raise AssertionError(f"expected ValueError for split={bad!r}")
+    print("  PASS test_extv4_fslot_split_names")
+
+
+def test_extv4_fslot_roster_covers_all_seven():
+    from experiments.run_cka_analysis import EXTV4_TAGS, PT_ID_TAGS
+    assert len(EXTV4_TAGS) == 7 and len(set(EXTV4_TAGS)) == 7
+    assert PT_ID_TAGS.issubset(set(EXTV4_TAGS))
+    assert {"sg_carpark", "coastal_ts", "boom_hourly"}.issubset(set(EXTV4_TAGS))
+    print("  PASS test_extv4_fslot_roster_covers_all_seven")
+
+
+def test_extv4_fslot_matches_stage0_reader():
+    """The new reader must address the SAME cache as read_fslot_reps(stage0_pretrained), so the
+    replacement matrices are the same representation the fslot probes and the FT stage0 use."""
+    from experiments.run_cka_analysis import _fslot_split, _fcast_prefix, _fcast_split, FSLOT_POOL
+    from probing.extraction import _cache_path, _idf_prefix
+    for tag in ("m4_hourly", "boom_hourly"):
+        new = _cache_path(_idf_prefix(tag), _fslot_split(tag, "test"), None, FSLOT_POOL)
+        old = _cache_path(_fcast_prefix(tag, "boom", "stage0_pretrained", None),
+                          _fcast_split(tag), None, FSLOT_POOL)
+        assert new == old, f"{tag}: {new} != {old}"
+    print("  PASS test_extv4_fslot_matches_stage0_reader")
+
+
+def test_extv4_fslot_end_to_end_synthetic(tmp_root=None):
+    """Write synthetic 14-key fslot caches, run the branch, check every artifact + provenance."""
+    import json as _json, pathlib, tempfile, numpy as _np
+    from unittest import mock
+    import experiments.run_cka_analysis as R
+    tags = ["m4_hourly", "boom_hourly"]
+    n, K, d = 12, 4, 9
+    rng = _np.random.default_rng(0)
+    reps = {t: [rng.normal(size=(n, K, d)) for _ in range(14)] for t in tags}
+    with tempfile.TemporaryDirectory() as td:
+        with mock.patch.object(R, "OUT", pathlib.Path(td)), \
+             mock.patch.object(R, "read_extv4_fslot_reps",
+                               lambda tag, split: [R.cka.stack_slots(a) for a in reps[tag]]):
+            R.run_extv4_fslot(max_rows=None, seed=0, split="test", tags=tags)
+            root = pathlib.Path(td) / "ext_v4_future_tokens_fslot"
+            for t in tags:
+                M = _np.load(root / "matrices" / f"{t}__fslot__layerxlayer.npy")
+                assert M.shape == (14, 14), M.shape
+                assert _np.allclose(_np.diag(M), 1.0), "unit diagonal"
+                assert _np.allclose(M, M.T), "symmetry"
+                assert (M >= -1e-9).all() and (M <= 1 + 1e-9).all(), "CKA in [0,1]"
+                assert (root / "tables" / f"{t}__fslot__layerxlayer.csv").exists()
+                assert (root / "figures" / f"{t}__fslot__layerxlayer.png").exists()
+            prov = _json.load(open(root / "provenance.json"))
+            assert set(prov["per_dataset"]) == set(tags)
+            assert prov["per_dataset"]["m4_hourly"]["cache_split"] == "test"
+            assert prov["per_dataset"]["boom_hourly"]["cache_split"] == "test_rolling"
+            assert prov["per_dataset"]["m4_hourly"]["rows_used"] == n * K
+            assert prov["seed"] == 0 and prov["requested_split"] == "test"
+    print("  PASS test_extv4_fslot_end_to_end_synthetic")
+
+
 if __name__ == "__main__":
     tests = [
         test_cka_identity_and_unrelated,
@@ -178,6 +250,10 @@ if __name__ == "__main__":
         test_same_layer_diagonal_extraction,
         test_no_cross_dataset_pairing_guard,
         test_cache_and_manifest_fail_loud,
+        test_extv4_fslot_split_names,
+        test_extv4_fslot_roster_covers_all_seven,
+        test_extv4_fslot_matches_stage0_reader,
+        test_extv4_fslot_end_to_end_synthetic,
         test_figure_smoke,
     ]
     for t in tests:

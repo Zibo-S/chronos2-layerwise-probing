@@ -9,7 +9,8 @@ seconds of CPU -> safe on a login node.
 WHAT CHANGED VS THE OLD `loss_and_erank_2x4.png`
     old top row : train (recomputed) + validation loss, per-panel legends, 4 datasets
     new top row : TEST loss only, mean over the 3 probe-init runs, with a 95% bootstrap CI
-    The tunnel entrance is UNCHANGED and is still read from the tunnel record, i.e. selected
+    The saturation entrance is UNCHANGED and is still read from the committed record (the
+    repo calls it the tunnel record; `l_start` there), i.e. selected
     from the mean VALIDATION curve under the committed 5% rule. Nothing here re-derives it,
     and no tunnel boundary is ever computed from a test curve.
 
@@ -18,7 +19,7 @@ INPUTS
         window_loss (14, n) per-window TEST quantile loss, series_test (n,) cluster ids
         (written by experiments/run_ptood_probing_ftok.py --fit-ptid)
     results/ext_v4_future_tokens/q1/tunnels/<tag>__fslot__q1__v2__runs0-1-2.json
-        l_start = validation-selected tunnel entrance (written by ... --tunnels-only)
+        l_start = validation-selected saturation entrance (written by ... --tunnels-only)
     results/ext_v4_future_tokens/spectral/spectral__<tag>__fslot__probe_input__train.json
         per-point effective rank (written by experiments/run_spectral.py --readout fslot)
     results/cka/ext_v4_future_tokens_fslot/matrices/<tag>__fslot__layerxlayer.npy
@@ -56,7 +57,7 @@ import matplotlib.pyplot as plt
 from probing.config import REPO_ROOT, SEED
 # The estimator behind every committed D_ID CI: one shared series-count matrix, all layers paired.
 from probing.tunnel import _layer_mean_boot
-from probing.stats import ci_bounds
+from probing.stats import ci_bounds, cluster_bootstrap_counts
 
 QSET, PROTO, RUN_SEEDS = "q1", "v2", (0, 1, 2)
 RUNS_TAG = "runs" + "-".join(str(s) for s in RUN_SEEDS)
@@ -74,6 +75,18 @@ TRANSFER_OUT = V4 / QSET / "transfer_summary"
 BOOM_SOURCE = "boom_hourly"
 BOOM_SRC_DIR = V4 / QSET / "boom_source"
 # --- BOOM domain-FT (Stage B): same layerwise question, backbone stage instead of probe source
+# --- ext_v5 native-head adapter: native / zero-shot / linear adapter / q1 linear probe ------
+NHA_ROOT = REPO_ROOT / "results" / "ext_v5_native_head_adapter"
+NHA_BOOT = NHA_ROOT / "bootstrap_inputs"
+NHA_TAGS = [("monash_electricity_hourly", "PT-ID"), ("uber_tlc_hourly", "PT-ID"),
+            ("m4_hourly", "PT-ID"), ("wind_farms_hourly", "PT-ID"),
+            ("sg_carpark", "PT-OOD"), ("coastal_ts", "PT-OOD"), ("boom_hourly", "PT-OOD")]
+NHA_CONDS = [("native", "native Chronos-2 (frozen head)", "0.35", None, "--"),
+             ("zero_shot", "zero-shot:  $h_\\ell\\rightarrow$ frozen head", "#E08214", "o", "-"),
+             ("linear_adapter", "linear adapter:  $h_\\ell\\rightarrow A_\\ell\\rightarrow$ frozen head",
+              "#1F5FA8", "s", "-"),
+             ("linear_q1", "linear probe ($Q=1$):  $h_\\ell\\rightarrow$ fresh Linear(768, 16)",
+              "#1B9E77", "^", "-")]
 FT_PROBE_DIR = REPO_ROOT / "results" / "ft_specialization" / "stageB" / "probes"
 FT_OUT = REPO_ROOT / "results" / "ft_specialization" / "domain_shift" / QSET
 FT_STAGES = [("stage0_pretrained", "(a) Pretrained"),
@@ -183,11 +196,11 @@ def make_figure(rows, title, stem, boot_b, dpi=400, show_title=True):
 
         for col, d in enumerate(rows):
             ls = d["l_start"]
-            # ---- row 0: TEST loss, CI, validation-selected tunnel entrance ------------------
+            # ---- row 0: TEST loss, CI, validation-selected saturation entrance ------------------
             ax = axes[0, col]
             ax.axvspan(ls, last, color=TUNNEL_FILL, lw=0, zorder=0)
             ax.axvline(ls, color=TUNNEL_LINE, lw=1.1, zorder=1,
-                       label="Tunnel entrance (validation)")
+                       label="Saturation entrance (validation)")
             ax.fill_between(x, d["lo"], d["hi"], color=LOSS_BAND, alpha=0.95, lw=0, zorder=2,
                             label=f"95% bootstrap CI ($B={boot_b}$)")
             ax.plot(x, d["point"], "-o", ms=3.0, color=LOSS, mfc=LOSS, mec=LOSS, zorder=3,
@@ -698,6 +711,101 @@ def write_transfer_table(cells, boot_b, seed):
     return d / f"{stem}.csv"
 
 
+def load_nha(tag, boot_b, seed, metric="mase"):
+    """Per-condition MASE curve + 95% CI for one ext_v5 dataset.
+
+    All conditions share ONE multinomial matrix over the test series (as run_native_head_adapter
+    does), so every comparison inside a panel is paired. The q1 linear probe lives in a separate
+    sidecar npz written by --linear-baseline; its series ids are asserted identical."""
+    z = np.load(_need(NHA_BOOT / f"native_head_adapter__{tag}.npz",
+                      "python -m experiments.run_native_head_adapter --adapt"))
+    sid = np.asarray(z["series_test"], np.int64)
+    pw = {}
+    for k in z.files:
+        if k == "series_test":
+            continue
+        cond, lab, met = k.split("__")
+        if met == metric:
+            pw[(cond, int(lab[1:]))] = np.asarray(z[k], np.float64)
+    zq = _need(NHA_BOOT / f"native_head_adapter__linear_q1__{tag}.npz",
+               "python -m experiments.run_native_head_adapter --linear-baseline")
+    zq = np.load(zq)
+    if not np.array_equal(np.asarray(zq["series_test"], np.int64), sid):
+        raise ValueError(f"{tag}: linear_q1 sidecar has different test series than the adapter run")
+    for k in zq.files:
+        if k != "series_test":
+            pw[("linear_q1", int(k.split("__")[1][1:]))] = np.asarray(zq[k], np.float64)
+
+    uniq, inv = np.unique(sid, return_inverse=True)
+    S = uniq.size
+    M = cluster_bootstrap_counts(S, boot_b, seed)          # ONE matrix -> conditions paired
+    cnt = np.bincount(inv, minlength=S).astype(np.float64)
+    out = {}
+    for key, vec in pw.items():
+        ssum = np.bincount(inv, weights=vec, minlength=S)[:, None]
+        b = ((M @ ssum) / (M @ cnt)[:, None])[:, 0]
+        lo, hi = ci_bounds(b)
+        out[key] = (float(vec.mean()), float(lo), float(hi))
+    return out, S, sid.size
+
+
+def make_nha_figure(boot_b, seed, dpi=400, show_title=True, metric="mase"):
+    """2x4 panel: the three native-head conditions plus the Q=1 linear probe, on all 7 datasets."""
+    x = np.arange(len(LABELS))
+    with plt.rc_context({**PAPER_RC, "xtick.labelsize": 8, "ytick.labelsize": 9}):
+        fig, axes = plt.subplots(2, 4, figsize=(13.0, 6.2), layout="constrained")
+        fig.get_layout_engine().set(h_pad=0.05, w_pad=0.06, hspace=0.12, wspace=0.10)
+        for ax, (tag, kind) in zip(axes.ravel(), NHA_TAGS):
+            curves, S, nw = load_nha(tag, boot_b, seed, metric)
+            nat = curves.get(("native", len(LABELS) - 1))
+            if nat is not None:
+                ax.axhline(nat[0], color="0.35", ls="--", lw=1.1, zorder=2)
+                ax.axhspan(nat[1], nat[2], color="0.35", alpha=0.13, lw=0, zorder=1)
+            # y-limits from the MEAN curves only: per-window MASE has heavy outliers on some
+            # targets (WindFarms, M4), so a band-driven autoscale hides all the structure
+            means = [v[0] for (c, _l), v in curves.items() if c != "native"]
+            span = max(means) - min(means)
+            ax.set_ylim(min(means) - 0.12 * span, max(means) + 0.10 * span)
+            for cond, _lab, col, mk, ls in NHA_CONDS:
+                if cond == "native":
+                    continue
+                xs = sorted(i for i in x if (cond, i) in curves)
+                if not xs:
+                    continue
+                m = np.array([curves[(cond, i)][0] for i in xs])
+                lo = np.array([curves[(cond, i)][1] for i in xs])
+                hi = np.array([curves[(cond, i)][2] for i in xs])
+                ax.fill_between(xs, lo, hi, color=col, alpha=0.16, lw=0, zorder=3)
+                ax.plot(xs, m, ls, marker=mk, ms=3.2, lw=1.3, color=col, zorder=4)
+            ax.set_title(f"{SHORT[tag]}  [{kind}]", fontsize=10, fontweight="bold",
+                         color=("#8B2E12" if kind == "PT-OOD" else "black"))
+            ax.set_xticks(x)
+            ax.set_xticklabels([t if (i % 2 == 0 or i == len(LABELS) - 1) else ""
+                                for i, t in enumerate(LABELS)], rotation=45, ha="right")
+            ax.tick_params(length=2.5, pad=1.5)
+            ax.grid(axis="y", alpha=0.18, lw=0.5)
+            ax.set_axisbelow(True)
+            for side in ("top", "right"):
+                ax.spines[side].set_visible(False)
+        for ax in axes[:, 0]:
+            ax.set_ylabel("MASE (lower = better)")
+        for ax in axes[-1, :]:
+            ax.set_xlabel("Representation point")
+        axes[1, 3].axis("off")
+        handles = [plt.Line2D([], [], color=c, ls=ls, marker=mk, ms=3.2, lw=1.3, label=lab)
+                   for _cond, lab, c, mk, ls in NHA_CONDS]
+        axes[1, 3].legend(handles=handles, loc="center", frameon=False, fontsize=9.5)
+        if show_title:
+            fig.suptitle("Frozen native head vs. linear adapter vs. fresh linear probe "
+                         "($Q=1$) — 4 PT-ID + 3 PT-OOD", fontsize=11, fontweight="bold")
+        d_ = NHA_ROOT / "plots"
+        d_.mkdir(parents=True, exist_ok=True)
+        stem = f"native_head_adapter__with_linear_q1__2x4_all__{metric}"
+        pdf, png = d_ / f"{stem}.pdf", d_ / f"{stem}.png"
+        fig.savefig(pdf); fig.savefig(png, dpi=dpi); plt.close(fig)
+    return pdf, png
+
+
 def load_ft_cells(boot_b, seed):
     """Per-(stage, target) seed-averaged curve + paired cluster-bootstrap CI, for the BOOM
     domain-FT Stage B probes. Identical protocol to the ext_v4 cells: 3 probe-init runs averaged
@@ -879,8 +987,8 @@ def write_table(rows, boot_b, seed):
                          "test_loss": round(float(d["point"][i]), 8),
                          "ci_lo": round(float(d["lo"][i]), 8), "ci_hi": round(float(d["hi"][i]), 8),
                          "effective_rank": round(float(d["erank"][i]), 6),
-                         "is_tunnel_entrance": int(i == d["l_start"]),
-                         "in_tunnel": int(i >= d["l_start"])})
+                         "is_saturation_entrance": int(i == d["l_start"]),
+                         "in_saturated_region": int(i >= d["l_start"])})
     with open(TAB_DIR / f"{stem}.csv", "w", newline="") as fh:
         w = csv.DictWriter(fh, fieldnames=list(recs[0]))
         w.writeheader()
@@ -893,7 +1001,7 @@ def write_table(rows, boot_b, seed):
                           "paired_across_layers": True,
                           "note": "one shared multinomial count matrix reused at every "
                                   "representation point; seed-averaged per-window losses"},
-            "tunnel_entrance": {"selected_on": "mean validation curve", "shown_on": "test curve",
+            "saturation_entrance": {"selected_on": "mean validation curve", "shown_on": "test curve",
                                 "definition": rows[0]["tunnel_definition"],
                                 "tolerance": rows[0]["tolerance"]},
             "effective_rank": {"split": rows[0]["erank_split"], "N": rows[0]["erank_N"]},
@@ -909,7 +1017,7 @@ def write_table(rows, boot_b, seed):
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--which", default="both", choices=("main", "appendix", "both"))
-    ap.add_argument("--figure", default="all", choices=("loss_erank", "cka", "transfer", "ft_boom", "all"),
+    ap.add_argument("--figure", default="all", choices=("loss_erank", "cka", "transfer", "ft_boom", "nha", "all"),
                     help="which figure family to build (default: all)")
     ap.add_argument("--boot-b", type=int, default=5000, help="bootstrap resamples (default 5000)")
     ap.add_argument("--seed", type=int, default=SEED)
@@ -921,6 +1029,23 @@ def main():
     a = ap.parse_args()
 
     groups = ("main", "appendix") if a.which == "both" else (a.which,)
+
+    if a.figure in ("nha", "all"):
+        pdf, png = make_nha_figure(a.boot_b, a.seed, dpi=a.dpi, show_title=not a.no_title)
+        for tag, kind in NHA_TAGS:
+            c, S, nw = load_nha(tag, a.boot_b, a.seed)
+            ref = len(LABELS) - 1
+            nat = c[("native", ref)][0]
+            q1b = min((c[("linear_q1", i)][0], i) for i in range(len(LABELS))
+                      if ("linear_q1", i) in c)
+            adb = min((c[("linear_adapter", i)][0], i) for i in range(len(LABELS))
+                      if ("linear_adapter", i) in c)
+            print(f"[nha] {SHORT[tag]:<12} {kind:<7} native {nat:6.3f} | best q1 probe "
+                  f"{q1b[0]:6.3f} @{LABELS[q1b[1]]:<8} | best adapter {adb[0]:6.3f} @{LABELS[adb[1]]:<8}"
+                  f" | {S} clusters")
+        print(f"    -> {png.relative_to(REPO_ROOT)}")
+    if a.figure == "nha":
+        return
 
     if a.figure in ("ft_boom", "all"):
         ft = load_ft_cells(a.boot_b, a.seed)
