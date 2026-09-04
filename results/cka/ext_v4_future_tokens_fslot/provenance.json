@@ -1,0 +1,70 @@
+{
+  "analysis": "ext_v4_future_tokens_fslot",
+  "representation": "forecast slots (n,K,768) -> (n*K,768), 14 points Emb..L12+LN",
+  "backbone": "pretrained amazon/chronos-2 (frozen)",
+  "C": 512,
+  "H": 64,
+  "K": 4,
+  "requested_split": "test",
+  "max_rows": 4096,
+  "seed": 0,
+  "probe_independent": "CKA uses no probe: quantile set / weight decay do not enter",
+  "per_dataset": {
+    "monash_electricity_hourly": {
+      "kind": "PT-ID",
+      "cache_split": "test",
+      "rows_available": 1048,
+      "rows_used": 1048,
+      "windows": 262,
+      "K": 4
+    },
+    "uber_tlc_hourly": {
+      "kind": "PT-ID",
+      "cache_split": "test",
+      "rows_available": 1048,
+      "rows_used": 1048,
+      "windows": 262,
+      "K": 4
+    },
+    "m4_hourly": {
+      "kind": "PT-ID",
+      "cache_split": "test",
+      "rows_available": 1048,
+      "rows_used": 1048,
+      "windows": 262,
+      "K": 4
+    },
+    "wind_farms_hourly": {
+      "kind": "PT-ID",
+      "cache_split": "test",
+      "rows_available": 1048,
+      "rows_used": 1048,
+      "windows": 262,
+      "K": 4
+    },
+    "sg_carpark": {
+      "kind": "PT-OOD",
+      "cache_split": "test_rolling",
+      "rows_available": 1416,
+      "rows_used": 1416,
+      "windows": 354,
+      "K": 4
+    },
+    "coastal_ts": {
+      "kind": "PT-OOD",
+      "cache_split": "test_rolling",
+      "rows_available": 192,
+      "rows_used": 192,
+      "windows": 48,
+      "K": 4
+    },
+    "boom_hourly": {
+      "kind": "PT-OOD",
+      "cache_split": "test_rolling",
+      "rows_available": 1416,
+      "rows_used": 1416,
+      "windows": 354,
+      "K": 4
+    }
+  }
+}
