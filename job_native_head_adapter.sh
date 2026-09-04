@@ -1,9 +1,9 @@
 #!/bin/bash
 #SBATCH --account=def-irina          # the only account we have on Narval
 #SBATCH --gres=gpu:1                 # one GPU (A100): model load + adapter fits through the frozen head
-#SBATCH --cpus-per-task=4            # PT-OOD (SG/BOOM) window building is CPU-bound
+#SBATCH --cpus-per-task=2            # PT-OOD (SG/BOOM) window building is CPU-bound
 #SBATCH --mem=16G                    # 16G schedules MUCH faster than 32G on Narval; one dataset in memory
-#SBATCH --time=2:00:00              # covers --adapt over all 7 datasets; override tighter for --sanity
+#SBATCH --time=1:00:00              # covers --adapt over all 7 datasets; override tighter for --sanity
 #SBATCH --output=logs/%x-%j.out      # %x = job name (sbatch -J), %j = job id
 
 # ext_v5 NATIVE-HEAD ADAPTER experiment (results/ext_v5_native_head_adapter/, disjoint from ext_v4).
@@ -17,6 +17,12 @@
 #   sbatch -J nha_adapt job_native_head_adapter.sh --adapt                           # all 7 datasets [GPU]
 #   sbatch -J nha_adapt job_native_head_adapter.sh --adapt --datasets m4_hourly      # a subset [GPU]
 #   python -m experiments.run_native_head_adapter --figures                          # aggregate + plots (LOGIN/CPU)
+#
+# Frozen adapter TRANSFER (apply one dataset's saved adapters to the other 6 — predict-only, still
+# loads the model for the frozen head, so it is compute-node work; needs `--adapt` to have saved the
+# source adapters first):
+#   sbatch -J nha_xfer --time=0:30:00 job_native_head_adapter.sh --transfer-source m4_hourly    # [GPU]
+#   python -m experiments.run_native_head_adapter --transfer-figures --transfer-source m4_hourly # (LOGIN/CPU)
 #
 # Do NOT run --sanity / --adapt on the login node — they load Chronos-2 and fit adapters (compute work).
 # Mem default is 16G (schedules far faster than 32G on Narval). If BOOM alone OOMs, run it separately with
