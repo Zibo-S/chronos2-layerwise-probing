@@ -30,6 +30,7 @@ Usage (login node / CPU, seconds):
     python -m experiments.run_compression_cost                    # both rules -> tables + LaTeX
     python -m experiments.run_compression_cost --selection saturation
     python -m experiments.run_compression_cost --datasets m4_hourly boom_hourly
+    python -m experiments.run_compression_cost --threshold-figure          # eps sensitivity panels
 """
 
 from __future__ import annotations
@@ -280,19 +281,202 @@ def latex_single_rule(rows, tags, rule):
     return "\n".join(out)
 
 
+# --------------------------------------------------------------------------- #
+# threshold sensitivity: how far does the truncation depth move with the tolerance?
+# --------------------------------------------------------------------------- #
+# eps is the compression-aggressiveness knob: a looser tolerance accepts a shallower layer as
+# "saturated" and therefore truncates harder. 5% is the value frozen throughout the paper.
+DEFAULT_EPS = (0.10, 0.05, 0.03, 0.02)
+EPS_MARKER = {0.10: "^", 0.05: "o", 0.03: "s", 0.02: "D"}
+DS_COLOR = {"monash_electricity_hourly": "#1B7837", "uber_tlc_hourly": "#2171B5",
+            "m4_hourly": "#D94801", "wind_farms_hourly": "#7A0177",
+            "sg_carpark": "#00838F", "coastal_ts": "#A6761D", "boom_hourly": "#525252"}
+
+
+def validation_curve(tag):
+    """The mean validation curve the saturation criterion reads (q1 fslot probe, 3 seeds)."""
+    if tag in PT_ID_TAGS:
+        p = _need(TUNNEL_DIR / f"{tag}__fslot__{QSET}__{PROTO}__{RUNS_TAG}.json",
+                  f"python -m experiments.run_ptood_probing_ftok --quantile-set {QSET} --tunnels-only")
+        return np.asarray(json.load(open(p))["mean_val_loss_by_layer"], np.float64)
+    vals = [np.asarray(json.load(open(_need(
+        PTOOD_DIR / "per_target" / f"{tag}__{QSET}__seed{sd}.json",
+        f"python -m experiments.run_ptood_probing_ftok --quantile-set {QSET}")))["val_loss_by_layer"],
+        np.float64) for sd in RUN_SEEDS]
+    return np.mean(vals, axis=0)
+
+
+def threshold_rows(tags, eps_list):
+    """(dataset, eps) -> the depth the criterion selects and what that depth costs."""
+    out = []
+    for tag in tags:
+        v = validation_curve(tag)
+        for eps in eps_list:
+            d = int(tunnel_start(v, tol=eps))
+            # d indexes a READOUT POINT (13 = L12+RMS = the native head's own input, i.e. no
+            # truncation at all), so translate to executed blocks before costing it.
+            cost = model_size.cost_of_readout(d)
+            out.append({"dataset": tag, "short": PRETTY[tag],
+                        "kind": "PT-ID" if tag in PT_ID_TAGS else "PT-OOD",
+                        "epsilon": eps, "depth": d, "depth_label": LAYER_LABELS[d],
+                        "n_blocks": cost["n_blocks"], "needs_adapter": cost["needs_adapter"],
+                        "active_fraction": cost["active_fraction"],
+                        "block_flops_fraction": cost["block_flops_fraction"]})
+    return out
+
+
+def make_threshold_figures(tags, eps_list, out_dir):
+    """Two one-panel views of the same fact, because they answer different questions:
+
+    A (curves)   normalised validation loss vs depth, one line per dataset, with a horizontal line
+                 per tolerance. The selected depth is where a curve first dips below a line, so the
+                 panel shows WHY the depth moves. y is clipped to the threshold region: every
+                 selection lies at a ratio <= 1 + max(eps) so no marker is ever cut off, but the
+                 steep early descent (up to 3.7x at Emb) runs off the top and is labelled as such.
+    B (depths)   selected depth vs tolerance, one line per dataset. Answers "how much does eps
+                 matter" directly, with no clipping. Datasets are dodged horizontally because
+                 several select the SAME depth and would otherwise hide each other.
+    """
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    rc = {"font.size": 11, "axes.labelsize": 13, "axes.titlesize": 14, "legend.fontsize": 10,
+          "legend.title_fontsize": 10.5, "xtick.labelsize": 10, "ytick.labelsize": 10.5,
+          "axes.linewidth": 0.9, "lines.linewidth": 1.8, "pdf.fonttype": 42, "ps.fonttype": 42}
+    x = np.arange(len(LAYER_LABELS))
+    rows = threshold_rows(tags, eps_list)
+    by = {(r["dataset"], r["epsilon"]): r for r in rows}
+    order = sorted(eps_list, reverse=True)
+    top = 1.0 + max(eps_list) + 0.14
+    curves = {t: (lambda v: v / v[-1])(validation_curve(t)) for t in tags}
+
+    def _style(tag):
+        pt_id = tag in PT_ID_TAGS
+        return dict(color=DS_COLOR[tag], ls="-" if pt_id else (0, (4, 2)),
+                    marker="o" if pt_id else "s",
+                    label=f"{PRETTY[tag]} ({'PT-ID' if pt_id else 'PT-OOD'})")
+
+    # ---- A: normalised validation curves + one line per tolerance ----------------------
+    with plt.rc_context(rc):
+        fig, ax = plt.subplots(figsize=(12.6, 6.4))
+        fig.subplots_adjust(left=0.068, right=0.775, top=0.885, bottom=0.155)
+        for eps in order:                        # thresholds, labelled over the empty left margin
+            ax.axhline(1 + eps, color="0.55", ls=(0, (5, 4)), lw=1.1, zorder=1)
+            ax.text(-0.35, 1 + eps, f"$\\varepsilon$={eps:.0%}", va="center", ha="left",
+                    fontsize=10, color="0.35", zorder=5,
+                    bbox=dict(fc="white", ec="none", pad=1.4))
+        ax.axhline(1.0, color="0.2", lw=1.0, zorder=1)
+        ax.text(-0.35, 1.0, "final layer", va="center", ha="left", fontsize=10, color="0.2",
+                zorder=5, bbox=dict(fc="white", ec="none", pad=1.4))
+        for tag in tags:
+            r = curves[tag]
+            ax.plot(x, r, ms=4.0, zorder=3, **_style(tag))
+            for j, eps in enumerate(order):      # open marker = the depth this eps selects;
+                d = by[(tag, eps)]["depth"]       # sizes nest so shared depths read as rings
+                ax.plot(d, r[d], marker=EPS_MARKER[eps], ms=15.5 - 2.7 * j, mfc="none", mew=1.9,
+                        color=DS_COLOR[tag], zorder=4, ls="none")
+        ax.set_ylim(0.945, top)
+        ax.set_xlim(-0.6, len(LAYER_LABELS) - 0.5)
+        ax.set_xticks(x)
+        ax.set_xticklabels(LAYER_LABELS, rotation=45, ha="right")
+        ax.set_xlabel("Representation point (truncation depth)")
+        ax.set_ylabel("Validation loss / final-layer loss")
+        ax.set_title("Where the saturation criterion cuts, as the tolerance "
+                     "$\\varepsilon$ varies\n"
+                     "open markers = the depth each $\\varepsilon$ selects", pad=10)
+        ax.grid(axis="y", color="0.9", lw=0.7)
+        ax.set_axisbelow(True)
+        n_clip = sum(1 for t in tags if curves[t].max() > top)
+        if n_clip:
+            ax.annotate(f"{n_clip}/{len(tags)} curves run off the top at Emb/L1 "
+                        f"(max {max(curves[t].max() for t in tags):.1f}x)",
+                        xy=(0.012, 0.028), xycoords="axes fraction", fontsize=9.5, color="0.35")
+        ds_h, ds_l = ax.get_legend_handles_labels()
+        eps_h = [plt.Line2D([], [], marker=EPS_MARKER[e], ls="none", mfc="none", mew=1.9,
+                            color="0.25", ms=15.5 - 2.7 * j, label=f"$\\varepsilon$={e:.0%}")
+                 for j, e in enumerate(order)]
+        l1 = fig.legend(ds_h, ds_l, loc="upper left", bbox_to_anchor=(0.788, 0.885),
+                        frameon=True, framealpha=0.95, title="Dataset")
+        l1._legend_box.align = "left"
+        l2 = fig.legend(handles=eps_h, loc="upper left", bbox_to_anchor=(0.788, 0.44),
+                        frameon=True, framealpha=0.95, title="Tolerance")
+        l2._legend_box.align = "left"
+        for ext in ("png", "pdf"):
+            fig.savefig(out_dir / f"threshold_sensitivity_curves.{ext}", dpi=300)
+        plt.close(fig)
+
+    # ---- B: selected depth vs tolerance -------------------------------------------------
+    with plt.rc_context(rc):
+        fig, ax = plt.subplots(figsize=(12.8, 6.4))
+        fig.subplots_adjust(left=0.088, right=0.695, top=0.885, bottom=0.125)
+        xs = np.arange(len(order))
+        dodge = 0.055                            # several datasets select the SAME depth
+        for i, tag in enumerate(tags):
+            off = (i - (len(tags) - 1) / 2) * dodge
+            ax.plot(xs + off, [by[(tag, e)]["depth"] for e in order],
+                    ms=9, mew=1.4, alpha=0.95, **_style(tag))
+        ax.set_xticks(xs)
+        ax.set_xticklabels([f"{e:.0%}" for e in order])
+        ax.set_xlim(-0.45, len(order) - 0.55)
+        ax.set_xlabel("Saturation tolerance $\\varepsilon$  "
+                      "(looser $\\rightarrow$ stricter)")
+        ax.set_yticks(range(len(LAYER_LABELS)))
+        ax.set_yticklabels(LAYER_LABELS)
+        ax.set_ylim(-0.6, len(LAYER_LABELS) - 0.4)
+        ax.set_ylabel("Selected truncation depth")
+        sec = ax.secondary_yaxis("right", functions=(lambda d: d / 12.0, lambda f: f * 12.0))
+        sec.set_ylabel("Transformer-block FLOPs retained")
+        sec.set_yticks([d / 12 for d in range(0, 13, 2)])
+        sec.set_yticklabels([f"{d / 12:.2f}x" for d in range(0, 13, 2)])
+        ax.set_title("Truncation depth selected by the saturation criterion, per tolerance\n"
+                     "points dodged horizontally where datasets select the same depth", pad=10)
+        ax.grid(color="0.9", lw=0.7)
+        ax.set_axisbelow(True)
+        h, l = ax.get_legend_handles_labels()
+        leg = fig.legend(h, l, loc="upper left", bbox_to_anchor=(0.775, 0.885),
+                         frameon=True, framealpha=0.95, title="Dataset")
+        leg._legend_box.align = "left"
+        for ext in ("png", "pdf"):
+            fig.savefig(out_dir / f"threshold_sensitivity_depths.{ext}", dpi=300)
+        plt.close(fig)
+    return rows
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--selection", choices=(*RULES, "both"), default="both")
     ap.add_argument("--datasets", nargs="+", default=ALL_TAGS)
+    ap.add_argument("--threshold-figure", action="store_true",
+                    help="emit the eps-sensitivity panels (and only those)")
+    ap.add_argument("--epsilons", type=float, nargs="+", default=list(DEFAULT_EPS))
     args = ap.parse_args()
 
     tags = [t for t in ALL_TAGS if t in set(args.datasets)]
     if not tags:
         raise SystemExit(f"no known datasets in {args.datasets}; choose from {ALL_TAGS}")
     rules = RULES if args.selection == "both" else (args.selection,)
-    for d in ("tables", "latex"):
+    for d in ("tables", "latex", "figures"):
         (OUT_ROOT / d).mkdir(parents=True, exist_ok=True)
+
+    if args.threshold_figure:
+        eps = sorted(args.epsilons, reverse=True)
+        rows = make_threshold_figures(tags, eps, OUT_ROOT / "figures")
+        with open(OUT_ROOT / "tables" / "threshold_sensitivity.csv", "w", newline="") as fh:
+            w = csv.DictWriter(fh, fieldnames=list(rows[0].keys()))
+            w.writeheader()
+            w.writerows(rows)
+        print(f"  {'dataset':<14}" + "".join(f"{e:>13.0%}" for e in eps))
+        for tag in tags:
+            cells = sorted([r for r in rows if r["dataset"] == tag], key=lambda r: -r["epsilon"])
+            print(f"  {PRETTY[tag]:<14}" + "".join(
+                f"{c['depth_label'] + ' (' + format(c['block_flops_fraction'], '.2f') + 'x)':>13}"
+                for c in cells))
+        for stem in ("threshold_sensitivity_curves", "threshold_sensitivity_depths"):
+            print(f"[write] {OUT_ROOT / 'figures' / (stem + '.png')}")
+        print(f"[write] {OUT_ROOT / 'tables' / 'threshold_sensitivity.csv'}")
+        return
 
     print(f"model: {model_size.TOTAL_PARAMS:,} parameters "
           f"(block {model_size.BLOCK_PARAMS:,} x {model_size.NUM_BLOCKS}, "

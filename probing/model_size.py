@@ -92,6 +92,42 @@ def param_breakdown() -> dict[str, int]:
             "native_head": NATIVE_HEAD_PARAMS}
 
 
+# Readout points used throughout the project: index 0 = Emb (the embedded sequence entering block 1),
+# 1..12 = block outputs, 13 = "L12+RMS" = the POST-final-RMSNorm state the native head consumes.
+# Index 13 is NOT a 13th block: it is the full 12-block encoder plus its final norm, i.e. no
+# truncation at all, and the native head reads it directly (no adapter needed).
+NUM_READOUT_POINTS = NUM_BLOCKS + 2
+READOUT_LABELS = ["Emb"] + [f"L{i}" for i in range(1, NUM_BLOCKS + 1)] + ["L12+RMS"]
+
+
+def blocks_for_readout(readout_index: int) -> int:
+    """Encoder blocks that must execute to produce readout point ``readout_index`` (0..13)."""
+    if not 0 <= readout_index < NUM_READOUT_POINTS:
+        raise ValueError(f"readout index must be in 0..{NUM_READOUT_POINTS - 1}, got {readout_index}")
+    return min(readout_index, NUM_BLOCKS)
+
+
+def readout_needs_adapter(readout_index: int) -> bool:
+    """False only at L12+RMS, which IS the native head's input -- nothing is adapted there."""
+    return blocks_for_readout(readout_index) == readout_index and readout_index != NUM_BLOCKS + 1
+
+
+def cost_of_readout(readout_index: int) -> dict:
+    """Cost of deploying a model truncated at a READOUT POINT (not a block index).
+
+    Use this when the depth comes from a layerwise curve, which is indexed 0..13; use
+    active_params/block_flops_fraction directly when you already have a block count.
+    """
+    n = blocks_for_readout(readout_index)
+    adapter = readout_index != NUM_BLOCKS + 1
+    return {"readout_index": readout_index, "readout_label": READOUT_LABELS[readout_index],
+            "n_blocks": n, "needs_adapter": adapter,
+            "active_params": active_params(n, adapter),
+            "active_fraction": active_fraction(n, adapter),
+            "block_flops_fraction": block_flops_fraction(n),
+            "end_to_end_flops_fraction": end_to_end_flops_fraction(n)}
+
+
 def active_params(depth: int, include_adapter: bool = True) -> int:
     """Parameters a model truncated after encoder block ``depth`` must load and execute.
 

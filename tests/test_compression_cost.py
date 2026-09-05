@@ -240,6 +240,63 @@ def test_evaluate_gates_on_the_committed_relative_regret():
     assert "identical" in r["window_provenance"]             # selection and scoring share windows
 
 
+def test_readout_index_13_is_the_full_encoder_not_a_13th_block():
+    """L12+RMS is the post-final-RMSNorm state the native head consumes: 12 blocks, no truncation,
+    and no adapter (the head reads it directly). Costing it as "depth 13" would be wrong."""
+    assert model_size.blocks_for_readout(13) == model_size.NUM_BLOCKS
+    for i in range(model_size.NUM_BLOCKS + 1):
+        assert model_size.blocks_for_readout(i) == i
+    c = model_size.cost_of_readout(13)
+    assert c["n_blocks"] == 12 and c["needs_adapter"] is False
+    assert c["active_params"] == model_size.TOTAL_PARAMS          # exactly the stock model
+    assert c["active_fraction"] == 1.0 and c["block_flops_fraction"] == 1.0
+    assert model_size.cost_of_readout(12)["needs_adapter"] is True
+    for bad in (-1, 14):
+        try:
+            model_size.blocks_for_readout(bad)
+        except ValueError:
+            continue
+        raise AssertionError(f"readout index {bad} should have been rejected")
+
+
+def test_stricter_tolerance_never_selects_a_shallower_depth():
+    """The criterion is a first-crossing of (1+eps)*final, so shrinking eps can only push the
+    selected depth later. A violation would mean tunnel_start is not monotone in the tolerance."""
+    rc = _driver()
+    tags = [t for t in rc.ALL_TAGS
+            if (rc.TUNNEL_DIR / f"{t}__fslot__{rc.QSET}__{rc.PROTO}__{rc.RUNS_TAG}.json").exists()
+            or (rc.PTOOD_DIR / "per_target" / f"{t}__{rc.QSET}__seed0.json").exists()]
+    if not tags:
+        print("  (skipped: no committed validation curves)")
+        return
+    eps = sorted(rc.DEFAULT_EPS, reverse=True)
+    rows = {(r["dataset"], r["epsilon"]): r for r in rc.threshold_rows(tags, eps)}
+    for t in tags:
+        depths = [rows[(t, e)]["depth"] for e in eps]
+        assert depths == sorted(depths), (t, eps, depths)
+    print(f"  (checked monotonicity on {len(tags)} datasets x {len(eps)} tolerances)")
+
+
+def test_threshold_figures_render(tmpdir=None):
+    rc = _driver()
+    import tempfile
+    from pathlib import Path
+    tags = [t for t in rc.ALL_TAGS
+            if (rc.TUNNEL_DIR / f"{t}__fslot__{rc.QSET}__{rc.PROTO}__{rc.RUNS_TAG}.json").exists()]
+    if not tags:
+        print("  (skipped: no committed validation curves)")
+        return
+    with tempfile.TemporaryDirectory() as d:
+        out = Path(d)
+        rows = rc.make_threshold_figures(tags, sorted(rc.DEFAULT_EPS, reverse=True), out)
+        assert len(rows) == len(tags) * len(rc.DEFAULT_EPS)
+        for stem in ("threshold_sensitivity_curves", "threshold_sensitivity_depths"):
+            for ext in ("png", "pdf"):
+                f = out / f"{stem}.{ext}"
+                assert f.exists() and f.stat().st_size > 5000, f
+    print(f"  (rendered both panels for {len(tags)} datasets to a tempdir)")
+
+
 if __name__ == "__main__":
     tests = [test_families_sum_to_the_recorded_total,
              test_block_and_head_recomputed_from_the_architecture,
@@ -258,7 +315,10 @@ if __name__ == "__main__":
              test_saturation_depth_equals_the_committed_l_start,
              test_erank_depth_equals_argmax_of_the_committed_spectral_record,
              test_paired_bootstrap_reproduces_the_committed_gap_recovery_cis,
-             test_evaluate_gates_on_the_committed_relative_regret]
+             test_evaluate_gates_on_the_committed_relative_regret,
+             test_readout_index_13_is_the_full_encoder_not_a_13th_block,
+             test_stricter_tolerance_never_selects_a_shallower_depth,
+             test_threshold_figures_render]
     for t in tests:
         t()
         print(f"PASS  {t.__name__}")
