@@ -18,13 +18,13 @@ reproduces the hooked full-model states; the observed maximum absolute deviation
 exactly 0.0e+00 across all measured depths, i.e.\ bit-identical.
 
 \paragraph{Hardware.}
-GPU: NVIDIA A100-SXM4-40GB with 39\,GiB of VRAM (compute capability 8.0), driver 580.178.04; 1 device visible, one used. Host CPU: \textbf{[not recorded by this run --- re-run \texttt{job\_latency.sh}, which captures this field, or fill it in by hand]}, \textbf{[not recorded by this run --- re-run \texttt{job\_latency.sh}, which captures this field, or fill it in by hand]} cores allocated to the job. 
+GPU: NVIDIA A100-SXM4-40GB with 39\,GiB of VRAM (compute capability 8.0), driver 580.178.04; 1 device visible, one used. Host CPU: AMD EPYC 7413 24-Core Processor, 2 cores allocated to the job.\footnote{Host CPU, core allocation and cuDNN version were recorded by a separate probe run (\texttt{latency\_\_env\_probe.json}) on the same GPU and job configuration; the timing run predates the harness capturing them. Every timing and memory figure in this appendix comes from the timing run itself.}
 
 \paragraph{Software and precision.}
-Python 3.11.4, PyTorch 2.12.1 (CUDA 13.2, cuDNN \textbf{[not recorded by this run --- re-run \texttt{job\_latency.sh}, which captures this field, or fill it in by hand]}), model \texttt{amazon/chronos-2}. 
+Python 3.11.4, PyTorch 2.12.1 (CUDA 13.2, cuDNN 92101 as reported by \texttt{torch.backends.cudnn.version()}), model \texttt{amazon/chronos-2}. 
 All computation is in \texttt{float32} --- the precision at which every accuracy number
 in this paper was produced. No \texttt{torch.compile}, no automatic mixed precision, and no
-manual kernel fusion are applied.
+manual kernel fusion are applied (TF32 matmul: false; TF32 cuDNN: true).
 
 \paragraph{Workload.}
 Context $C=512$, horizon $H=64$, giving $K=4$ native forecast slots and an encoder sequence of 37 tokens (32 context patches, one REG token, and the forecast slots). Batch sizes 1, 32, 256 are reported: the smallest is the single-request
