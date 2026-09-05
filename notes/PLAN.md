@@ -1,6 +1,48 @@
 # Working plan — chronos2-layerwise-probing
 _Rolling notes. Edit freely; run `/plan` to fold in recent conversation._
-_Last updated: 2026-09-01_
+_Last updated: 2026-09-05_
+
+## COMPRESSION COST + LATENCY HARNESS — 2026-09-05 [CODE COMMITTED; latency NOT yet run]
+For the ts-limits workshop section "What is the cost of compression?". Two commits on
+`tunnel-effect-probing`: 7234405 (code) + 608bfd7 (results). NO Co-Authored-By [[no-coauthor-trailer]].
+- **NEW `probing/model_size.py`** — parameter/FLOP accounting, every constant read from
+  `chronos.chronos2` source: block = 2 attn (4d^2, bias=False) + NON-gated MLP (layers.py asserts
+  `not is_gated_act`) + 3 RMSNorm(768, weight only) = **9,439,488**; input emb =
+  ResidualBlock(in=input_patch_size*3=**48**, 3072, 768) = 2,548,224; head = ResidualBlock(768,3072,336)
+  = 3,653,280; REG = Embedding(2,768) = 1,536; final RMSNorm = 768. RoPE is a register_buffer -> NO
+  positional params. Sum = **119,477,664** == the recorded `trainable_params` in
+  results/ft_specialization/*/manifest.json; module ASSERTS this at import. `verify_against_model`
+  re-derives from real weights (compute node). active(l) = in_emb + REG + l*block + adapter(590,592)
+  + RMS + head; denominator = stock model, so **L12 = 100.5%** (adapter in numerator only).
+- **Numbers (both rules, q1, paired series-cluster bootstrap B=5000 seed 0):** saturation depths
+  Elec L10 / Uber L3 / M4 L3 / Wind L3 / SG L11 / Coastal L1 / BOOM L3 (all verified vs committed
+  `l_start`; PT-OOD derived from per_target val curves as make_id_paper_figures does). erank depths
+  (argmax effective_rank, TRAIN split) L6/L6/L6/L8/L6/L8/L8 — all verified vs committed spectral JSONs.
+  rel MASE saturation +14.6/+8.6/+55.3/+1.5/+6.5/+1.8/+10.7%; erank +13.7/+3.9/+33.8/+3.3/+12.6/-0.0/+15.0%.
+  **Neither rule dominates**; M4 is costly under BOTH (not a selection artifact); Coastal has 24
+  clusters / 48 windows so both CIs straddle 0 — flag as under-powered, do NOT read -0.0% as success.
+- **FLOPs honesty:** `l/12` is EXACT for the block stack (12 identical blocks, same 37-token input:
+  32 ctx + 1 REG + 4 slots, verified in model.py encode). Block stack = **97.5%** of forward MACs, so
+  end-to-end is 0.106/0.269/0.513/0.675/0.838/0.919x at L1/3/6/8/10/11 — l/12 UNDERSTATES. FLOPs is
+  NOT latency: at 37 tokens the model is likely launch/bandwidth bound. Say so in the paper.
+- **KEY REALIZATION: no truncated model has ever been instantiated.** All layerwise numbers come from
+  the FULL model + forward hooks (extraction.py:237,502). Mathematically identical for accuracy
+  (feedforward stack) but nothing exists to TIME. `experiments/run_latency.py` builds it for real:
+  `encoder.block = ModuleList(block[:l])` + `final_layer_norm = Sequential(adapter, rms)` (needed
+  because Chronos2Encoder applies final_layer_norm AFTER the last block). `--verify` asserts
+  truncated encode == RMSNorm(hooked h_l) — the assumption the whole paper rests on.
+- **`experiments/run_compression_cost.py`** (login/CPU, seconds) — 3 fail-loud gates: recomputed
+  saturation entrance == committed l_start; recomputed rel MASE == committed `relative_regret_mase`
+  (6-dp tolerance, the CSV stores round(x,6)); selection-run and cost-run test windows identical
+  element-wise. Writes results/ext_v5_native_head_adapter/compression/{tables,latex}/.
+- **Tests: 18/18** (tests/test_compression_cost.py) incl. reproducing 35 committed gap-recovery
+  bootstrap CIs. Regressions green: quantile_sets 10, tunnel 13, native_head_adapter 10,
+  shared_forecast 8, spectral_metrics 10.
+- **NEXT = run the latency sweep on Narval (user submits):** `sbatch -J lat job_latency.sh --verify`
+  (GPU, ~45 min, reloads the model per depth so peak memory is real) -> inspect the verify gate in
+  logs/ -> commit results/ext_v5_native_head_adapter/latency/. Optional confirmation of the parameter
+  accounting on real weights: `python -m probing.model_size` prints the table (login OK, pure
+  arithmetic); `verify_against_model(pipeline.model)` needs a compute node.
 
 ## BOOM-AS-SOURCE TRANSFER (q1 appendix 5th source) — 2026-09-01 [BUILT, NOT run, NOT committed]
 Goal (user): "train the linear probe on BOOM, eval on 7 datasets, add to
