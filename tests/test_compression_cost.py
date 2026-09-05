@@ -392,6 +392,48 @@ def test_committed_latency_run_renders_end_to_end():
           f"{n} configurations)")
 
 
+def test_env_backfill_fills_only_missing_fields_and_discloses_itself():
+    rc = _driver()
+    import json, tempfile, pathlib as _pl
+    lat = _latency_fixture()
+    lat["environment"] = {k: v for k, v in lat["environment"].items()
+                          if k not in ("cpu_model", "cudnn")}
+    probe = _latency_fixture()
+    probe["environment"]["cpu_model"] = "Probe CPU"
+    probe["environment"]["driver_version"] = "SHOULD-NOT-BE-COPIED"   # already recorded upstream
+    with tempfile.TemporaryDirectory() as d:
+        f = _pl.Path(d) / "latency__env_probe.json"
+        f.write_text(json.dumps(probe))
+        merged = rc.backfill_environment(lat, f)
+        assert merged["environment"]["cpu_model"] == "Probe CPU"
+        assert merged["environment"]["cudnn"] == probe["environment"]["cudnn"]
+        # a field the timing run DID record must never be overwritten by the probe
+        assert merged["environment"]["driver_version"] == "1.2.3"
+        assert set(merged["_backfilled"]) == {"cpu_model", "cudnn"}
+        tex = rc.latex_appendix_methodology(merged, 256)
+        assert "not recorded" not in tex
+        assert "separate probe run" in tex and "latency\\_\\_env\\_probe.json" in tex
+        # the disclosure must ride on real text, not sit as an orphaned \footnote
+        assert "\n\\footnote{" not in tex
+
+
+def test_env_backfill_refuses_a_probe_from_different_hardware():
+    rc = _driver()
+    import json, tempfile, pathlib as _pl
+    lat = _latency_fixture()
+    probe = _latency_fixture()
+    probe["environment"]["gpu_name"] = "SomeOtherGPU"
+    with tempfile.TemporaryDirectory() as d:
+        f = _pl.Path(d) / "probe.json"
+        f.write_text(json.dumps(probe))
+        try:
+            rc.backfill_environment(lat, f)
+        except ValueError as e:
+            assert "does not describe this run" in str(e)
+            return
+    raise AssertionError("a probe from a different GPU must be refused")
+
+
 if __name__ == "__main__":
     tests = [test_families_sum_to_the_recorded_total,
              test_block_and_head_recomputed_from_the_architecture,
@@ -419,7 +461,9 @@ if __name__ == "__main__":
              test_full_table_carries_the_measured_speedup_not_the_flop_ratio,
              test_appendix_states_the_protocol_and_never_invents_missing_fields,
              test_appendix_reports_the_equivalence_gate_or_says_it_was_skipped,
-             test_committed_latency_run_renders_end_to_end]
+             test_committed_latency_run_renders_end_to_end,
+             test_env_backfill_fills_only_missing_fields_and_discloses_itself,
+             test_env_backfill_refuses_a_probe_from_different_hardware]
     for t in tests:
         t()
         print(f"PASS  {t.__name__}")

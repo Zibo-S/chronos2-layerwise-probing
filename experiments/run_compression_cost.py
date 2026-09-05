@@ -38,6 +38,7 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import pathlib
 
 import numpy as np
 
@@ -463,6 +464,30 @@ def load_latency(path=None):
     return json.load(open(max(runs, key=lambda p: p.stat().st_mtime)))
 
 
+def backfill_environment(lat, probe_path):
+    """Fill environment fields the timing run did not record from a separate PROBE run.
+
+    The A100 timing run predates the harness capturing host CPU / cuDNN / SLURM allocation. Those
+    are documentation of a GPU-bound measurement, not results, so re-running the whole sweep to
+    obtain them would be waste -- but they must not be invented either. A short probe on the same
+    node type and job configuration supplies them, and the appendix says so explicitly rather than
+    implying every field came from one run.
+    """
+    probe = json.load(open(_need(pathlib.Path(probe_path), "sbatch -J envprobe job_latency.sh "
+                                 "--depths 12 --batch-sizes 1 --reps 5 --tag env_probe")))
+    src, dst = probe["environment"], dict(lat["environment"])
+    if src.get("gpu_name") != dst.get("gpu_name"):
+        raise ValueError(f"the probe ran on {src.get('gpu_name')!r} but the timing run used "
+                         f"{dst.get('gpu_name')!r} -- its environment does not describe this run")
+    filled = sorted(k for k in ("cpu_model", "cpu_count_visible", "slurm_cpus_per_task", "cudnn",
+                                "tf32_matmul", "tf32_cudnn", "compiled", "autocast")
+                    if dst.get(k) in (None, "") and src.get(k) not in (None, ""))
+    for k in filled:
+        dst[k] = src[k]
+    return {**lat, "environment": dst, "_backfilled": filled,
+            "_backfill_source": str(pathlib.Path(probe_path).name)}
+
+
 def latency_by_depth(lat, batch):
     """{depth: row} for one batch size, plus the speedup of each depth vs the full 12-block model.
 
@@ -552,10 +577,16 @@ def latex_appendix_methodology(lat, batch):
          f"(compute capability {f('gpu_capability')}), driver {f('driver_version')}; "
          f"{e.get('gpu_count', 1)} device visible, one used. "
          f"Host CPU: {f('cpu_model')}, "
-         f"{f('slurm_cpus_per_task')} cores allocated to the job. ", "",
+         f"{f('slurm_cpus_per_task')} cores allocated to the job."
+         + (f"\\footnote{{Host CPU, core allocation and cuDNN version were recorded by a separate "
+            f"probe run (\\texttt{{{_tex(lat.get('_backfill_source'))}}}) on the same GPU and job "
+            f"configuration; the timing run predates the harness capturing them. Every timing and "
+            f"memory figure in this appendix comes from the timing run itself.}}"
+            if lat.get("_backfilled") else ""), "",
          r"\paragraph{Software and precision.}",
          f"Python {f('python')}, PyTorch {f('torch')} (CUDA {f('torch_cuda')}, "
-         f"cuDNN {f('cudnn')}), model \\texttt{{{_tex(e.get('model_id'))}}}. ",
+         f"cuDNN {f('cudnn')} as reported by "
+         f"\\texttt{{torch.backends.cudnn.version()}}), model \\texttt{{{_tex(e.get('model_id'))}}}. ",
          f"All computation is in \\texttt{{float32}} --- the precision at which every accuracy number",
          r"in this paper was produced. No \texttt{torch.compile}, no automatic mixed precision, and no",
          (r"manual kernel fusion are applied (TF32 matmul: "
@@ -638,6 +669,8 @@ def main():
                          "'Latency and Memory Methodology' appendix section")
     ap.add_argument("--speedup-batch", type=int, default=256,
                     help="batch size whose measured speedup goes in the complete table")
+    ap.add_argument("--env-from", default=None,
+                    help="a probe run whose environment fills fields the timing run did not record")
     ap.add_argument("--latency-json", default=None,
                     help="a specific latency run (default: the newest under latency/tables/)")
     args = ap.parse_args()
@@ -715,6 +748,9 @@ def main():
                 "  Latency and memory are MEASUREMENTS -- they cannot be derived from the committed\n"
                 "  artifacts. Produce them first (GPU/compute node, NOT the login node):\n"
                 "      sbatch -J lat job_latency.sh --verify")
+        if args.env_from:
+            lat = backfill_environment(lat, args.env_from)
+            print(f"[env] backfilled {', '.join(lat['_backfilled'])} from {lat['_backfill_source']}")
         full = latex_full_table(rows_by_rule, tags, lat, args.speedup_batch)
         (OUT_ROOT / "latex" / "compression_table__full.tex").write_text(full + "\n")
         app = latex_appendix_methodology(lat, args.speedup_batch)
