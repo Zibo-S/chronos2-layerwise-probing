@@ -1,0 +1,265 @@
+"""CPU tests for the truncation cost accounting (probing/model_size.py) and the compression driver.
+
+No GPU, no model download, no feature cache. Two groups:
+
+  * pure arithmetic / contract tests, which always run: parameter families, the adapter convention,
+    the FLOP ratios, the encoder token layout, and the parameter bucketing used to verify against a
+    real model (checked against a fake model whose module names match Chronos-2's);
+  * provenance gates against COMMITTED artifacts, which skip loudly if the artifacts are absent:
+    the saturation depth must equal the committed l_start, the effective-rank depth must equal the
+    argmax of the committed spectral record, and the driver's paired bootstrap must reproduce the
+    committed gap-recovery CIs bit-for-bit.
+
+Run:  OMP_NUM_THREADS=2 python -m tests.test_compression_cost
+"""
+
+from __future__ import annotations
+
+import csv
+import json
+
+import numpy as np
+import torch
+import torch.nn as nn
+
+from probing import model_size
+
+
+# --------------------------------------------------------------------------- #
+# parameter accounting
+# --------------------------------------------------------------------------- #
+def test_families_sum_to_the_recorded_total():
+    """The decisive check: the constants must sum to a number measured on the real model."""
+    assert sum(model_size.param_breakdown().values()) == model_size.TOTAL_PARAMS
+    assert model_size.TOTAL_PARAMS == model_size.RECORDED_TOTAL_PARAMS == 119_477_664
+
+
+def test_block_and_head_recomputed_from_the_architecture():
+    """Recompute independently of the module's own expressions, from d_model/d_ff/quantiles."""
+    d, dff, q, p = 768, 3072, 21, 16
+    mha = 4 * d * d                                  # q,k,v,o, bias=False, inner_dim == d_model
+    mlp = d * dff + dff * d                          # NON-gated (layers.py asserts not is_gated_act)
+    block = 2 * (mha + d) + (mlp + d)                # 2 attentions + FF, each with one RMSNorm
+    assert block == model_size.BLOCK_PARAMS == 9_439_488
+    head = (d * dff + dff) + (dff * q * p + q * p) + (d * q * p + q * p)   # ResidualBlock, biases on
+    assert head == model_size.NATIVE_HEAD_PARAMS == 3_653_280
+    emb = (48 * dff + dff) + (dff * d + d) + (48 * d + d)                  # in_dim = patch_size * 3
+    assert emb == model_size.INPUT_EMBEDDING_PARAMS == 2_548_224
+    assert model_size.REG_EMBEDDING_PARAMS == 1_536 and model_size.FINAL_RMSNORM_PARAMS == 768
+    assert model_size.ADAPTER_PARAMS == 768 * 768 + 768 == 590_592
+
+
+def test_active_params_step_is_exactly_one_block():
+    for l in range(model_size.NUM_BLOCKS):
+        step = model_size.active_params(l + 1) - model_size.active_params(l)
+        assert step == model_size.BLOCK_PARAMS, (l, step)
+
+
+def test_adapter_convention_makes_depth_12_exceed_the_stock_model():
+    """Numerator includes the adapter, denominator does not -> depth 12 is 100.5%, not 100%."""
+    assert model_size.active_params(12, include_adapter=False) == model_size.TOTAL_PARAMS
+    assert (model_size.active_params(12) - model_size.TOTAL_PARAMS) == model_size.ADAPTER_PARAMS
+    assert model_size.active_fraction(12) > 1.0
+
+
+def test_active_params_rejects_out_of_range_depth():
+    for bad in (-1, 13):
+        try:
+            model_size.active_params(bad)
+        except ValueError:
+            continue
+        raise AssertionError(f"depth {bad} should have been rejected")
+
+
+def test_published_percentages_are_reproduced():
+    """The exact figures used in the paper table."""
+    for depth, pct in ((1, 13.6), (3, 29.4), (6, 53.1), (8, 68.9), (10, 84.7), (11, 92.6)):
+        assert round(100 * model_size.active_fraction(depth), 1) == pct, depth
+
+
+# --------------------------------------------------------------------------- #
+# FLOPs
+# --------------------------------------------------------------------------- #
+def test_block_flops_fraction_is_the_exact_ratio():
+    for depth in range(model_size.NUM_BLOCKS + 1):
+        assert model_size.block_flops_fraction(depth) == depth / 12
+
+
+def test_encoder_token_layout_matches_encode():
+    ncp, k, ntok = model_size.num_encoder_tokens(512, 64)
+    assert (ncp, k, ntok) == (32, 4, 37)             # ceil(C/16) content + 1 REG + ceil(H/16) slots
+
+
+def test_end_to_end_flops_exceed_block_only_because_of_fixed_costs():
+    """The embedding and head do not shrink, so end-to-end is always >= depth/12, and the gap is
+    largest at shallow depth. This is exactly why depth/12 must be labelled 'block FLOPs'."""
+    for depth in range(1, model_size.NUM_BLOCKS):
+        assert model_size.end_to_end_flops_fraction(depth) > model_size.block_flops_fraction(depth)
+    gaps = [model_size.end_to_end_flops_fraction(d) - model_size.block_flops_fraction(d)
+            for d in (1, 6, 11)]
+    assert gaps[0] > gaps[1] > gaps[2] > 0
+
+
+def test_block_stack_dominates_forward_macs():
+    m = model_size.forward_macs(model_size.NUM_BLOCKS, include_adapter=False)
+    assert 0.95 < m["blocks"] / m["total"] < 0.99    # ~97.5%: why depth/12 approximates end-to-end
+
+
+# --------------------------------------------------------------------------- #
+# verification against a real model (checked here against a FAKE one)
+# --------------------------------------------------------------------------- #
+class _FakeBlock(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.w = nn.Parameter(torch.zeros(model_size.BLOCK_PARAMS))
+
+
+class _FakeChronos(nn.Module):
+    """Module names mirror Chronos2Model so group_parameters exercises the real bucketing rules."""
+
+    def __init__(self, n_blocks=12, extra=False):
+        super().__init__()
+        self.input_patch_embedding = nn.Parameter(torch.zeros(model_size.INPUT_EMBEDDING_PARAMS))
+        self.shared = nn.Parameter(torch.zeros(model_size.REG_EMBEDDING_PARAMS))
+        self.output_patch_embedding = nn.Parameter(torch.zeros(model_size.NATIVE_HEAD_PARAMS))
+        self.encoder = nn.Module()
+        self.encoder.block = nn.ModuleList([_FakeBlock() for _ in range(n_blocks)])
+        self.encoder.final_layer_norm = nn.Parameter(torch.zeros(model_size.FINAL_RMSNORM_PARAMS))
+        if extra:
+            self.mystery_module = nn.Parameter(torch.zeros(7))
+
+
+def test_verify_against_model_passes_on_a_faithful_model():
+    r = model_size.verify_against_model(_FakeChronos())
+    assert r["ok"], {k: v for k, v in r["checks"].items() if not v[0]}
+    assert r["checks"]["total"][2] == model_size.TOTAL_PARAMS
+
+
+def test_verify_against_model_catches_an_unaccounted_module():
+    """A module the accounting does not know about must surface, not be silently absorbed."""
+    r = model_size.verify_against_model(_FakeChronos(extra=True))
+    assert not r["ok"]
+    assert not r["checks"]["no_unmatched_parameters"][0]
+    assert any(k.startswith("other::") for k in r["groups"])
+
+
+def test_verify_against_model_catches_a_wrong_block_count():
+    r = model_size.verify_against_model(_FakeChronos(n_blocks=11))
+    assert not r["ok"] and not r["checks"]["num_blocks"][0] and not r["checks"]["total"][0]
+
+
+# --------------------------------------------------------------------------- #
+# driver: LaTeX + provenance gates against committed artifacts
+# --------------------------------------------------------------------------- #
+def _driver():
+    from experiments import run_compression_cost as rc
+    return rc
+
+
+def test_latex_emitters_render_the_expected_cells():
+    rc = _driver()
+    row = {"depth_label": "L3", "active_fraction": 0.294, "block_flops_fraction": 0.25,
+           "relative_mase": 0.086, "relative_mase_ci_lo": 0.072, "relative_mase_ci_hi": 0.101,
+           "truncated_mase": 0.875, "native_mase": 0.806}
+    tags = ["uber_tlc_hourly"]
+    one = rc.latex_single_rule({tags[0]: row}, tags, "saturation")
+    assert r"\begin{tabular}" in one and r"\bottomrule" in one
+    assert r"\(29.4\%\)" in one and r"\(0.25\times\)" in one and r"\(+8.6\%\)" in one
+    two = rc.latex_two_rule({"saturation": {tags[0]: row}, "erank": {tags[0]: row}}, tags)
+    assert two.count(r"\(29.4\%\)") == 2 and r"\cmidrule(lr){6-9}" in two
+
+
+def test_saturation_depth_equals_the_committed_l_start():
+    rc = _driver()
+    checked = 0
+    for tag in rc.PT_ID_TAGS:
+        p = rc.TUNNEL_DIR / f"{tag}__fslot__{rc.QSET}__{rc.PROTO}__{rc.RUNS_TAG}.json"
+        if not p.exists():
+            continue
+        depth, prov = rc.saturation_depth(tag)       # re-derives and asserts internally
+        assert depth == int(json.load(open(p))["l_start"])
+        assert "verified" in prov
+        checked += 1
+    print(f"  (checked {checked}/{len(rc.PT_ID_TAGS)} committed tunnel records)"
+          if checked else "  (skipped: no committed tunnel records)")
+
+
+def test_erank_depth_equals_argmax_of_the_committed_spectral_record():
+    rc = _driver()
+    checked = 0
+    for tag in rc.ALL_TAGS:
+        p = rc.SPEC_DIR / f"spectral__{tag}__fslot__probe_input__train.json"
+        if not p.exists():
+            continue
+        er = np.array([x["effective_rank"] for x in json.load(open(p))["layers"]])
+        assert rc.erank_depth(tag)[0] == int(er.argmax())
+        checked += 1
+    print(f"  (checked {checked}/{len(rc.ALL_TAGS)} spectral records)"
+          if checked else "  (skipped: no committed spectral records)")
+
+
+def test_paired_bootstrap_reproduces_the_committed_gap_recovery_cis():
+    """The driver's bootstrap must be the same estimator run_native_head_adapter already committed.
+    Reproducing its CI bounds proves the resampling matrix, clustering and percentiles all agree."""
+    rc = _driver()
+    p = rc.NHA_TAB / "native_head_adapter__gap_recovery__all.csv"
+    if not p.exists():
+        print("  (skipped: no committed gap_recovery table)")
+        return
+    checked = 0
+    for row in csv.DictReader(open(p)):
+        tag, depth = row["dataset"], int(row["layer"])
+        if depth not in (3, 6, 8, 10, 11) or not (rc.NHA_BOOT /
+                                                  f"native_head_adapter__{tag}.npz").exists():
+            continue
+        z, _lin, series = rc._load_window_metrics(tag)
+        b = rc._Boot(series)
+        lab = f"L{depth:02d}"
+        nat, ada = b.mean(z["native__L13__mase"]), b.mean(z[f"linear_adapter__{lab}__mase"])
+        zs = b.mean(z[f"zero_shot__{lab}__mase"])
+        from probing.stats import ci_bounds
+        lo, hi = ci_bounds((zs - ada) / (zs - nat))
+        assert np.isclose(lo, float(row["R_boot_lo"]), atol=1e-6), (tag, depth, lo, row["R_boot_lo"])
+        assert np.isclose(hi, float(row["R_boot_hi"]), atol=1e-6), (tag, depth, hi, row["R_boot_hi"])
+        checked += 1
+    print(f"  (reproduced {checked} committed gap-recovery CIs)")
+
+
+def test_evaluate_gates_on_the_committed_relative_regret():
+    rc = _driver()
+    tag = "uber_tlc_hourly"
+    if not (rc.NHA_BOOT / f"native_head_adapter__{tag}.npz").exists():
+        print("  (skipped: no committed ext_v5 bootstrap inputs)")
+        return
+    depth, prov = rc.saturation_depth(tag)
+    r = rc.evaluate(tag, depth, "saturation", prov)          # raises if it disagrees
+    assert r["depth"] == depth and r["n_series"] > 0
+    assert r["active_params"] == model_size.active_params(depth)
+    assert r["block_flops_fraction"] == depth / 12
+    assert r["relative_mase_ci_lo"] < r["relative_mase"] < r["relative_mase_ci_hi"]
+    assert "identical" in r["window_provenance"]             # selection and scoring share windows
+
+
+if __name__ == "__main__":
+    tests = [test_families_sum_to_the_recorded_total,
+             test_block_and_head_recomputed_from_the_architecture,
+             test_active_params_step_is_exactly_one_block,
+             test_adapter_convention_makes_depth_12_exceed_the_stock_model,
+             test_active_params_rejects_out_of_range_depth,
+             test_published_percentages_are_reproduced,
+             test_block_flops_fraction_is_the_exact_ratio,
+             test_encoder_token_layout_matches_encode,
+             test_end_to_end_flops_exceed_block_only_because_of_fixed_costs,
+             test_block_stack_dominates_forward_macs,
+             test_verify_against_model_passes_on_a_faithful_model,
+             test_verify_against_model_catches_an_unaccounted_module,
+             test_verify_against_model_catches_a_wrong_block_count,
+             test_latex_emitters_render_the_expected_cells,
+             test_saturation_depth_equals_the_committed_l_start,
+             test_erank_depth_equals_argmax_of_the_committed_spectral_record,
+             test_paired_bootstrap_reproduces_the_committed_gap_recovery_cis,
+             test_evaluate_gates_on_the_committed_relative_regret]
+    for t in tests:
+        t()
+        print(f"PASS  {t.__name__}")
+    print(f"\nAll {len(tests)} compression-cost tests passed.")
