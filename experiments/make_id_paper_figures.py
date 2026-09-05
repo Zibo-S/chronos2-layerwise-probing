@@ -1014,10 +1014,172 @@ def write_table(rows, boot_b, seed):
     return TAB_DIR / f"{stem}.csv"
 
 
+# --------------------------------------------------------------------------- #
+# Saturation-entrance sensitivity: the same 2-row panel, with one shaded band per tolerance
+# --------------------------------------------------------------------------- #
+# The committed entrance uses TUNNEL_TOL = 5%. A stricter tolerance can only push the entrance
+# later (the criterion is a first crossing of (1+eps) x final), so the bands nest: the strictest
+# region sits inside the loosest and is drawn darkest. PT-OOD targets have no committed tunnel
+# record -- compute_ptid_tunnels loops PT_ID_TAGS only -- so their entrance is derived here from
+# the committed per_target validation curves with the SAME frozen criterion.
+EPS_BANDS = (0.05, 0.02)
+EPS_FILL = {0.05: "#E4F0E4", 0.02: "#BFDCBF"}     # looser = lighter, drawn first
+PTOOD_FIG_DIR = V4 / "ptood_probing"
+PT_OOD_FIG_TAGS = ("sg_carpark", "coastal_ts", "boom_hourly")
+EPS_TITLES = {"monash_electricity_hourly": "Electricity", "m4_hourly": "M4",
+              "uber_tlc_hourly": "Uber TLC", "wind_farms_hourly": "Wind Farms",
+              "sg_carpark": "SG Carpark", "coastal_ts": "Coastal T-S", "boom_hourly": "BOOM"}
+
+
+def _ptood_panel_curves(tag):
+    """(seed-mean per-window test losses, series ids, mean validation curve) for a PT-OOD target.
+
+    Different producer from the PT-ID sources: run_ptood_probing_ftok's default mode fits a FRESH
+    probe on the target itself, writing per_target JSONs and bootstrap_inputs without the '__v2'
+    path tag. The estimand is the same -- a fresh fslot probe with wd chosen on that dataset's own
+    validation split -- so the curves are comparable to the PT-ID ones.
+    """
+    wls, sids, vals = [], [], []
+    for sd in RUN_SEEDS:
+        z = np.load(_need(PTOOD_FIG_DIR / "bootstrap_inputs" / f"{tag}__{QSET}__seed{sd}.npz",
+                          f"python -m experiments.run_ptood_probing_ftok --quantile-set {QSET}"))
+        wls.append(np.asarray(z["window_loss"], np.float64))
+        sids.append(np.asarray(z["series_test"], np.int64))
+        rec = json.load(open(_need(
+            PTOOD_FIG_DIR / "per_target" / f"{tag}__{QSET}__seed{sd}.json", "as above")))
+        vals.append(np.asarray(rec["val_loss_by_layer"], np.float64))
+    assert all(np.array_equal(x, sids[0]) for x in sids), f"{tag}: runs differ in test series"
+    return np.mean(wls, axis=0), sids[0], np.mean(vals, axis=0)
+
+
+def load_eps_dataset(tag, boot_b, seed, epsilons=EPS_BANDS):
+    """One panel column, with the entrance recomputed at every tolerance in ``epsilons``."""
+    from probing.tunnel import TUNNEL_TOL, tunnel_start
+
+    if tag in PT_OOD_FIG_TAGS:
+        wl_mean, sid, val = _ptood_panel_curves(tag)
+        point, boot = _layer_mean_boot(wl_mean, sid, B=boot_b, seed=seed)
+        # gate against the producer's own per-seed test curves. The PT-OOD reference is the probe's
+        # scalar loss (a float32 torch reduction), a different op chain from our float64 mean over
+        # the saved per-window array -> compare at float32 precision.
+        ref = np.mean([json.load(open(PTOOD_FIG_DIR / "per_target" / f"{tag}__{QSET}__seed{sd}.json"))
+                       ["test_loss_by_layer"] for sd in RUN_SEEDS], axis=0)
+        gate = dict(rtol=1e-6, atol=1e-9)
+        committed = None
+    else:
+        wl_mean, sid = seed_mean_windows(tag)
+        rec = json.load(open(_need(
+            TUNNEL_DIR / f"{tag}__fslot__{QSET}__{PROTO}__{RUNS_TAG}.json",
+            f"python -m experiments.run_ptood_probing_ftok --quantile-set {QSET} --tunnels-only")))
+        val = np.asarray(rec["mean_val_loss_by_layer"], np.float64)
+        ref = np.asarray(rec["mean_test_loss_by_layer"], np.float64)
+        point, boot = _layer_mean_boot(wl_mean, sid, B=boot_b, seed=seed)
+        gate = dict(rtol=0, atol=1e-12)
+        committed = int(rec["l_start"])
+    if not np.allclose(point, np.asarray(ref, np.float64), **gate):
+        raise ValueError(f"{tag}: recomputed test curve disagrees with the committed record "
+                         f"(max |diff| = {np.abs(point - np.asarray(ref, np.float64)).max():.3e})")
+
+    starts = {float(e): int(tunnel_start(val, tol=float(e))) for e in epsilons}
+    if committed is not None and abs(TUNNEL_TOL - 0.05) < 1e-12 and 0.05 in starts:
+        if starts[0.05] != committed:                    # the 5% band must be the published one
+            raise ValueError(f"{tag}: entrance recomputed at 5% is L{starts[0.05]} but the "
+                             f"committed record says L{committed}")
+    lo, hi = ci_bounds(boot)
+
+    spec = json.load(open(_need(SPEC_DIR / f"spectral__{tag}__fslot__probe_input__train.json",
+                                "python -m experiments.run_spectral --readout fslot")))
+    erank = np.array([p["effective_rank"] for p in spec["layers"]], dtype=np.float64)
+    for name, arr in (("test curve", point), ("effective rank", erank)):
+        if len(arr) != len(LABELS):
+            raise ValueError(f"{tag}: {name} has {len(arr)} points, expected {len(LABELS)}")
+    return {"tag": tag, "point": point, "lo": lo, "hi": hi, "erank": erank,
+            "starts": starts, "l_start": starts[max(starts)], "peak": int(erank.argmax()),
+            "kind": "PT-OOD" if tag in PT_OOD_FIG_TAGS else "PT-ID",
+            "n_windows": int(wl_mean.shape[1]), "n_clusters": int(np.unique(sid).size)}
+
+
+def make_eps_figure(rows, title, stem, boot_b, epsilons=EPS_BANDS, dpi=400, show_title=True):
+    """2 x N: columns = datasets, row 0 = test loss + CI, row 1 = effective rank.
+
+    One shaded band per tolerance, nested: looser tolerances open earlier and are drawn lighter,
+    so the overlap region is where every tolerance agrees the representation has saturated.
+    """
+    order = sorted((float(e) for e in epsilons), reverse=True)      # loosest first, so it is behind
+    nc = len(rows)
+    with plt.rc_context(PAPER_RC):
+        fig, axes = plt.subplots(2, nc, figsize=(3.6 * nc, 5.4), layout="constrained",
+                                 squeeze=False, sharex="col")
+        fig.get_layout_engine().set(h_pad=0.05, w_pad=0.06, hspace=0.08, wspace=0.10)
+        x = np.arange(len(LABELS))
+        last = len(LABELS) - 1
+
+        for col, d in enumerate(rows):
+            for row in (0, 1):
+                ax = axes[row, col]
+                for e in order:                                     # nested bands
+                    ax.axvspan(d["starts"][e], last, color=EPS_FILL.get(e, "#E4F0E4"), lw=0,
+                               zorder=0)
+                for e in order:
+                    ax.axvline(d["starts"][e], color=TUNNEL_LINE, lw=1.1, zorder=1,
+                               ls="-" if e == max(order) else (0, (3, 2)),
+                               label=(f"Saturation entrance, $\\varepsilon={int(round(e * 100))}\\%$"
+                                      if col == 0 and row == 0 else None))
+
+            ax = axes[0, col]
+            ax.fill_between(x, d["lo"], d["hi"], color=LOSS_BAND, alpha=0.95, lw=0, zorder=2,
+                            label=f"95% bootstrap CI ($B={boot_b}$)" if col == 0 else None)
+            ax.plot(x, d["point"], "-o", ms=3.0, color=LOSS, mfc=LOSS, mec=LOSS, zorder=3,
+                    label=f"Test loss (mean of {len(RUN_SEEDS)} seeds)" if col == 0 else None)
+            ax.set_title(f"{EPS_TITLES[d['tag']]}  [{d['kind']}]", fontweight="bold")
+            span = d["hi"].max() - d["lo"].min()
+            ax.set_ylim(d["lo"].min() - 0.06 * span, d["hi"].max() + 0.16 * span)
+            for e in order:                                          # label each entrance
+                pos = d["starts"][e]
+                near_edge = pos >= last - 2          # keep late labels inside the axes
+                ax.annotate(LABELS[pos], xy=(pos, 1.0), xycoords=("data", "axes fraction"),
+                            xytext=(-2 if near_edge else 2, -9 if e == max(order) else -19),
+                            textcoords="offset points", fontsize=7.0, color=TUNNEL_LINE,
+                            ha="right" if near_edge else "left", va="top")
+
+            ax = axes[1, col]
+            ax.plot(x, d["erank"], "-o", ms=3.0, color=ERANK, mfc=ERANK, mec=ERANK, zorder=3,
+                    label="Effective rank" if col == 0 else None)
+            ax.plot(d["peak"], d["erank"][d["peak"]], "*", ms=9, color=ERANK, mec="white",
+                    mew=0.6, zorder=4, label="Peak effective rank" if col == 0 else None)
+            ax.set_xticks(x)
+            ax.set_xticklabels(LABELS, rotation=45, ha="right")
+            ax.set_xlabel("Representation point")
+            if col == 0:
+                axes[0, 0].set_ylabel("Test quantile loss")
+                axes[1, 0].set_ylabel("Effective rank")
+
+        h, l = [], []
+        for a in (axes[0, 0], axes[1, 0]):
+            hh, ll = a.get_legend_handles_labels()
+            h += hh
+            l += ll
+        fig.legend(h, l, loc="outside lower center", ncol=3, frameon=False)
+        if show_title:
+            fig.suptitle(title, fontweight="bold")
+        for ext in ("png", "pdf"):
+            fig.savefig(FIG_DIR / f"{stem}.{ext}", dpi=dpi)
+        plt.close(fig)
+    print(f"[write] {FIG_DIR / (stem + '.png')}")
+    for d in rows:
+        print(f"    {EPS_TITLES[d['tag']]:<13} " +
+              "  ".join(f"eps={e:.0%} -> {LABELS[d['starts'][e]]}" for e in order))
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--which", default="both", choices=("main", "appendix", "both"))
-    ap.add_argument("--figure", default="all", choices=("loss_erank", "cka", "transfer", "ft_boom", "nha", "all"),
+    ap.add_argument("--eps-datasets", nargs="+",
+                    default=["monash_electricity_hourly", "m4_hourly", "sg_carpark"],
+                    help="columns of the saturation-sensitivity figure (PT-ID or PT-OOD)")
+    ap.add_argument("--epsilons", type=float, nargs="+", default=list(EPS_BANDS),
+                    help="tolerances to shade, loosest drawn first")
+    ap.add_argument("--figure", default="all", choices=("loss_erank", "cka", "transfer", "ft_boom", "nha", "eps", "all"),
                     help="which figure family to build (default: all)")
     ap.add_argument("--boot-b", type=int, default=5000, help="bootstrap resamples (default 5000)")
     ap.add_argument("--seed", type=int, default=SEED)
@@ -1029,6 +1191,14 @@ def main():
     a = ap.parse_args()
 
     groups = ("main", "appendix") if a.which == "both" else (a.which,)
+
+    if a.figure in ("eps", "all"):
+        rows = [load_eps_dataset(t, a.boot_b, a.seed, a.epsilons) for t in a.eps_datasets]
+        make_eps_figure(rows, "Saturation entrance under a stricter tolerance",
+                        "appendix_id_saturation_sensitivity", a.boot_b, epsilons=a.epsilons,
+                        dpi=a.dpi, show_title=not a.no_title)
+        if a.figure == "eps":
+            return
 
     if a.figure in ("nha", "all"):
         pdf, png = make_nha_figure(a.boot_b, a.seed, dpi=a.dpi, show_title=not a.no_title)
