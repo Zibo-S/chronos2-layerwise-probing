@@ -310,16 +310,32 @@ def _latency_fixture():
                             "slurm_cpus_per_task": "2", "model_id": "amazon/chronos-2",
                             "context_length": 512, "horizon": 64, "forecast_slots": 4,
                             "encoder_tokens": 37, "tf32_matmul": False, "tf32_cudnn": False,
-                            "verification": {"L3": 0.0, "L12": 0.0}},
+                            "verification": {"L3": 0.0, "L12": 0.0},
+                            "verification_outputs": {"max_abs": 0.0, "max_relative": 0.0,
+                                                     "n_windows": 8}},
             "rows": [row(3, 1, 6.0), row(12, 1, 18.0), row(3, 256, 55.0), row(12, 256, 180.0)]}
 
 
 def test_latency_lookup_is_referenced_to_the_full_model():
     rc = _driver()
-    lut = rc.latency_by_depth(_latency_fixture(), 256)
-    assert lut[12]["speedup"] == 1.0                      # the reference is the full 12-block model
+    L = rc.latency_by_depth(_latency_fixture(), 256)
+    lut = L["by_depth"]
+    assert not L["native_measured"]                       # fixture has no native row
+    assert "still carries the linear adapter" in L["denominator"]
+    assert lut[12]["speedup"] == 1.0
     assert abs(lut[3]["speedup"] - 180.0 / 55.0) < 1e-12
-    assert lut[3]["memory_ratio"] == lut[3]["peak_mib"] / lut[12]["peak_mib"]
+
+    # with a measured native row, THAT becomes the reference -- not the depth-12 adapter model
+    fx = _latency_fixture()
+    nat = {**fx["rows"][-1], "condition": "native", "depth_label": "Native",
+           "predict_median_ms": 170.0, "peak_mib": 900.0}
+    for r in fx["rows"]:
+        r["condition"] = "truncated"
+    fx["rows"].append(nat)
+    L2 = rc.latency_by_depth(fx, 256)
+    assert L2["native_measured"] and "separately measured native" in L2["denominator"]
+    assert abs(L2["by_depth"][12]["speedup"] - 170.0 / 180.0) < 1e-12   # L12 is SLOWER than native
+    assert abs(L2["by_depth"][3]["speedup"] - 170.0 / 55.0) < 1e-12
 
 
 def test_latency_lookup_fails_loud_on_a_missing_batch_or_reference():
@@ -354,11 +370,16 @@ def test_appendix_states_the_protocol_and_never_invents_missing_fields():
     rc = _driver()
     lat = _latency_fixture()
     tex = rc.latex_appendix_methodology(lat, 256)
-    for needle in ("20 iterations", "100 repetitions", "torch.cuda.synchronize",
+    for needle in ("20 iterations", "100 repetitions", "CUDA synchronisation",
                    "max\_memory\_allocated", "float32", "TestGPU", "1.2.3", "Test CPU",
-                   "bit-identical", r"\label{app:latency-methodology}", "Series per second"):
+                   "numerically identical in our verification", "reloaded",
+                   "complete pipeline prediction path", "9.10.2 (raw 91002)",
+                   r"\label{app:latency-methodology}", "Series per second"):
         assert needle in tex, needle
     assert "not recorded" not in tex              # every field present -> no markers
+    assert "in one process" not in tex            # contradicted the per-depth reload
+    assert "bit-identical" not in tex             # only the compared quantities may be claimed
+    assert "the whole serving path" not in tex    # predict_quantiles is not a production server
 
     stripped = {**lat, "environment": {k: v for k, v in lat["environment"].items()
                                        if k not in ("cpu_model", "cudnn")}}
@@ -370,11 +391,14 @@ def test_appendix_states_the_protocol_and_never_invents_missing_fields():
 def test_appendix_reports_the_equivalence_gate_or_says_it_was_skipped():
     rc = _driver()
     lat = _latency_fixture()
-    assert "bit-identical" in rc.latex_appendix_methodology(lat, 256)
+    tex = rc.latex_appendix_methodology(lat, 256)
+    assert "numerically identical in our verification" in tex
+    assert "final quantile forecasts" in tex          # the OUTPUT gate, not only hidden states
     no_gate = {**lat, "environment": {k: v for k, v in lat["environment"].items()
-                                      if k != "verification"}}
-    tex = rc.latex_appendix_methodology(no_gate, 256)
-    assert "gate not run" in tex and "bit-identical" not in tex
+                                      if k not in ("verification", "verification_outputs")}}
+    tex2 = rc.latex_appendix_methodology(no_gate, 256)
+    assert "state gate not run" in tex2 and "output gate not run" in tex2
+    assert "numerically identical in our verification" not in tex2
 
 
 def test_committed_latency_run_renders_end_to_end():

@@ -207,6 +207,49 @@ def verify_truncation(device, depth, n=8, atol=0.0, rtol=0.0):
     return diff
 
 
+@torch.no_grad()
+def verify_outputs(device, n=8, quantile_levels=(0.1, 0.5, 0.9)):
+    """Compare the FINAL quantile forecasts of the spliced path against the unmodified model.
+
+    ``verify_truncation`` checks hidden states; this checks what the model actually outputs. At
+    depth 12 with an identity-initialised adapter the spliced path (adapter -> final RMSNorm ->
+    head) must reproduce the pretrained pipeline exactly, which validates the splice itself rather
+    than only the block removal.
+    """
+    torch.manual_seed(SEED)
+    ctx = [x for x in torch.randn(n, C).cumsum(-1).numpy()]
+
+    base = load_pipeline(device)
+    want, _ = base.predict_quantiles(ctx, prediction_length=H,
+                                     quantile_levels=list(quantile_levels))
+    want = torch.stack([t.detach().cpu() for t in want])
+    del base
+    gc.collect()
+    if device.type == "cuda":
+        torch.cuda.empty_cache()
+
+    from probing.native_head_adapter import LinearAdapter
+    spliced = load_pipeline(device)
+    truncate(spliced, model_size.NUM_BLOCKS, LinearAdapter(768).to(device).eval())
+    got, _ = spliced.predict_quantiles(ctx, prediction_length=H,
+                                       quantile_levels=list(quantile_levels))
+    got = torch.stack([t.detach().cpu() for t in got])
+    del spliced
+    gc.collect()
+    if device.type == "cuda":
+        torch.cuda.empty_cache()
+
+    diff = float((got - want).abs().max())
+    rel = diff / max(float(want.abs().max()), 1e-12)
+    print(f"  [verify] final quantile outputs, spliced identity path vs unmodified model: "
+          f"max|delta|={diff:.3e} (relative {rel:.3e})")
+    if rel > 1e-5:
+        raise AssertionError(
+            f"the spliced path changes the model's forecasts (relative deviation {rel:.3e}). "
+            "The adapter/RMSNorm splice is not transparent at identity -- diagnose before timing.")
+    return {"max_abs": diff, "max_relative": rel, "n_windows": n}
+
+
 # --------------------------------------------------------------------------- #
 # timing
 # --------------------------------------------------------------------------- #
@@ -234,10 +277,16 @@ def time_call(fn, device, warmup, reps):
             "reps": reps, "warmup": warmup}
 
 
-def measure(device, depth, batch, adapter_tag, warmup, reps, quantile_levels):
+def measure(device, depth, batch, adapter_tag, warmup, reps, quantile_levels, native=False):
+    """One (depth, batch) configuration. ``native=True`` measures the UNMODIFIED pretrained
+    pipeline -- no blocks removed and no adapter spliced in -- which is the baseline every speedup
+    is referenced to. It is not the same object as depth=12: that one still carries the adapter."""
     pipeline = load_pipeline(device)
-    adapter, adapter_src = load_adapter(adapter_tag, depth, device)
-    truncate(pipeline, depth, adapter)
+    if native:
+        adapter, adapter_src = None, "none (unmodified pretrained model)"
+    else:
+        adapter, adapter_src = load_adapter(adapter_tag, depth, device)
+        truncate(pipeline, depth, adapter)
 
     torch.manual_seed(SEED + batch)
     host = [x for x in np.cumsum(np.random.default_rng(SEED).standard_normal((batch, C)),
@@ -257,7 +306,10 @@ def measure(device, depth, batch, adapter_tag, warmup, reps, quantile_levels):
     encode = time_call(lambda: pipeline.model.encode(context=dev_ctx, num_output_patches=K),
                        device, warmup, reps)
 
-    row = {"depth": depth, "depth_label": (["Emb"] + [f"L{i}" for i in range(1, 13)])[depth],
+    row = {"depth": depth,
+           "depth_label": ("Native" if native else
+                           (["Emb"] + [f"L{i}" for i in range(1, 13)])[depth]),
+           "condition": "native" if native else "truncated",
            "batch_size": batch,
            "active_params": model_size.active_params(depth),
            "active_fraction": model_size.active_fraction(depth),
@@ -309,6 +361,7 @@ def main():
         print("\n[verify] a truncated model must reproduce the hooked full-model states")
         env["verification"] = {f"L{d}": verify_truncation(device, d)
                                for d in args.depths if d >= 1}
+        env["verification_outputs"] = verify_outputs(device, quantile_levels=args.quantile_levels)
 
     rows = []
     print(f"\n[timing] depths={args.depths} batches={args.batch_sizes} "
@@ -316,9 +369,9 @@ def main():
     print(f"  {'depth':>6}{'batch':>7}{'FLOPs':>8}{'predict ms':>12}{'p95':>8}"
           f"{'encode ms':>11}{'series/s':>11}{'peak MiB':>10}")
     for batch in args.batch_sizes:
-        for depth in args.depths:
+        for depth, is_native in [(model_size.NUM_BLOCKS, True)] + [(d, False) for d in args.depths]:
             r = measure(device, depth, batch, args.adapter_dataset, args.warmup, args.reps,
-                        args.quantile_levels)
+                        args.quantile_levels, native=is_native)
             rows.append(r)
             print(f"  {r['depth_label']:>6}{batch:>7}{r['block_flops_fraction']:>7.2f}x"
                   f"{r['predict_median_ms']:>12.2f}{r['predict_p95_ms']:>8.2f}"
@@ -329,7 +382,9 @@ def main():
     summary = {}
     for batch in args.batch_sizes:
         sub = [r for r in rows if r["batch_size"] == batch]
-        ref = next((r for r in sub if r["depth"] == model_size.NUM_BLOCKS), None)
+        ref = next((r for r in sub if r.get("condition") == "native"), None)
+        if ref is None:                       # older runs measured no native baseline
+            ref = next((r for r in sub if r["depth"] == model_size.NUM_BLOCKS), None)
         if ref is None or len(sub) < 2:
             continue
         summary[f"batch_{batch}"] = [
