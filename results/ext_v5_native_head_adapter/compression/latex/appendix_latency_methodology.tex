@@ -4,7 +4,8 @@
 All timings and memory figures in this paper are measured, not derived from parameter or
 FLOP counts. This appendix records the harness in full so the numbers can be reproduced or
 contested. The harness is \texttt{experiments/run\_latency.py}; it times the native model
-and every truncated variant in one process with an identical protocol.
+and each truncated variant under an identical protocol, with the model reloaded
+independently for each depth.
 
 \paragraph{The truncated model is real.}
 Every layer-wise result elsewhere in this paper is obtained by running the full 12-block
@@ -13,15 +14,18 @@ because the encoder is a feed-forward stack and blocks after $\ell$ cannot influ
 $\ell$'s output, but it means no truncated model is ever instantiated. For timing we build
 one: encoder blocks $\ell+1 \ldots 12$ are deleted from the module list and the linear
 adapter is spliced in front of the frozen final RMSNorm, which the encoder applies after
-its last remaining block. Before timing, the harness asserts that the truncated encoder
-reproduces the hooked full-model states; the observed maximum absolute deviation was
-exactly 0.0e+00 across all measured depths, i.e.\ bit-identical.
+its last remaining block. Before timing, the harness checks two things: that the
+truncated encoder reproduces the hooked full-model states at every measured depth, and
+that at depth 12 with an identity-initialised adapter the spliced path reproduces the
+unmodified model's final quantile forecasts. The observed maximum absolute deviation on
+the hidden states was exactly 0.0e+00
+, and on the final forecasts exactly 0.0e+00, i.e.\ numerically identical in our verification.
 
 \paragraph{Hardware.}
-GPU: NVIDIA A100-SXM4-40GB with 39\,GiB of VRAM (compute capability 8.0), driver 580.178.04; 1 device visible, one used. Host CPU: AMD EPYC 7413 24-Core Processor, 2 cores allocated to the job.\footnote{Host CPU, core allocation and cuDNN version were recorded by a separate probe run (\texttt{latency\_\_env\_probe.json}) on the same GPU and job configuration; the timing run predates the harness capturing them. Every timing and memory figure in this appendix comes from the timing run itself.}
+GPU: NVIDIA A100-SXM4-40GB with 39\,GiB of VRAM (compute capability 8.0), driver 580.178.04; 1 device visible, one used. Host CPU: AMD EPYC 7543 32-Core Processor, 2 cores allocated to the job.
 
 \paragraph{Software and precision.}
-Python 3.11.4, PyTorch 2.12.1 (CUDA 13.2, cuDNN 92101 as reported by \texttt{torch.backends.cudnn.version()}), model \texttt{amazon/chronos-2}. 
+Python 3.11.4, PyTorch 2.12.1 (CUDA 13.2, cuDNN 9.21.1 (raw 92101)), model \texttt{amazon/chronos-2}. 
 All computation is in \texttt{float32} --- the precision at which every accuracy number
 in this paper was produced. No \texttt{torch.compile}, no automatic mixed precision, and no
 manual kernel fusion are applied (TF32 matmul: false; TF32 cuDNN: true).
@@ -34,14 +38,14 @@ control flow, so timing is independent of the data and needs no dataset.
 
 \paragraph{Timing protocol.}
 Each configuration is warmed up for 20 iterations, which are discarded, then
-timed over 100 repetitions. CUDA is asynchronous, so
-\texttt{torch.cuda.synchronize()} brackets every timed region; without it the measurement
-records only Python dispatch. We report the \emph{median} over repetitions, which is robust
-to occasional descheduling by the operating system, and the 95th percentile separately as
-the tail. Two timings are recorded because they answer different questions:
+timed over 100 repetitions. CUDA synchronisation is performed before and after
+each timed region to account for asynchronous execution. We report the \emph{median} over
+repetitions, which is robust to occasional scheduling outliers, and the 95th percentile
+separately as the tail. Two timings are recorded because they answer different questions:
 \texttt{predict} calls \texttt{Chronos2Pipeline.predict\_quantiles} on host arrays and
-therefore \emph{includes} preprocessing and the host-to-device transfer, i.e.\ the whole
-serving path; \texttt{encode} times the encoder forward alone on a tensor already resident
+therefore \emph{includes} preprocessing and the host-to-device transfer, i.e.\ the
+complete pipeline prediction path used in our benchmark; \texttt{encode} times the
+encoder forward alone on a tensor already resident
 on the device and therefore \emph{excludes} transfer. Speedups quoted in the main text use
 \texttt{predict}, the conservative choice, since its fixed costs do not shrink with depth.
 
@@ -53,49 +57,51 @@ throughput improves with batch size while latency does not.
 \paragraph{Memory.}
 Peak memory is \texttt{torch.cuda.max\_memory\_allocated()} after
 \texttt{reset\_peak\_memory\_stats()}, recorded over the timed region. We deliberately do
-not use \texttt{nvidia-smi}, which reports the caching allocator's reservation and would
-not shrink with truncation. The weight-only figure is the allocated total after loading and
-truncating but before any forward pass. The model is reloaded from scratch for every depth
-so that dropped blocks are genuinely freed rather than merely unused; a harness that reuses
-one process would report a memory column that measures nothing.
+not use \texttt{nvidia-smi}, which reports the caching allocator's reservation rather than
+live allocations. The weight-only figure is the allocated total after loading and
+truncating but before any forward pass. The model is reloaded independently at each depth
+so that parameters from removed blocks do not remain allocated.
 
 \paragraph{Measured results.}
 Table~\ref{tab:latency-full} reports every configuration. Latency and memory depend on
 truncation depth only, not on the dataset, so the per-dataset speedups in the main text are
-lookups into this table at each dataset's selected depth.
+lookups into this table at each dataset's selected depth. Speedups are referenced to the separately measured native model, measured under the same protocol (178.07\,ms at batch 256).
 
 \begin{table}[t]
     \centering
     \small
-    \caption{Measured latency, throughput and memory of the truncated model. \texttt{predict} is the full serving path (transfer included); \texttt{encode} is the encoder forward on a device-resident tensor (transfer excluded). Speedup is the median \texttt{predict} time of the full 12-block model divided by that of the truncated model at the same batch size.}
+    \caption{Measured latency, throughput and memory. \texttt{Native} is the unmodified pretrained model; the \(L\ell\) rows are truncated at $\ell$ blocks and carry the linear adapter, so \(L12\) is \emph{not} the native model. \texttt{predict} is the complete pipeline prediction path (transfer included); \texttt{encode} is the encoder forward on a device-resident tensor (transfer excluded). Speedups in the main text are referenced to the separately measured native model.}
     \label{tab:latency-full}
     \begin{tabular}{llrrrrrr}
         \toprule
         Batch & Depth & Blocks & predict (ms) & p95 (ms) & encode (ms) & series/s & peak (MiB) \\
         \midrule
-        1 & \(L1\) & 1 & 3.69 & 3.71 & 2.80 & 271 & 72.3 \\
-         & \(L3\) & 3 & 6.49 & 6.58 & 5.61 & 154 & 144.5 \\
-         & \(L6\) & 6 & 10.65 & 10.75 & 9.74 & 94 & 252.5 \\
-         & \(L8\) & 8 & 13.43 & 13.58 & 12.52 & 74 & 324.5 \\
-         & \(L10\) & 10 & 16.20 & 16.28 & 15.34 & 62 & 396.5 \\
-         & \(L11\) & 11 & 17.60 & 17.73 & 16.72 & 57 & 432.5 \\
-         & \(L12\) & 12 & 18.97 & 19.12 & 18.09 & 53 & 468.5 \\
+        1 & \texttt{Native} & 12 & 18.45 & 18.75 & 17.65 & 54 & 466.3 \\
+         & \(L1\) & 1 & 3.60 & 3.75 & 2.74 & 278 & 72.3 \\
+         & \(L3\) & 3 & 6.34 & 6.49 & 5.47 & 158 & 144.5 \\
+         & \(L6\) & 6 & 10.42 & 10.68 & 9.56 & 96 & 252.5 \\
+         & \(L8\) & 8 & 13.10 & 13.43 & 12.23 & 76 & 324.5 \\
+         & \(L10\) & 10 & 15.78 & 16.09 & 14.96 & 63 & 396.5 \\
+         & \(L11\) & 11 & 17.17 & 17.47 & 16.38 & 58 & 432.5 \\
+         & \(L12\) & 12 & 18.53 & 18.84 & 17.74 & 54 & 468.5 \\
         \midrule
-        32 & \(L1\) & 1 & 5.42 & 5.98 & 3.52 & 5904 & 113.7 \\
-         & \(L3\) & 3 & 9.23 & 9.31 & 7.33 & 3466 & 190.0 \\
-         & \(L6\) & 6 & 14.91 & 15.21 & 13.02 & 2147 & 298.0 \\
-         & \(L8\) & 8 & 18.67 & 18.88 & 16.79 & 1714 & 370.0 \\
-         & \(L10\) & 10 & 22.46 & 22.58 & 20.57 & 1425 & 442.1 \\
-         & \(L11\) & 11 & 24.36 & 24.39 & 22.48 & 1313 & 478.1 \\
-         & \(L12\) & 12 & 26.29 & 26.34 & 24.39 & 1217 & 513.3 \\
+        32 & \texttt{Native} & 12 & 26.08 & 26.33 & 24.24 & 1227 & 511.0 \\
+         & \(L1\) & 1 & 5.33 & 5.41 & 3.47 & 6008 & 113.7 \\
+         & \(L3\) & 3 & 9.13 & 9.30 & 7.27 & 3507 & 190.0 \\
+         & \(L6\) & 6 & 14.81 & 15.04 & 12.96 & 2161 & 298.0 \\
+         & \(L8\) & 8 & 18.59 & 18.84 & 16.74 & 1722 & 370.0 \\
+         & \(L10\) & 10 & 22.39 & 22.67 & 20.54 & 1429 & 442.1 \\
+         & \(L11\) & 11 & 24.31 & 24.58 & 22.44 & 1317 & 478.1 \\
+         & \(L12\) & 12 & 26.21 & 26.45 & 24.36 & 1221 & 513.3 \\
         \midrule
-        256 & \(L1\) & 1 & 28.09 & 28.66 & 18.30 & 9115 & 534.7 \\
-         & \(L3\) & 3 & 55.45 & 56.06 & 45.70 & 4616 & 634.5 \\
-         & \(L6\) & 6 & 96.58 & 97.13 & 86.86 & 2651 & 742.5 \\
-         & \(L8\) & 8 & 123.97 & 124.49 & 114.42 & 2065 & 814.6 \\
-         & \(L10\) & 10 & 151.91 & 152.63 & 142.64 & 1685 & 886.6 \\
-         & \(L11\) & 11 & 165.20 & 165.86 & 155.66 & 1550 & 922.6 \\
-         & \(L12\) & 12 & 178.95 & 179.45 & 169.02 & 1431 & 958.6 \\
+        256 & \texttt{Native} & 12 & 178.07 & 178.54 & 168.51 & 1438 & 956.4 \\
+         & \(L1\) & 1 & 27.76 & 28.12 & 18.29 & 9222 & 534.7 \\
+         & \(L3\) & 3 & 55.19 & 55.52 & 45.72 & 4639 & 634.5 \\
+         & \(L6\) & 6 & 96.39 & 96.73 & 86.83 & 2656 & 742.5 \\
+         & \(L8\) & 8 & 123.80 & 124.08 & 114.25 & 2068 & 814.6 \\
+         & \(L10\) & 10 & 151.20 & 151.53 & 141.65 & 1693 & 886.6 \\
+         & \(L11\) & 11 & 164.94 & 165.29 & 155.40 & 1552 & 922.6 \\
+         & \(L12\) & 12 & 178.70 & 179.07 & 169.13 & 1433 & 958.6 \\
         \bottomrule
     \end{tabular}
 \end{table}
