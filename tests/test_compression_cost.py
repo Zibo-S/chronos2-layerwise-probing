@@ -297,6 +297,101 @@ def test_threshold_figures_render(tmpdir=None):
     print(f"  (rendered both panels for {len(tags)} datasets to a tempdir)")
 
 
+def _latency_fixture():
+    """A minimal latency record with the shape run_latency writes."""
+    def row(d, b, ms):
+        return {"depth": d, "depth_label": ("Emb" if d == 0 else f"L{d}"), "batch_size": b,
+                "predict_median_ms": ms, "predict_p95_ms": ms * 1.02, "encode_median_ms": ms * 0.9,
+                "throughput_series_per_s": b / (ms / 1e3), "peak_mib": 100.0 + 30 * d,
+                "weights_mib": 60.0 + 30 * d, "warmup": 20, "reps": 100}
+    return {"environment": {"gpu_name": "TestGPU", "gpu_total_mib": 40960, "gpu_capability": "8.0",
+                            "driver_version": "1.2.3", "python": "3.11.4", "torch": "2.12.1",
+                            "torch_cuda": "13.2", "cudnn": 91002, "cpu_model": "Test CPU",
+                            "slurm_cpus_per_task": "2", "model_id": "amazon/chronos-2",
+                            "context_length": 512, "horizon": 64, "forecast_slots": 4,
+                            "encoder_tokens": 37, "tf32_matmul": False, "tf32_cudnn": False,
+                            "verification": {"L3": 0.0, "L12": 0.0}},
+            "rows": [row(3, 1, 6.0), row(12, 1, 18.0), row(3, 256, 55.0), row(12, 256, 180.0)]}
+
+
+def test_latency_lookup_is_referenced_to_the_full_model():
+    rc = _driver()
+    lut = rc.latency_by_depth(_latency_fixture(), 256)
+    assert lut[12]["speedup"] == 1.0                      # the reference is the full 12-block model
+    assert abs(lut[3]["speedup"] - 180.0 / 55.0) < 1e-12
+    assert lut[3]["memory_ratio"] == lut[3]["peak_mib"] / lut[12]["peak_mib"]
+
+
+def test_latency_lookup_fails_loud_on_a_missing_batch_or_reference():
+    rc = _driver()
+    lat = _latency_fixture()
+    for mutate, needle in ((lambda d: d, "batch size 7"),
+                           (lambda d: {**d, "rows": [r for r in d["rows"] if r["depth"] != 12]},
+                            "full 12-block")):
+        try:
+            rc.latency_by_depth(mutate(lat), 7 if "batch" in needle else 256)
+        except ValueError as e:
+            assert needle in str(e), (needle, str(e))
+            continue
+        raise AssertionError(f"expected a ValueError mentioning {needle!r}")
+
+
+def test_full_table_carries_the_measured_speedup_not_the_flop_ratio():
+    rc = _driver()
+    row = {"depth": 3, "depth_label": "L3", "active_fraction": 0.294, "block_flops_fraction": 0.25,
+           "relative_mase": 0.086, "relative_mase_ci_lo": 0.072, "relative_mase_ci_hi": 0.101,
+           "truncated_mase": 0.875, "native_mase": 0.806}
+    tags = ["uber_tlc_hourly"]
+    tex = rc.latex_full_table({"saturation": {tags[0]: row}, "erank": {tags[0]: row}}, tags,
+                              _latency_fixture(), 256)
+    assert r"\(3.27\times\)" in tex, tex          # 180/55, the MEASURED ratio
+    assert r"\(0.25\times\)" not in tex           # not the FLOP ratio
+    assert "TestGPU" in tex and "batch 256" in tex
+    assert tex.count(r"\bottomrule") == 1
+
+
+def test_appendix_states_the_protocol_and_never_invents_missing_fields():
+    rc = _driver()
+    lat = _latency_fixture()
+    tex = rc.latex_appendix_methodology(lat, 256)
+    for needle in ("20 iterations", "100 repetitions", "torch.cuda.synchronize",
+                   "max\_memory\_allocated", "float32", "TestGPU", "1.2.3", "Test CPU",
+                   "bit-identical", r"\label{app:latency-methodology}", "Series per second"):
+        assert needle in tex, needle
+    assert "not recorded" not in tex              # every field present -> no markers
+
+    stripped = {**lat, "environment": {k: v for k, v in lat["environment"].items()
+                                       if k not in ("cpu_model", "cudnn")}}
+    tex2 = rc.latex_appendix_methodology(stripped, 256)
+    assert tex2.count("not recorded") == 2        # marked, not fabricated
+    assert "Test CPU" not in tex2
+
+
+def test_appendix_reports_the_equivalence_gate_or_says_it_was_skipped():
+    rc = _driver()
+    lat = _latency_fixture()
+    assert "bit-identical" in rc.latex_appendix_methodology(lat, 256)
+    no_gate = {**lat, "environment": {k: v for k, v in lat["environment"].items()
+                                      if k != "verification"}}
+    tex = rc.latex_appendix_methodology(no_gate, 256)
+    assert "gate not run" in tex and "bit-identical" not in tex
+
+
+def test_committed_latency_run_renders_end_to_end():
+    rc = _driver()
+    lat = rc.load_latency()
+    if lat is None:
+        print("  (skipped: no latency run on disk — sbatch -J lat job_latency.sh --verify)")
+        return
+    tex = rc.latex_appendix_methodology(lat, 256)
+    assert tex.count(r"\begin{tabular}") == tex.count(r"\end{tabular}") == 1
+    assert tex.count("{") == tex.count("}")
+    n = len({(r["batch_size"], r["depth"]) for r in lat["rows"]})
+    assert sum(1 for l in tex.splitlines() if l.strip().endswith(r"\\")) >= n
+    print(f"  (rendered the appendix from the committed {lat['environment'].get('gpu_name')} run, "
+          f"{n} configurations)")
+
+
 if __name__ == "__main__":
     tests = [test_families_sum_to_the_recorded_total,
              test_block_and_head_recomputed_from_the_architecture,
@@ -318,7 +413,13 @@ if __name__ == "__main__":
              test_evaluate_gates_on_the_committed_relative_regret,
              test_readout_index_13_is_the_full_encoder_not_a_13th_block,
              test_stricter_tolerance_never_selects_a_shallower_depth,
-             test_threshold_figures_render]
+             test_threshold_figures_render,
+             test_latency_lookup_is_referenced_to_the_full_model,
+             test_latency_lookup_fails_loud_on_a_missing_batch_or_reference,
+             test_full_table_carries_the_measured_speedup_not_the_flop_ratio,
+             test_appendix_states_the_protocol_and_never_invents_missing_fields,
+             test_appendix_reports_the_equivalence_gate_or_says_it_was_skipped,
+             test_committed_latency_run_renders_end_to_end]
     for t in tests:
         t()
         print(f"PASS  {t.__name__}")

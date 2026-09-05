@@ -44,6 +44,7 @@ import argparse
 import csv
 import gc
 import json
+import os
 import platform
 import statistics
 import subprocess
@@ -69,11 +70,35 @@ DEFAULT_BATCHES = (1, 32, 256)
 # --------------------------------------------------------------------------- #
 # environment + model
 # --------------------------------------------------------------------------- #
+def _cpu_model():
+    """Host CPU model string. The timing is GPU-bound, but the methodology section states it."""
+    try:
+        for line in open("/proc/cpuinfo"):
+            if line.startswith("model name"):
+                return line.split(":", 1)[1].strip()
+    except OSError:
+        pass
+    try:
+        return subprocess.run(["sysctl", "-n", "machdep.cpu.brand_string"], capture_output=True,
+                              text=True, timeout=10).stdout.strip() or None
+    except Exception:
+        return None
+
+
 def environment(device):
     """Every field the methodology section has to state, read from the machine that ran it."""
     env = {"timestamp_utc": datetime.now(timezone.utc).isoformat(),
            "python": platform.python_version(), "platform": platform.platform(),
            "torch": torch.__version__, "torch_cuda": torch.version.cuda,
+           "cudnn": (torch.backends.cudnn.version() if torch.backends.cudnn.is_available() else None),
+           "cpu_model": _cpu_model(), "cpu_count_visible": os.cpu_count(),
+           "slurm_cpus_per_task": os.environ.get("SLURM_CPUS_PER_TASK"),
+           "slurm_mem": os.environ.get("SLURM_MEM_PER_NODE"),
+           "slurm_job_id": os.environ.get("SLURM_JOB_ID"),
+           # no torch.compile, no AMP, no manual fusion anywhere in this harness
+           "compiled": False, "autocast": False,
+           "tf32_matmul": bool(getattr(torch.backends.cuda.matmul, "allow_tf32", False)),
+           "tf32_cudnn": bool(getattr(torch.backends.cudnn, "allow_tf32", False)),
            "device": str(device), "model_id": MODEL_ID,
            "context_length": C, "horizon": H, "forecast_slots": K,
            "encoder_tokens": model_size.num_encoder_tokens(C, H)[2]}
