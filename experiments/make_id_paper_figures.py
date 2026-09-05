@@ -203,7 +203,7 @@ def make_figure(rows, title, stem, boot_b, dpi=400, show_title=True):
                        label="Saturation entrance (validation)")
             ax.fill_between(x, d["lo"], d["hi"], color=LOSS_BAND, alpha=0.95, lw=0, zorder=2,
                             label=f"95% bootstrap CI ($B={boot_b}$)")
-            ax.plot(x, d["point"], "-o", ms=3.0, color=LOSS, mfc=LOSS, mec=LOSS, zorder=3,
+            ax.plot(x, d["point"], "-o", ms=ms_pt, color=LOSS, mfc=LOSS, mec=LOSS, zorder=3,
                     label=f"Test loss (mean of {len(RUN_SEEDS)} seeds)")
             ax.set_title(TITLES[d["tag"]], fontweight="bold")
             span = d["hi"].max() - d["lo"].min()      # headroom: never clip the CI band
@@ -216,7 +216,7 @@ def make_figure(rows, title, stem, boot_b, dpi=400, show_title=True):
             ax = axes[1, col]
             ax.axvspan(ls, last, color=TUNNEL_FILL, alpha=0.55, lw=0, zorder=0)
             ax.axvline(ls, color=TUNNEL_LINE, lw=0.9, ls=(0, (4, 2)), alpha=0.75, zorder=1)
-            ax.plot(x, d["erank"], "-o", ms=3.0, color=ERANK, mfc=ERANK, mec=ERANK, zorder=3,
+            ax.plot(x, d["erank"], "-o", ms=ms_pt, color=ERANK, mfc=ERANK, mec=ERANK, zorder=3,
                     label="Effective rank")
             pk = d["peak"]
             ax.plot([pk], [d["erank"][pk]], "*", ms=9.0, color=ERANK, mec="white", mew=0.6,
@@ -1100,7 +1100,8 @@ def load_eps_dataset(tag, boot_b, seed, epsilons=EPS_BANDS):
 
 
 def make_eps_figure(rows, title, stem, boot_b, epsilons=EPS_BANDS, ncol=None, dpi=400,
-                    show_title=True):
+                    show_title=True, font_scale=1.0, legend_scale=1.25, panel_w=3.45,
+                    panel_h=4.95):
     """Test loss + effective rank per dataset, with one shaded band per tolerance.
 
     The bands nest: looser tolerances open earlier and are drawn lighter, so the darkest region is
@@ -1112,8 +1113,20 @@ def make_eps_figure(rows, title, stem, boot_b, epsilons=EPS_BANDS, ncol=None, dp
     n = len(rows)
     ncol = ncol or n
     nblk = -(-n // ncol)
-    with plt.rc_context(PAPER_RC):
-        fig, axes = plt.subplots(2 * nblk, ncol, figsize=(3.45 * ncol, 4.95 * nblk),
+    # Scale type without shrinking the axes: the panel box grows with the fonts, so a larger
+    # font_scale makes the text bigger rather than squeezing the curves.
+    rc = {**PAPER_RC,
+          **{k: PAPER_RC[k] * font_scale for k in
+             ("font.size", "axes.labelsize", "axes.titlesize",
+              "xtick.labelsize", "ytick.labelsize")},
+          "legend.fontsize": PAPER_RC["legend.fontsize"] * font_scale * legend_scale,
+          "lines.linewidth": PAPER_RC["lines.linewidth"] * (1 + 0.4 * (font_scale - 1)),
+          "axes.linewidth": PAPER_RC["axes.linewidth"] * (1 + 0.4 * (font_scale - 1))}
+    grow = 1 + 0.55 * (font_scale - 1)                    # give the type room, keep the aspect
+    ms_pt, ms_star, ann_pt = 3.0 * grow, 9.0 * grow, 7.0 * font_scale
+    with plt.rc_context(rc):
+        fig, axes = plt.subplots(2 * nblk, ncol,
+                                 figsize=(panel_w * grow * ncol, panel_h * grow * nblk),
                                  layout="constrained", squeeze=False)
         fig.get_layout_engine().set(h_pad=0.05, w_pad=0.06, hspace=0.10, wspace=0.12)
         x = np.arange(len(LABELS))
@@ -1150,13 +1163,14 @@ def make_eps_figure(rows, title, stem, boot_b, epsilons=EPS_BANDS, ncol=None, dp
                 seen.add(pos)
                 edge = pos >= last - 2                    # keep late labels inside the axes
                 ax_loss.annotate(LABELS[pos], xy=(pos, 1.0), xycoords=("data", "axes fraction"),
-                                 xytext=(-2 if edge else 2, -9 - 10 * len(seen - {pos})),
-                                 textcoords="offset points", fontsize=7.0, color=TUNNEL_LINE,
+                                 xytext=((-2 if edge else 2) * font_scale,
+                                         (-9 - 10 * len(seen - {pos})) * font_scale),
+                                 textcoords="offset points", fontsize=ann_pt, color=TUNNEL_LINE,
                                  ha="right" if edge else "left", va="top")
 
             ax_er.plot(x, d["erank"], "-o", ms=3.0, color=ERANK, mfc=ERANK, mec=ERANK, zorder=3,
                        label="Effective rank" if i == 0 else None)
-            ax_er.plot(d["peak"], d["erank"][d["peak"]], "*", ms=9, color=ERANK, mec="white",
+            ax_er.plot(d["peak"], d["erank"][d["peak"]], "*", ms=ms_star, color=ERANK, mec="white",
                        mew=0.6, zorder=4, label="Peak effective rank" if i == 0 else None)
             ax_er.set_xticks(x)
             ax_er.set_xticklabels(LABELS, rotation=45, ha="right")
@@ -1198,6 +1212,9 @@ def main():
     ap.add_argument("--eps-ncol", type=int, default=None,
                     help="columns per block in the saturation-sensitivity figure "
                          "(datasets wrap into blocks of two rows; default: one block)")
+    ap.add_argument("--eps-font-scale", type=float, default=1.0,
+                    help="scale all type in the saturation-sensitivity figure; the panels "
+                         "grow with it, so text gets bigger instead of curves getting squeezed")
     ap.add_argument("--eps-stem", default="appendix_id_saturation_sensitivity",
                     help="output filename stem for the saturation-sensitivity figure")
     ap.add_argument("--figure", default="all", choices=("loss_erank", "cka", "transfer", "ft_boom", "nha", "eps", "all"),
@@ -1217,7 +1234,7 @@ def main():
         rows = [load_eps_dataset(t, a.boot_b, a.seed, a.epsilons) for t in a.eps_datasets]
         make_eps_figure(rows, "Saturation entrance under a stricter tolerance", a.eps_stem,
                         a.boot_b, epsilons=a.epsilons, ncol=a.eps_ncol, dpi=a.dpi,
-                        show_title=not a.no_title)
+                        show_title=not a.no_title, font_scale=a.eps_font_scale)
         if a.figure == "eps":
             return
 
