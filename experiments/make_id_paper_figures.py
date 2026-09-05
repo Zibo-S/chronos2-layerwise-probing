@@ -1099,24 +1099,30 @@ def load_eps_dataset(tag, boot_b, seed, epsilons=EPS_BANDS):
             "n_windows": int(wl_mean.shape[1]), "n_clusters": int(np.unique(sid).size)}
 
 
-def make_eps_figure(rows, title, stem, boot_b, epsilons=EPS_BANDS, dpi=400, show_title=True):
-    """2 x N: columns = datasets, row 0 = test loss + CI, row 1 = effective rank.
+def make_eps_figure(rows, title, stem, boot_b, epsilons=EPS_BANDS, ncol=None, dpi=400,
+                    show_title=True):
+    """Test loss + effective rank per dataset, with one shaded band per tolerance.
 
-    One shaded band per tolerance, nested: looser tolerances open earlier and are drawn lighter,
-    so the overlap region is where every tolerance agrees the representation has saturated.
+    The bands nest: looser tolerances open earlier and are drawn lighter, so the darkest region is
+    where every tolerance agrees the representation has saturated. Datasets wrap into blocks of
+    ``ncol`` columns, each block being a loss row above an effective-rank row, so seven datasets
+    fit a page instead of one very wide strip.
     """
-    order = sorted((float(e) for e in epsilons), reverse=True)      # loosest first, so it is behind
-    nc = len(rows)
+    order = sorted((float(e) for e in epsilons), reverse=True)      # loosest first, drawn behind
+    n = len(rows)
+    ncol = ncol or n
+    nblk = -(-n // ncol)
     with plt.rc_context(PAPER_RC):
-        fig, axes = plt.subplots(2, nc, figsize=(3.6 * nc, 5.4), layout="constrained",
-                                 squeeze=False, sharex="col")
-        fig.get_layout_engine().set(h_pad=0.05, w_pad=0.06, hspace=0.08, wspace=0.10)
+        fig, axes = plt.subplots(2 * nblk, ncol, figsize=(3.45 * ncol, 4.95 * nblk),
+                                 layout="constrained", squeeze=False)
+        fig.get_layout_engine().set(h_pad=0.05, w_pad=0.06, hspace=0.10, wspace=0.12)
         x = np.arange(len(LABELS))
         last = len(LABELS) - 1
 
-        for col, d in enumerate(rows):
-            for row in (0, 1):
-                ax = axes[row, col]
+        for i, d in enumerate(rows):
+            blk, col = divmod(i, ncol)
+            ax_loss, ax_er = axes[2 * blk, col], axes[2 * blk + 1, col]
+            for ax in (ax_loss, ax_er):
                 for e in order:                                     # nested bands
                     ax.axvspan(d["starts"][e], last, color=EPS_FILL.get(e, "#E4F0E4"), lw=0,
                                zorder=0)
@@ -1124,35 +1130,45 @@ def make_eps_figure(rows, title, stem, boot_b, epsilons=EPS_BANDS, dpi=400, show
                     ax.axvline(d["starts"][e], color=TUNNEL_LINE, lw=1.1, zorder=1,
                                ls="-" if e == max(order) else (0, (3, 2)),
                                label=(f"Saturation entrance, $\\varepsilon={int(round(e * 100))}\\%$"
-                                      if col == 0 and row == 0 else None))
+                                      if i == 0 and ax is ax_loss else None))
+                ax.set_xlim(-0.5, last + 0.5)
 
-            ax = axes[0, col]
-            ax.fill_between(x, d["lo"], d["hi"], color=LOSS_BAND, alpha=0.95, lw=0, zorder=2,
-                            label=f"95% bootstrap CI ($B={boot_b}$)" if col == 0 else None)
-            ax.plot(x, d["point"], "-o", ms=3.0, color=LOSS, mfc=LOSS, mec=LOSS, zorder=3,
-                    label=f"Test loss (mean of {len(RUN_SEEDS)} seeds)" if col == 0 else None)
-            ax.set_title(f"{EPS_TITLES[d['tag']]}  [{d['kind']}]", fontweight="bold")
+            ax_loss.fill_between(x, d["lo"], d["hi"], color=LOSS_BAND, alpha=0.95, lw=0, zorder=2,
+                                 label=f"95% bootstrap CI ($B={boot_b}$)" if i == 0 else None)
+            ax_loss.plot(x, d["point"], "-o", ms=3.0, color=LOSS, mfc=LOSS, mec=LOSS, zorder=3,
+                         label=f"Test loss (mean of {len(RUN_SEEDS)} seeds)" if i == 0 else None)
+            ax_loss.set_title(f"{EPS_TITLES[d['tag']]}  [{d['kind']}]", fontweight="bold")
             span = d["hi"].max() - d["lo"].min()
-            ax.set_ylim(d["lo"].min() - 0.06 * span, d["hi"].max() + 0.16 * span)
-            for e in order:                                          # label each entrance
+            ax_loss.set_ylim(d["lo"].min() - 0.06 * span, d["hi"].max() + 0.18 * span)
+            ax_loss.set_xticks(x)
+            ax_loss.set_xticklabels([])
+            seen = set()                                  # tolerances often coincide -> label once
+            for k, e in enumerate(order):
                 pos = d["starts"][e]
-                near_edge = pos >= last - 2          # keep late labels inside the axes
-                ax.annotate(LABELS[pos], xy=(pos, 1.0), xycoords=("data", "axes fraction"),
-                            xytext=(-2 if near_edge else 2, -9 if e == max(order) else -19),
-                            textcoords="offset points", fontsize=7.0, color=TUNNEL_LINE,
-                            ha="right" if near_edge else "left", va="top")
+                if pos in seen:
+                    continue
+                seen.add(pos)
+                edge = pos >= last - 2                    # keep late labels inside the axes
+                ax_loss.annotate(LABELS[pos], xy=(pos, 1.0), xycoords=("data", "axes fraction"),
+                                 xytext=(-2 if edge else 2, -9 - 10 * len(seen - {pos})),
+                                 textcoords="offset points", fontsize=7.0, color=TUNNEL_LINE,
+                                 ha="right" if edge else "left", va="top")
 
-            ax = axes[1, col]
-            ax.plot(x, d["erank"], "-o", ms=3.0, color=ERANK, mfc=ERANK, mec=ERANK, zorder=3,
-                    label="Effective rank" if col == 0 else None)
-            ax.plot(d["peak"], d["erank"][d["peak"]], "*", ms=9, color=ERANK, mec="white",
-                    mew=0.6, zorder=4, label="Peak effective rank" if col == 0 else None)
-            ax.set_xticks(x)
-            ax.set_xticklabels(LABELS, rotation=45, ha="right")
-            ax.set_xlabel("Representation point")
+            ax_er.plot(x, d["erank"], "-o", ms=3.0, color=ERANK, mfc=ERANK, mec=ERANK, zorder=3,
+                       label="Effective rank" if i == 0 else None)
+            ax_er.plot(d["peak"], d["erank"][d["peak"]], "*", ms=9, color=ERANK, mec="white",
+                       mew=0.6, zorder=4, label="Peak effective rank" if i == 0 else None)
+            ax_er.set_xticks(x)
+            ax_er.set_xticklabels(LABELS, rotation=45, ha="right")
+            ax_er.set_xlabel("Representation point")
             if col == 0:
-                axes[0, 0].set_ylabel("Test quantile loss")
-                axes[1, 0].set_ylabel("Effective rank")
+                ax_loss.set_ylabel("Test quantile loss")
+                ax_er.set_ylabel("Effective rank")
+
+        for j in range(n, nblk * ncol):                   # blank the unused slots
+            blk, col = divmod(j, ncol)
+            for r in (2 * blk, 2 * blk + 1):
+                axes[r, col].axis("off")
 
         h, l = [], []
         for a in (axes[0, 0], axes[1, 0]):
@@ -1179,6 +1195,11 @@ def main():
                     help="columns of the saturation-sensitivity figure (PT-ID or PT-OOD)")
     ap.add_argument("--epsilons", type=float, nargs="+", default=list(EPS_BANDS),
                     help="tolerances to shade, loosest drawn first")
+    ap.add_argument("--eps-ncol", type=int, default=None,
+                    help="columns per block in the saturation-sensitivity figure "
+                         "(datasets wrap into blocks of two rows; default: one block)")
+    ap.add_argument("--eps-stem", default="appendix_id_saturation_sensitivity",
+                    help="output filename stem for the saturation-sensitivity figure")
     ap.add_argument("--figure", default="all", choices=("loss_erank", "cka", "transfer", "ft_boom", "nha", "eps", "all"),
                     help="which figure family to build (default: all)")
     ap.add_argument("--boot-b", type=int, default=5000, help="bootstrap resamples (default 5000)")
@@ -1194,9 +1215,9 @@ def main():
 
     if a.figure in ("eps", "all"):
         rows = [load_eps_dataset(t, a.boot_b, a.seed, a.epsilons) for t in a.eps_datasets]
-        make_eps_figure(rows, "Saturation entrance under a stricter tolerance",
-                        "appendix_id_saturation_sensitivity", a.boot_b, epsilons=a.epsilons,
-                        dpi=a.dpi, show_title=not a.no_title)
+        make_eps_figure(rows, "Saturation entrance under a stricter tolerance", a.eps_stem,
+                        a.boot_b, epsilons=a.epsilons, ncol=a.eps_ncol, dpi=a.dpi,
+                        show_title=not a.no_title)
         if a.figure == "eps":
             return
 
