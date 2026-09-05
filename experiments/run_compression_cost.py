@@ -454,14 +454,34 @@ MISSING = ("\\textbf{[not recorded by this run --- re-run \\texttt{job\\_latency
            "captures this field, or fill it in by hand]}")
 
 
-def load_latency(path=None):
-    """The newest latency run, or the one at ``path``. Returns None if none has been run."""
+def load_latency(path=None, exclude=None, lat_dir=None):
+    """The latency SWEEP, or the run at ``path``. Returns None if none has been run.
+
+    Picking "the newest file" is wrong here: a short environment probe (``--tag env_probe``, one
+    depth and one batch size) is written after the real sweep and would win on mtime, then fail
+    later with a confusing "no batch size 256". The sweep is the run with the most measured
+    configurations, tie-broken by recency, and the file handed to ``--env-from`` is excluded.
+    """
     if path is not None:
-        return json.load(open(path))
-    runs = sorted(LAT_DIR.glob("latency__*.json"))
+        d = json.load(open(path))
+        return {**d, "_source": pathlib.Path(path).name}
+    runs = sorted((lat_dir or LAT_DIR).glob("latency__*.json"))
+    if exclude is not None:
+        ex = pathlib.Path(exclude).resolve()
+        runs = [r for r in runs if r.resolve() != ex]
     if not runs:
         return None
-    return json.load(open(max(runs, key=lambda p: p.stat().st_mtime)))
+
+    def rank(p):
+        try:
+            d = json.load(open(p))
+        except (OSError, ValueError):
+            return (-1, 0.0)
+        return (len({(r.get("batch_size"), r.get("depth")) for r in d.get("rows", [])}),
+                p.stat().st_mtime)
+
+    best = max(runs, key=rank)
+    return {**json.load(open(best)), "_source": best.name}
 
 
 def backfill_environment(lat, probe_path):
@@ -497,7 +517,10 @@ def latency_by_depth(lat, batch):
     rows = {r["depth"]: r for r in lat["rows"] if r["batch_size"] == batch}
     if not rows:
         have = sorted({r["batch_size"] for r in lat["rows"]})
-        raise ValueError(f"the latency run has no batch size {batch}; it measured {have}")
+        raise ValueError(
+            f"latency run {lat.get('_source', '<unknown>')!r} has no batch size {batch}; it "
+            f"measured {have}. Pass --speedup-batch {have[-1]} to use what it has, or "
+            f"--latency-json <path> to point at the full sweep.")
     full = rows.get(model_size.NUM_BLOCKS)
     if full is None:
         raise ValueError("the latency run never measured the full 12-block model, so no speedup "
@@ -741,7 +764,7 @@ def main():
     print(f"\n[write] {csv_path}")
 
     if args.latex_appendix:
-        lat = load_latency(args.latency_json)
+        lat = load_latency(args.latency_json, exclude=args.env_from)
         if lat is None:
             raise SystemExit(
                 "no latency run found under results/ext_v5_native_head_adapter/latency/tables/.\n"
@@ -750,14 +773,15 @@ def main():
                 "      sbatch -J lat job_latency.sh --verify")
         if args.env_from:
             lat = backfill_environment(lat, args.env_from)
-            print(f"[env] backfilled {', '.join(lat['_backfilled'])} from {lat['_backfill_source']}")
+            print(f"[env] backfilled {', '.join(lat['_backfilled']) or '(nothing was missing)'} "
+                  f"from {lat['_backfill_source']}")
         full = latex_full_table(rows_by_rule, tags, lat, args.speedup_batch)
         (OUT_ROOT / "latex" / "compression_table__full.tex").write_text(full + "\n")
         app = latex_appendix_methodology(lat, args.speedup_batch)
         (OUT_ROOT / "latex" / "appendix_latency_methodology.tex").write_text(app)
         lut = latency_by_depth(lat, args.speedup_batch)
-        print(f"\n[latency] {lat['environment'].get('gpu_name')} — measured speedup at batch "
-              f"{args.speedup_batch}:")
+        print(f"\n[latency] {lat.get('_source')} on {lat['environment'].get('gpu_name')} "
+              f"— measured speedup at batch {args.speedup_batch}:")
         for d in sorted(lut):
             r = lut[d]
             print(f"    L{d:<3} {r['predict_median_ms']:>8.2f} ms  {r['speedup']:>5.2f}x  "

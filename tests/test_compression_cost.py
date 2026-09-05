@@ -434,6 +434,42 @@ def test_env_backfill_refuses_a_probe_from_different_hardware():
     raise AssertionError("a probe from a different GPU must be refused")
 
 
+def test_load_latency_picks_the_sweep_not_a_newer_probe():
+    """Regression: an env probe is written AFTER the sweep, so newest-by-mtime picks the probe and
+    every later lookup fails with a confusing 'no batch size 256'."""
+    rc = _driver()
+    import json, os, tempfile, time, pathlib as _pl
+    sweep = _latency_fixture()                                   # 4 configurations
+    probe = {**_latency_fixture(), "rows": _latency_fixture()["rows"][:1]}
+    with tempfile.TemporaryDirectory() as d:
+        dd = _pl.Path(d)
+        (dd / "latency__A100.json").write_text(json.dumps(sweep))
+        pf = dd / "latency__env_probe.json"
+        pf.write_text(json.dumps(probe))
+        old = time.time() - 3600
+        os.utime(dd / "latency__A100.json", (old, old))           # sweep is OLDER on disk
+        got = rc.load_latency(lat_dir=dd)
+        assert got["_source"] == "latency__A100.json", got["_source"]
+        assert len(got["rows"]) == len(sweep["rows"])
+        # and the probe is skipped outright when it is the --env-from file
+        assert rc.load_latency(exclude=pf, lat_dir=dd)["_source"] == "latency__A100.json"
+        # an explicit path still wins
+        assert rc.load_latency(path=pf, lat_dir=dd)["_source"] == "latency__env_probe.json"
+
+
+def test_missing_batch_error_names_the_run_and_the_way_out():
+    rc = _driver()
+    lat = {**_latency_fixture(), "_source": "latency__env_probe.json"}
+    lat["rows"] = [r for r in lat["rows"] if r["batch_size"] == 1]
+    try:
+        rc.latency_by_depth(lat, 256)
+    except ValueError as e:
+        for needle in ("latency__env_probe.json", "--speedup-batch", "--latency-json"):
+            assert needle in str(e), (needle, str(e))
+        return
+    raise AssertionError("expected a ValueError naming the run and the remedy")
+
+
 if __name__ == "__main__":
     tests = [test_families_sum_to_the_recorded_total,
              test_block_and_head_recomputed_from_the_architecture,
@@ -463,7 +499,9 @@ if __name__ == "__main__":
              test_appendix_reports_the_equivalence_gate_or_says_it_was_skipped,
              test_committed_latency_run_renders_end_to_end,
              test_env_backfill_fills_only_missing_fields_and_discloses_itself,
-             test_env_backfill_refuses_a_probe_from_different_hardware]
+             test_env_backfill_refuses_a_probe_from_different_hardware,
+             test_load_latency_picks_the_sweep_not_a_newer_probe,
+             test_missing_batch_error_names_the_run_and_the_way_out]
     for t in tests:
         t()
         print(f"PASS  {t.__name__}")
