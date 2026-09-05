@@ -1,0 +1,72 @@
+% Appendix: Implementation Details
+% Generated for the ts-limits workshop submission. Every value below is taken from the committed
+% run records rather than from memory:
+%   probe / saturation  results/ext_v4_future_tokens/q1/tunnels/*.json      (wd_grid, run_seeds)
+%   adapter             results/ext_v5_native_head_adapter/configs/*.json   (epochs, lr, wd_grid)
+%   effective rank      results/ext_v4_future_tokens/spectral/*.json        (sampling protocol)
+%   hardware/software   results/ext_v5_native_head_adapter/latency/tables/*.json
+\section{Implementation Details}
+\label{app:implementation}
+
+This section collects the settings that are not naturally described alongside the method. Nothing
+here is tuned per result: every probe and adapter uses the same optimizer, schedule and
+hyperparameter grid, and the only quantity selected per dataset and per layer is weight decay,
+always on a validation split.
+
+\paragraph{Probe fitting.}
+The shared forecast-slot probe is fit on the \(K\) forecast-slot states of the training windows.
+Each of the 768 dimensions is standardized using statistics computed on the training slot states at
+that layer, and the same statistics are applied at validation and test. The probe is a single
+\(\mathbb{R}^{768} \rightarrow \mathbb{R}^{Q \times P}\) linear map shared across slots, trained
+with AdamW at learning rate \(10^{-2}\) for a fixed 300 full-batch epochs with no early stopping.
+Weight decay is applied to the weight matrix only, leaving the bias unregularized, and is selected
+per layer from \(\{10^{-5}, 10^{-4}, 10^{-3}, 10^{-2}, 10^{-1}, 0.3, 1, 3\}\) by validation loss.
+Probes are refit under three initializations (seeds 0, 1, 2); the backbone is frozen, so the
+initialization is the only source of randomness in an otherwise deterministic full-batch fit.
+
+\paragraph{Adapter fitting.}
+The linear adapter uses the same optimizer convention: AdamW, learning rate \(10^{-2}\), 300
+full-batch epochs, no early stopping, decay on the weight only, and the same eight-point weight
+decay grid selected on validation. It is initialized to the identity, and because identity
+initialization with full-batch training is deterministic, each adapter is fit exactly once ---
+repeated initializations would be identical, so all adapter uncertainty comes from the test-set
+bootstrap rather than from seed variation. Adapters are trained through the frozen final RMSNorm
+and forecasting head against the model's own normalized forecast target, so no part of Chronos-2
+receives a gradient.
+
+\paragraph{Effective rank.}
+Effective rank is computed on the training split from the \(K\) forecast-slot states stacked to an
+\((N \cdot K) \times 768\) matrix, before the probe's standardization, so it describes the
+representation rather than the probe's view of it. We draw 4096 samples per layer and report the
+mean over 200 subsamples of 80\% of those samples, drawn without replacement (seed 0).
+
+\paragraph{Uncertainty and seeds.}
+The global seed is 0 for NumPy, PyTorch and scikit-learn, and window construction is deterministic
+given that seed, so all conditions are evaluated on identical windows. Confidence intervals use
+5,000 cluster bootstrap resamples (seed 0) with whole test series as the resampling unit for PT-ID
+datasets and the parent cluster --- carpark, station, or metric query --- for PT-OOD datasets. One
+resampling matrix is drawn per dataset and reused across every layer, condition and metric, so all
+differences reported are paired.
+
+\paragraph{Hardware and software.}
+Experiments ran on a single NVIDIA A100-SXM4-40GB (driver 580.178.04) with an AMD EPYC 7413 host
+CPU under SLURM. The software stack is Python 3.11.4, PyTorch 2.12.1 (CUDA 13.2, cuDNN 9.21.1) and
+\texttt{chronos-forecasting} 2.3.1 for the \texttt{amazon/chronos-2} pipeline, with NumPy 1.26.4,
+scikit-learn 1.7.1 and Matplotlib 3.10.8. All computation is in \texttt{float32}; no
+\texttt{torch.compile}, mixed precision or manual kernel fusion is used anywhere. Timing and memory
+methodology is given separately in Appendix~\ref{app:latency-methodology}.
+
+\paragraph{Reproducing the results.}
+Each stage is a separate entry point, and each writes the records the next stage consumes:
+representation extraction and probe fitting with saturation entrances
+(\texttt{run\_ptood\_probing\_ftok}), effective rank (\texttt{run\_spectral}), layer similarity
+(\texttt{run\_cka\_analysis}), the frozen-head, adapter and native conditions
+(\texttt{run\_native\_head\_adapter}), the cost tables and depth-selection rules
+(\texttt{run\_compression\_cost}), the latency and memory harness (\texttt{run\_latency}), and the
+figures (\texttt{make\_id\_paper\_figures}). Extraction and fitting require a GPU; the tables,
+statistics and figures are recomputed from the committed records on CPU in seconds. Every table and
+figure in this paper is regenerated from those records, and the aggregation stages assert that the
+numbers they recompute match the committed ones before writing anything.
+
+% Fill in or delete before submission:
+% \paragraph{Code availability.} Code and result records are available at \url{...}.
