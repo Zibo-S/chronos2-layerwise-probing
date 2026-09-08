@@ -393,10 +393,21 @@ def extract_window_features(tag, split, contexts, y, pooling="content", batch_si
 # model.encode(..., num_output_patches=K) call, and returns content/REG/forecast-slot
 # states (plus the post-final-norm state) from that ONE pass. Cached under a
 # ``K<K>_H<horizon>`` tag so different horizons never collide.
+#
+# ``slot_tokens`` selects WHICH K token states land in the "fslot" arrays. The sequence is
+# [content(ncp) | REG | forecast(K)], so "forecast" takes hs[:, -K:, :] (the native slots,
+# the default and the only behaviour that existed before) and "content_last" takes the K
+# content patches immediately before REG — the positional analogue, letting the SAME shared
+# head read context tokens instead of forecast slots. The key stays "fslot" so every reader
+# (probes, drivers, CKA) is unchanged; the token identity lives in the cache FILENAME and in
+# the npz's own ``slot_tokens`` record, which is verified on every cache hit.
 # ----------------------------------------------------------------------- #
 
+SLOT_TOKEN_TAGS = {"forecast": "", "content_last": "cslotL_"}   # -> cache-name discriminator
+
+
 def extract_kout_features(tag, split, contexts, y, horizon, batch_size=128,
-                          pipeline=None, cache_prefix=None):
+                          pipeline=None, cache_prefix=None, slot_tokens="forecast"):
     """content / REG / forecast-slot states from ONE num_output_patches=K forward pass,
     with K = ceil(horizon / OUTPUT_PATCH_SIZE) derived here (NOT passed in) so extraction
     and the shared probe can never disagree on the slot count.
@@ -420,13 +431,23 @@ def extract_kout_features(tag, split, contexts, y, horizon, batch_size=128,
                      ``IDF_<tag>__ft__<source>__<stage>__<hash8>``). None -> ``_idf_prefix(tag)``
                      (default), so a fine-tuned run can never collide with the pretrained cache.
 
+    ``slot_tokens`` ("forecast" default | "content_last") chooses which K token states fill the
+    "fslot" arrays: the K native forecast slots, or the K content patches immediately before the
+    REG token. Same shape (n,K,768), same shared head, different tokens — the controlled readout
+    comparison. Non-default values write a SEPARATE cache file (``cslotL_K<K>_H<horizon>``), so
+    the committed forecast-slot caches stay byte-identical and can never be misread.
+
     Returns (feats, final, y):
       feats = {"content": {L:(n,768)}, "reg": {L:(n,768)}, "fslot": {L:(n,K,768)}}  L in 0..12 (L0=embed, L1..L12=blocks)
       final = {"content": (n,768),     "reg": (n,768),     "fslot": (n,K,768)}       post-final-norm
     """
     K = math.ceil(horizon / OUTPUT_PATCH_SIZE)   # native rule: pipeline.get_num_output_patches
+    if slot_tokens not in SLOT_TOKEN_TAGS:
+        raise ValueError(f"unknown slot_tokens {slot_tokens!r}; choose "
+                         f"{sorted(SLOT_TOKEN_TAGS)}")
     prefix = _idf_prefix(tag) if cache_prefix is None else cache_prefix
-    cache_path = _cache_path(prefix, split, None, f"K{K}_H{horizon}")
+    cache_path = _cache_path(prefix, split, None,
+                             f"{SLOT_TOKEN_TAGS[slot_tokens]}K{K}_H{horizon}")
     types = ("content", "reg", "fslot")
     if cache_path.exists():
         d = np.load(cache_path, allow_pickle=True)
@@ -447,7 +468,14 @@ def extract_kout_features(tag, split, contexts, y, horizon, batch_size=128,
         assert feats["fslot"][0].shape[1] == K, (
             f"cache {cache_path.name} carries {feats['fslot'][0].shape[1]} forecast slots but the "
             f"filename/horizon implies K={K} — file renamed or corrupted; delete and re-extract")
-        print(f"  [cache HIT]  {cache_path.name}")
+        # legacy caches predate the record and are all forecast-slot by construction
+        cached_tokens = str(d["slot_tokens"]) if "slot_tokens" in d.files else "forecast"
+        if cached_tokens != slot_tokens:
+            raise RuntimeError(
+                f"{cache_path.name} holds '{cached_tokens}' slots but this run asked for "
+                f"'{slot_tokens}' — the cache name and its contents disagree; delete "
+                f"features_cache/{cache_path.name} and re-extract")
+        print(f"  [cache HIT]  {cache_path.name}  slots={cached_tokens}")
         return feats, final, y_cached
 
     print(f"  [cache MISS] extracting {tag}/{split}  K={K}  n_windows={len(contexts)}")
@@ -475,8 +503,14 @@ def extract_kout_features(tag, split, contexts, y, horizon, batch_size=128,
 
     def pool_content(hs): return hs[:, :ncp, :].mean(dim=1).numpy()
     def pool_reg(hs):     return hs[:, reg_idx, :].numpy() if num_special else pool_content(hs)
-    def pool_fslot(hs):   return hs[:, -K:, :].numpy()
-    poolers = {"content": pool_content, "reg": pool_reg, "fslot": pool_fslot}
+    if slot_tokens == "forecast":
+        def pool_slots(hs): return hs[:, -K:, :].numpy()        # the K native forecast slots
+    else:                                                       # "content_last"
+        if ncp < K:
+            raise ValueError(f"content_last needs ncp>=K, got ncp={ncp} K={K} (context too "
+                             f"short for {K} content patches)")
+        def pool_slots(hs): return hs[:, ncp - K:ncp, :].numpy()  # the K patches before REG
+    poolers = {"content": pool_content, "reg": pool_reg, "fslot": pool_slots}
 
     acc = {t: {i: [] for i in range(NUM_LAYERS)} for t in types}
     acc_final = {t: [] for t in types}
@@ -527,13 +561,13 @@ def extract_kout_features(tag, split, contexts, y, horizon, batch_size=128,
     feats = {t: {i: np.concatenate(acc[t][i], axis=0) for i in range(NUM_LAYERS)} for t in types}
     final = {t: np.concatenate(acc_final[t], axis=0) for t in types}
 
-    save = {"y": np.asarray(y)}
+    save = {"y": np.asarray(y), "slot_tokens": np.array(slot_tokens)}
     for t in types:
         for i in range(NUM_LAYERS):
             save[f"{t}_L{i}"] = feats[t][i]
         save[f"{t}_final"] = final[t]
     np.savez(cache_path, **save)
-    print(f"  [saved]      {cache_path.name}  fslot per-layer {feats['fslot'][0].shape}")
+    print(f"  [saved]      {cache_path.name}  slots={slot_tokens} per-layer {feats['fslot'][0].shape}")
     return feats, final, np.asarray(y)
 
 

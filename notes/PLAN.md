@@ -1,6 +1,62 @@
 # Working plan — chronos2-layerwise-probing
 _Rolling notes. Edit freely; run `/plan` to fold in recent conversation._
-_Last updated: 2026-09-05_
+_Last updated: 2026-09-08_
+
+## CONTENT-SLOT SHARED HEAD (readout 2x2, 4th cell) — 2026-09-08 [BUILT & CPU-VERIFIED, NOT run, NOT committed]
+User ask: "implement shared heads but using content tokens", after the content-pooled CKA branch (a6264c9).
+Completes the readout 2x2 the committed comparison confounds — pooled-vs-shared AND content-vs-forecast
+change together in Finding #3, so it cannot attribute the mid-layer advantage to either:
+  pooled Linear(768,Q*H):  content_K (committed)  |  --
+  shared Linear(768,Q*P):  **THIS**               |  fslot (committed)
+run_id_forecasting.py:718 already concedes the confound in its own docstring ("~Kx fewer params + enforced
+patch-wise weight sharing"). New cell = same head, same windows, same wd grid, same 3 seeds, ONLY the tokens differ.
+- **USER DECISIONS (AskUserQuestion 2026-09-08):** (a) **last-K content tokens** `hs[:, ncp-K:ncp, :]` = the
+  K=4 patches immediately before REG (the positional analogue of fslot's `hs[:, -K:, :]`); stride-K variant
+  offered and DECLINED for now (YAGNI — build only if last-K shows signal). (b) EDIT FILES + SHOW DIFFS
+  [[scoped-go-ahead-with-diff]].
+- **KEY BLOCKING FACT (why this needed a GPU pass, not a cache re-read like the CKA branch):** the committed
+  K4_H64 caches store the content **MEAN** (`extraction.py` `pool_content` = `hs[:, :ncp, :].mean(1)`) — per-token
+  content states were never cached and a mean is not invertible. So this is a genuine forward pass per
+  (dataset, split), unlike run_extv4_content which was pure cache re-read.
+- **THE ENABLING FACT (why the probe needed zero new math):** `_apply_shared_head` (probes.py:605) does
+  `n, K, _ = X.shape` and never asks what the K states ARE; `fit_shared_forecast_probe_explicit_val` only
+  validates (n,K,768) + K==ceil(H/P) + (n,H) labels. `pooling_or_token_type` is recorded, never branched on
+  (grepped). So the content-slot line calls the fslot fit/predict pair VERBATIM.
+- **CODE (extraction edit is the only touched existing file; default path byte-identical):**
+  `probing/extraction.py` += `SLOT_TOKEN_TAGS = {"forecast": "", "content_last": "cslotL_"}` + a
+  `slot_tokens="forecast"` kwarg on `extract_kout_features`: swaps `pool_fslot`->`pool_slots`, prefixes the
+  cache name (default = EMPTY prefix, so every committed `K4_H64` name is unchanged), stores `slot_tokens`
+  in the npz and FAILS LOUD on a name/content mismatch (legacy caches with no record read back as
+  "forecast", which is all they could be). The dict key stays `"fslot"` DELIBERATELY so probes/drivers/CKA
+  are unchanged — token identity lives in the filename + record. **Do NOT add a 4th entry to
+  `types=("content","reg","fslot")`**: the cache-HIT path does `d[f"{t}_L{i}"]` for every type, so that would
+  KeyError every committed cache (7 ext_v4 + 42 ft__boom + forda_cls) and force a full re-extraction.
+  NEW `experiments/run_content_slot_probing.py` — sibling driver (NOT a `PROBE_FAMILIES` entry: that dataclass
+  is documented "same fslot features, different head", this is the opposite). Imports C/H/K/RUN_SEEDS/WD_GRID/
+  QUANTILE_EPOCHS/_protocol_meta/_run_compatible/_save_ckpt from run_ptood_probing_ftok so the two readouts
+  can never drift apart. Namespace `results/ext_v4_future_tokens/cslot/{ptid_runs,ptid_checkpoints,tunnels,
+  figures,tables}`; reads the committed fslot ptid_runs READ-ONLY for the head-to-head. Modes
+  `--fit-ptid` (GPU) / `--tunnels-only` / `--figures`, idempotent per seed.
+  NEW `tests/test_content_slot_probe.py` (13) + NEW `job_content_slot_probing.sh`.
+- **STATED CAVEAT (must survive into any writeup):** at C=512/P=16/K=4 the content slots cover context steps
+  **448..512 — the last 64 of 512**, while pooled `content_K` sees all 512. So cslot-vs-content_K mixes readout
+  structure with information COVERAGE; only **cslot-vs-fslot** (same K, same head, same coverage) is fully
+  controlled. A stride-K variant would close that gap — deliberately not built. Test
+  `test_content_slots_cover_the_recent_context_only` pins the numbers so the caveat cannot silently rot.
+- **VERIFIED (login CPU, OMP=2):** 13/13 new tests PASS; regressions ALL green — cka 18, quantile_sets 10,
+  shared_forecast 8, fslot_transfer 13, tunnel 13, ft_specialization 18, task_shift 33, slot_mlp 11,
+  native_head_adapter 10, spectral 10, forecasting_comparison 8, ood_transfer 12, rolling_split 11. Cache
+  names confirmed disjoint + default unchanged; CLI + stage guard + fail-loud figures verified; `results/`
+  untouched. **NOT yet run on GPU.**
+- **RUN RECIPE (user submits SLURM — [[submit-slurm-jobs-self]]; --fit-ptid is NOT login-node work):**
+  `sbatch -J cslot job_content_slot_probing.sh` (GPU, ~3h wall, cold caches; resumable — resubmit re-HITs
+  caches and skips finished seeds) -> inspect `results/ext_v4_future_tokens/cslot/ptid_runs/` + the tunnel
+  l_start values -> login CPU: `python -m experiments.run_content_slot_probing --figures`. Optional q1:
+  `sbatch -J cslot_q1 job_content_slot_probing.sh --quantile-set q1`. Commit code + results separately.
+- **READ THE RESULT HONESTLY:** cslot ~= fslot => the shared STRUCTURE suppresses the mid-layer advantage;
+  cslot ~= pooled content => the forecast TOKENS are what keep improving late. Flat/null is a valid answer —
+  do NOT tune toward either. Cosmetic nit: `probes.py` prints "[fit-explicit-val fslot]" for content slots too
+  (the label is the probe family, not the tokens) — left alone to keep fslot stdout byte-identical.
 
 ## COMPRESSION COST + LATENCY HARNESS — 2026-09-05 [CODE COMMITTED; latency NOT yet run]
 For the ts-limits workshop section "What is the cost of compression?". Two commits on
