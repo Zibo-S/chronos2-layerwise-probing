@@ -2,7 +2,7 @@
 #SBATCH --account=def-irina          # the only account we have on Narval
 #SBATCH --gres=gpu:1                 # one GPU (A100): cold content-slot extraction + probe fits
 #SBATCH --cpus-per-task=4
-#SBATCH --mem=32G                    # rolling window build + 4 x (1394+262+262) window forward pass
+#SBATCH --mem=16G                    # rolling window build + 4 x (1394+262+262) window forward pass
 #SBATCH --time=3:00:00               # cold caches this run; a resubmit resumes cheaply (see below)
 #SBATCH --output=logs/%x-%j.out      # %x = job name (sbatch -J), %j = job id
 
