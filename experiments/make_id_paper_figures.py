@@ -99,6 +99,10 @@ FT_GROUPS = [(["boom_hourly"], "FT-ID"),
              (["sg_carpark", "coastal_ts"], "PT-OOD / FT-OOD")]
 CKA_MAT_DIR = REPO_ROOT / "results" / "cka" / "ext_v4_future_tokens_fslot" / "matrices"
 CKA_FIG_DIR = REPO_ROOT / "results" / "cka" / "ext_v4_future_tokens_fslot" / "figures"
+# content-pooled readout: same cache/rows, no probe -> no committed forecasting tunnel to overlay,
+# so the panels carry no validation-entrance dashed line (CKA is probe-independent regardless).
+CKA_CONTENT_MAT_DIR = REPO_ROOT / "results" / "cka" / "ext_v4_future_tokens_content" / "matrices"
+CKA_CONTENT_FIG_DIR = REPO_ROOT / "results" / "cka" / "ext_v4_future_tokens_content" / "figures"
 FIG_DIR = V4 / QSET / "id" / "figures"
 TAB_DIR = V4 / QSET / "id" / "tables"
 
@@ -990,7 +994,26 @@ def load_cka(tag):
     return {"tag": tag, "M": M, "l_start": l_start}
 
 
-def make_cka_figure(rows, title, stem, dpi=400, show_title=True, ncol=2, font_scale=1.0):
+def load_cka_content(tag):
+    """14x14 linear-CKA matrix for the content-pooled readout of one dataset.
+
+    Mirrors ``load_cka`` but reads the ext_v4_future_tokens_content matrices and carries no tunnel
+    entrance (``l_start=None`` -> no dashed line): the content readout has no committed forecasting
+    tunnel for the PT-OOD targets, and CKA is probe-independent, so the heatmaps stand on their own.
+    """
+    m = _need(CKA_CONTENT_MAT_DIR / f"{tag}__content__layerxlayer.npy",
+              "python -m experiments.run_cka --readout content")
+    M = np.load(m).astype(np.float64)
+    n = len(LABELS)
+    if M.shape != (n, n):
+        raise ValueError(f"{tag}: content CKA matrix is {M.shape}, expected ({n}, {n})")
+    if not np.allclose(np.diag(M), 1.0) or not np.allclose(M, M.T):
+        raise ValueError(f"{tag}: content CKA matrix is not symmetric with unit diagonal")
+    return {"tag": tag, "M": M, "l_start": None}
+
+
+def make_cka_figure(rows, title, stem, dpi=400, show_title=True, ncol=2, font_scale=1.0,
+                    out_dir=None):
     """Layer-by-layer linear-CKA heatmaps with one shared colour bar.
 
     Datasets wrap into rows of ``ncol`` panels; the panel box is square (the matrices are), so the
@@ -1014,9 +1037,10 @@ def make_cka_figure(rows, title, stem, dpi=400, show_title=True, ncol=2, font_sc
         for ax, d in zip(axes.ravel(), rows):
             im = ax.imshow(d["M"], cmap="viridis", vmin=0.0, vmax=1.0,
                            origin="upper", interpolation="nearest")
-            b = d["l_start"] - 0.5                      # boundary sits between the two cells
-            for line in (ax.axvline, ax.axhline):
-                line(b, color="white", lw=0.9, ls=(0, (3, 2)), alpha=0.85)
+            if d["l_start"] is not None:               # validation-selected forecasting entrance
+                b = d["l_start"] - 0.5                  # boundary sits between the two cells
+                for line in (ax.axvline, ax.axhline):
+                    line(b, color="white", lw=0.9, ls=(0, (3, 2)), alpha=0.85)
             kind = "PT-OOD" if d["tag"] in PT_OOD_FIG_TAGS else "PT-ID"
             ax.set_title(f"{TITLES[d['tag']]}  [{kind}]" if mixed else TITLES[d["tag"]],
                          fontweight="bold")
@@ -1036,8 +1060,9 @@ def make_cka_figure(rows, title, stem, dpi=400, show_title=True, ncol=2, font_sc
         cb.ax.tick_params(labelsize=tick_pt)
         if show_title:
             fig.suptitle(title, fontsize=ttl_pt, fontweight="bold")
-        CKA_FIG_DIR.mkdir(parents=True, exist_ok=True)
-        pdf, png = CKA_FIG_DIR / f"{stem}.pdf", CKA_FIG_DIR / f"{stem}.png"
+        dst = out_dir if out_dir is not None else CKA_FIG_DIR
+        dst.mkdir(parents=True, exist_ok=True)
+        pdf, png = dst / f"{stem}.pdf", dst / f"{stem}.png"
         fig.savefig(pdf)
         fig.savefig(png, dpi=dpi)
         plt.close(fig)
@@ -1321,7 +1346,7 @@ def main():
                          "the panels keep their size")
     ap.add_argument("--eps-stem", default="appendix_id_saturation_sensitivity",
                     help="output filename stem for the saturation-sensitivity figure")
-    ap.add_argument("--figure", default="all", choices=("loss_erank", "cka", "transfer", "ft_boom", "nha", "eps", "all"),
+    ap.add_argument("--figure", default="all", choices=("loss_erank", "cka", "cka_content", "transfer", "ft_boom", "nha", "eps", "all"),
                     help="which figure family to build (default: all)")
     ap.add_argument("--boot-b", type=int, default=5000, help="bootstrap resamples (default 5000)")
     ap.add_argument("--seed", type=int, default=SEED)
@@ -1437,6 +1462,23 @@ def main():
                       f"CKA(L6, L12+RMS)={M[6, -1]:.3f}  entrance={LABELS[d['l_start']]}")
             print(f"    -> {pdf.relative_to(REPO_ROOT)}\n    -> {png.relative_to(REPO_ROOT)}")
     if a.figure == "cka":
+        return
+
+    if a.figure in ("cka_content", "all"):
+        # content-pooled twin of the fslot "all7" appendix: all 7 datasets, three per row
+        tags = CKA_TAGS["all7"]
+        title = "Representation similarity across datasets: content-pooled states"
+        rows = [load_cka_content(t) for t in tags]
+        pdf, png = make_cka_figure(rows, title, "appendix_id_cka", dpi=a.dpi,
+                                   show_title=not a.no_title, ncol=3,
+                                   font_scale=a.cka_font_scale, out_dir=CKA_CONTENT_FIG_DIR)
+        print(f"[cka_content:all7] {' + '.join(TITLES[t] for t in tags)}")
+        for d in rows:
+            M = d["M"]
+            print(f"    {TITLES[d['tag']]:<12} CKA(Emb, L12+RMS)={M[0, -1]:.3f}  "
+                  f"CKA(L6, L12+RMS)={M[6, -1]:.3f}")
+        print(f"    -> {pdf.relative_to(REPO_ROOT)}\n    -> {png.relative_to(REPO_ROOT)}")
+    if a.figure == "cka_content":
         return
 
     all_rows = []
