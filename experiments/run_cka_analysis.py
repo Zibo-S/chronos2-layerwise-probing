@@ -22,14 +22,18 @@ Analyses (select with flags; default = --all):
   --extv4-content   the same 14x14 CKA on the CONTENT-pooled states of that SAME K=4 pass, in a
                     separate namespace; pair it with --extv4-fslot for a controlled readout
                     comparison (only the pooled tokens differ, not the forward pass)
+  --extv4-cslot     14x14 CKA of the CONTENT-SLOT states (the K content patches before REG,
+                    stacked (n*K,768) exactly like fslot) — the representation the
+                    content-slot shared-head probe reads; needs the cslotL_K4_H64 caches
   --domain-ft       BOOM-FT: within-stage 14x14, cross-stage alignment, same-layer drift (per target)
   --task-ft         FordA-cls-FT: same three, for FordA content AND forecasting fslot targets
   --domain-vs-task  same-layer CKA-to-pretrained drift, DOMAIN (BOOM) vs TASK (FordA), fslot vs fslot
   --probe-relation  (best-effort) 1-CKA drift vs probe-performance change, merged table + scatter
 
 Outputs under results/cka/{extended_v3_rolling, ext_v4_future_tokens_fslot,
-ext_v4_future_tokens_content, ft_specialization, task_shift_classification, domain_vs_task}/ as
-.npy matrices, labelled CSVs, and publication-style heatmaps/curves.
+ext_v4_future_tokens_content, ext_v4_future_tokens_cslot, ft_specialization,
+task_shift_classification, domain_vs_task}/ as .npy matrices, labelled CSVs, and
+publication-style heatmaps/curves.
 
 Compute discipline: cache-only + CKA matmuls loop datasets x stages x layers, so run under
 salloc (CPU is fine; no GPU) with OMP_NUM_THREADS set — NOT the login node. The contracts test
@@ -49,7 +53,7 @@ import numpy as np
 from probing import config
 from probing import cka
 from probing.config import NUM_LAYERS, OUTPUT_PATCH_SIZE
-from probing.extraction import _cache_path, _idf_prefix
+from probing.extraction import SLOT_TOKEN_TAGS, _cache_path, _idf_prefix
 from probing.finetune import ft_cache_prefix
 
 # extended_v3 uses the same rolling windows as ft_specialization's PT-ID targets -> namespace them.
@@ -57,6 +61,11 @@ config.set_dataset_set("extended_v3_rolling")
 
 H, K = 64, math.ceil(64 / OUTPUT_PATCH_SIZE)          # forecasting fslot: K=4, H=64
 FSLOT_POOL = f"K{K}_H{H}"                              # "K4_H64"
+# content-slot readout (run_content_slot_probing): the SAME shared head reading the K content
+# patches before REG instead of the K forecast slots -> a SEPARATE cache written by
+# extract_kout_features(slot_tokens="content_last"). extraction.SLOT_TOKEN_TAGS is the single
+# source of truth for the name discriminator, so this can never drift from the extractor.
+CSLOT_POOL = f"{SLOT_TOKEN_TAGS['content_last']}K{K}_H{H}"   # "cslotL_K4_H64"
 CLS_POOL = f"K{math.ceil(16 / OUTPUT_PATCH_SIZE)}_H16"  # FordA cls extraction horizon 16 -> K1 -> "K1_H16"
 
 PT_ID_TAGS = {"monash_electricity_hourly", "uber_tlc_hourly", "m4_hourly", "wind_farms_hourly"}
@@ -274,6 +283,82 @@ def run_extv4_content(max_rows, seed, split="test", tags=None):
                "per_dataset": prov},
               open(root / "provenance.json", "w"), indent=2)
     print(f"[extv4-content] -> {root}  (provenance.json records split/rows/seed)")
+
+
+CSLOT_ANALYSIS = "ext_v4_future_tokens_cslot"
+
+
+def read_extv4_cslot_reps(tag: str, split: str) -> list[np.ndarray]:
+    """14 CONTENT-SLOT layer matrices, stacked (n,K,768) -> (n*K,768).
+
+    The representation the content-slot shared-head probe actually reads: the K content patches
+    immediately before REG, from a num_output_patches=K pass. Stacking matches read_extv4_fslot_reps
+    exactly (every slot is a row), so the cslot and fslot CKA maps are directly comparable and
+    differ in ONE thing — which K tokens were kept. Written by
+    run_content_slot_probing (--fit-ptid for the 4 PT-ID sets, --extract-ood for the 3 PT-OOD)."""
+    path = _cache_path(_idf_prefix(tag), _fslot_split(tag, split), None, CSLOT_POOL)
+    if not path.exists():
+        raise FileNotFoundError(
+            f"missing content-slot cache {path.name} — extract it first:\n"
+            f"  sbatch job_content_slot_probing.sh                     (4 PT-ID sets)\n"
+            f"  python -m experiments.run_content_slot_probing --extract-ood   (3 PT-OOD sets)")
+    return [cka.stack_slots(a) for a in cka.load_npz_reps(path, FSLOT14_KEYS)]
+
+
+def run_extv4_cslot(max_rows, seed, split="test", tags=None):
+    """14x14 content-slot CKA per dataset — the third readout map, in its own namespace.
+
+    Sibling of run_extv4_fslot / run_extv4_content for the same reason they are siblings of each
+    other: the committed maps and their producers stay byte-identical. Rows are slots (n*K), as in
+    the fslot branch, so `windows` is reported as n // K."""
+    root = OUT / CSLOT_ANALYSIS
+    for sub in ("matrices", "figures", "tables"):
+        (root / sub).mkdir(parents=True, exist_ok=True)
+    tofinal_rows, curves, prov = [], [], {}
+    for tag in (tags or EXTV4_TAGS):
+        reps = read_extv4_cslot_reps(tag, split)
+        n_avail = reps[0].shape[0]
+        idx = cka.subsample_indices(n_avail, max_rows, seed)
+        reps = [r[idx] for r in reps]
+        M = cka.cka_matrix(reps)
+        short = SHORT.get(tag, tag)
+        kind = "PT-ID" if tag in PT_ID_TAGS else "PT-OOD"
+        np.save(root / "matrices" / f"{tag}__cslot__layerxlayer.npy", M)
+        cka.save_matrix_csv(M, LABELS_14, LABELS_14,
+                            root / "tables" / f"{tag}__cslot__layerxlayer.csv")
+        cka.heatmap(M, LABELS_14, LABELS_14,
+                    root / "figures" / f"{tag}__cslot__layerxlayer.png",
+                    title=f"{short} — content-slot layer x layer CKA ({kind})",
+                    xaxis_label="representation point", yaxis_label="representation point")
+        tf = cka.cka_to_reference(reps, ref_index=-1)
+        curves.append((short, tf))
+        for lab, v in zip(LABELS_14, tf):
+            tofinal_rows.append({"dataset": tag, "short": short, "kind": kind,
+                                 "layer": lab, "cka_to_final": float(v)})
+        prov[tag] = {"kind": kind, "cache_split": _fslot_split(tag, split),
+                     "rows_available": int(n_avail), "rows_used": int(len(idx)),
+                     "windows": int(n_avail // K), "K": K}     # rows are slots, as in fslot
+        print(f"[extv4-cslot] {short:<12} ({kind:<6}) 14x14  rows {len(idx)}/{n_avail}  "
+              f"split={_fslot_split(tag, split)}")
+    cka.drift_curve([(lab, v, None) for lab, v in curves], LABELS_14,
+                    root / "figures" / "cka_to_final__cslot_all.png",
+                    title="Content-slot CKA to the final content-slot state (L12+LN)",
+                    ylabel="Linear CKA to L12+LN")
+    with open(root / "tables" / "cka_to_final__cslot.csv", "w", newline="") as fh:
+        w = csv.DictWriter(fh, ["dataset", "short", "kind", "layer", "cka_to_final"])
+        w.writeheader(); w.writerows(tofinal_rows)
+    json.dump({"analysis": CSLOT_ANALYSIS, "readout": "content_slot",
+               "representation": ("the K content patches before REG from the SAME "
+                                  "num_output_patches=K pass, (n,K,768) -> (n*K,768), 14 points"),
+               "slot_tokens": "content_last",
+               "paired_with": ("results/cka/ext_v4_future_tokens_fslot (same stacking, same rows, "
+                               "different K tokens)"),
+               "backbone": "pretrained amazon/chronos-2 (frozen)", "C": 512, "H": H, "K": K,
+               "requested_split": split, "max_rows": max_rows, "seed": seed,
+               "probe_independent": "CKA uses no probe: quantile set / weight decay do not enter",
+               "per_dataset": prov},
+              open(root / "provenance.json", "w"), indent=2)
+    print(f"[extv4-cslot] -> {root}  (provenance.json records split/rows/seed)")
 
 
 def read_extv3_reps(tag: str) -> list[np.ndarray]:
@@ -574,6 +659,9 @@ def _parse_args(argv=None):
                     help="which cached split the fslot CKA reads (recorded in provenance.json)")
     ap.add_argument("--extv4-content", action="store_true",
                     help="14-pt CONTENT-pooled CKA from that same K=4 cache (separate namespace)")
+    ap.add_argument("--extv4-cslot", action="store_true",
+                    help="14-pt CONTENT-SLOT CKA (the K content patches before REG, stacked "
+                         "like fslot); needs the cslotL_K4_H64 caches")
     ap.add_argument("--domain-ft", action="store_true")
     ap.add_argument("--task-ft", action="store_true")
     ap.add_argument("--domain-vs-task", action="store_true")
@@ -587,8 +675,8 @@ def _parse_args(argv=None):
 
 def main(argv=None):
     a = _parse_args(argv)
-    run_all = a.all or not any([a.extended_v3, a.extv4_fslot, a.extv4_content, a.domain_ft,
-                                a.task_ft, a.domain_vs_task, a.probe_relation])
+    run_all = a.all or not any([a.extended_v3, a.extv4_fslot, a.extv4_content, a.extv4_cslot,
+                                a.domain_ft, a.task_ft, a.domain_vs_task, a.probe_relation])
     OUT.mkdir(parents=True, exist_ok=True)
     (OUT / "run_config.json").write_text(json.dumps(
         {"split": "test", "max_rows": a.max_rows, "seed": a.seed,
@@ -599,6 +687,9 @@ def main(argv=None):
                                  f"fslot (n*K,768), 14 pts (+L12+LN), split={a.fslot_split}",
                              CONTENT_ANALYSIS:
                                  f"content-pooled from the SAME K=4 pass, 14 pts, "
+                                 f"split={a.fslot_split}",
+                             CSLOT_ANALYSIS:
+                                 f"content slots (n*K,768), K patches before REG, 14 pts, "
                                  f"split={a.fslot_split}"}}, indent=2))
 
     domain_drift, cls_drift, task_fcast_drift = {}, {}, {}
@@ -608,6 +699,8 @@ def main(argv=None):
         run_extv4_fslot(a.max_rows, a.seed, a.fslot_split)
     if run_all or a.extv4_content:
         run_extv4_content(a.max_rows, a.seed, a.fslot_split)
+    if run_all or a.extv4_cslot:
+        run_extv4_cslot(a.max_rows, a.seed, a.fslot_split)
     if run_all or a.domain_ft or a.domain_vs_task or a.probe_relation:
         domain_drift = run_domain_ft(a.targets, a.max_rows, a.seed)
     if run_all or a.task_ft or a.domain_vs_task or a.probe_relation:

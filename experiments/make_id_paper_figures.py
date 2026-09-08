@@ -103,6 +103,11 @@ CKA_FIG_DIR = REPO_ROOT / "results" / "cka" / "ext_v4_future_tokens_fslot" / "fi
 # so the panels carry no validation-entrance dashed line (CKA is probe-independent regardless).
 CKA_CONTENT_MAT_DIR = REPO_ROOT / "results" / "cka" / "ext_v4_future_tokens_content" / "matrices"
 CKA_CONTENT_FIG_DIR = REPO_ROOT / "results" / "cka" / "ext_v4_future_tokens_content" / "figures"
+# content-slot readout: the K content patches before REG through the SAME shared head as fslot.
+# Same stacking as fslot, so these heatmaps are the controlled "which tokens" twin of the fslot
+# ones; no committed forecasting tunnel to overlay either, so no dashed entrance line.
+CKA_CSLOT_MAT_DIR = REPO_ROOT / "results" / "cka" / "ext_v4_future_tokens_cslot" / "matrices"
+CKA_CSLOT_FIG_DIR = REPO_ROOT / "results" / "cka" / "ext_v4_future_tokens_cslot" / "figures"
 FIG_DIR = V4 / QSET / "id" / "figures"
 TAB_DIR = V4 / QSET / "id" / "tables"
 
@@ -1012,6 +1017,22 @@ def load_cka_content(tag):
     return {"tag": tag, "M": M, "l_start": None}
 
 
+def load_cka_cslot(tag):
+    """14x14 linear-CKA matrix for the CONTENT-SLOT readout of one dataset.
+
+    Same contract as load_cka_content (l_start=None -> no dashed entrance line; CKA is
+    probe-independent). Produced by run_cka_analysis --extv4-cslot off the cslotL_K4_H64 caches."""
+    m = _need(CKA_CSLOT_MAT_DIR / f"{tag}__cslot__layerxlayer.npy",
+              "python -m experiments.run_cka_analysis --extv4-cslot")
+    M = np.load(m).astype(np.float64)
+    n = len(LABELS)
+    if M.shape != (n, n):
+        raise ValueError(f"{tag}: content-slot CKA matrix is {M.shape}, expected ({n}, {n})")
+    if not np.allclose(np.diag(M), 1.0) or not np.allclose(M, M.T):
+        raise ValueError(f"{tag}: content-slot CKA matrix is not symmetric with unit diagonal")
+    return {"tag": tag, "M": M, "l_start": None}
+
+
 def make_cka_figure(rows, title, stem, dpi=400, show_title=True, ncol=2, font_scale=1.0,
                     out_dir=None):
     """Layer-by-layer linear-CKA heatmaps with one shared colour bar.
@@ -1346,7 +1367,7 @@ def main():
                          "the panels keep their size")
     ap.add_argument("--eps-stem", default="appendix_id_saturation_sensitivity",
                     help="output filename stem for the saturation-sensitivity figure")
-    ap.add_argument("--figure", default="all", choices=("loss_erank", "cka", "cka_content", "transfer", "ft_boom", "nha", "eps", "all"),
+    ap.add_argument("--figure", default="all", choices=("loss_erank", "cka", "cka_content", "cka_cslot", "transfer", "ft_boom", "nha", "eps", "all"),
                     help="which figure family to build (default: all)")
     ap.add_argument("--boot-b", type=int, default=5000, help="bootstrap resamples (default 5000)")
     ap.add_argument("--seed", type=int, default=SEED)
@@ -1479,6 +1500,23 @@ def main():
                   f"CKA(L6, L12+RMS)={M[6, -1]:.3f}")
         print(f"    -> {pdf.relative_to(REPO_ROOT)}\n    -> {png.relative_to(REPO_ROOT)}")
     if a.figure == "cka_content":
+        return
+
+    if a.figure in ("cka_cslot", "all"):
+        # content-SLOT twin of the fslot "all7" appendix: all 7 datasets, three per row
+        tags = CKA_TAGS["all7"]
+        title = "Representation similarity across datasets: content-slot states"
+        rows = [load_cka_cslot(t) for t in tags]
+        pdf, png = make_cka_figure(rows, title, "appendix_id_cka", dpi=a.dpi,
+                                   show_title=not a.no_title, ncol=3,
+                                   font_scale=a.cka_font_scale, out_dir=CKA_CSLOT_FIG_DIR)
+        print(f"[cka_cslot:all7] {' + '.join(TITLES[t] for t in tags)}")
+        for d in rows:
+            M = d["M"]
+            print(f"    {TITLES[d['tag']]:<12} CKA(Emb, L12+RMS)={M[0, -1]:.3f}  "
+                  f"CKA(L6, L12+RMS)={M[6, -1]:.3f}")
+        print(f"    -> {pdf.relative_to(REPO_ROOT)}\n    -> {png.relative_to(REPO_ROOT)}")
+    if a.figure == "cka_cslot":
         return
 
     all_rows = []

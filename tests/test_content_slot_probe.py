@@ -249,6 +249,92 @@ def test_figures_fail_loud_without_runs():
             cs.PTID_RUN_DIR = orig
 
 
+# --------------------------------------------------------------------------- #
+# content-slot CKA branch
+# --------------------------------------------------------------------------- #
+def test_cka_cslot_reads_the_content_slot_cache():
+    """The CKA branch must address the cslotL_ cache — NOT the forecast-slot one — and derive the
+    discriminator from extraction.SLOT_TOKEN_TAGS so it can never drift from the extractor."""
+    from experiments import run_cka_analysis as rc
+    assert rc.CSLOT_POOL == f"{SLOT_TOKEN_TAGS['content_last']}K{K}_H{H}", rc.CSLOT_POOL
+    assert rc.CSLOT_POOL != rc.FSLOT_POOL and rc.FSLOT_POOL in rc.CSLOT_POOL
+    assert rc.CSLOT_ANALYSIS == "ext_v4_future_tokens_cslot"
+    # same 14 keys + same slot stacking as fslot -> the two maps stay comparable
+    src = Path(rc.__file__).read_text()
+    assert "def read_extv4_cslot_reps" in src
+    assert "cka.stack_slots(a) for a in cka.load_npz_reps(path, FSLOT14_KEYS)" in src
+
+
+def test_cka_cslot_covers_all_seven_datasets():
+    """The 7-dataset roster is shared with the fslot/content branches, and PT-OOD tags resolve to
+    the '_rolling' split names their windows were built under."""
+    from experiments import run_cka_analysis as rc
+    assert len(rc.EXTV4_TAGS) == 7, rc.EXTV4_TAGS
+    for t in rc.EXTV4_TAGS:
+        want = "test" if t in rc.PT_ID_TAGS else "test_rolling"
+        assert rc._fslot_split(t, "test") == want, (t, want)
+
+
+def test_cka_cslot_missing_cache_names_both_extraction_stages():
+    """A missing cache must name BOTH producers — --fit-ptid covers only the 4 PT-ID sets, so a
+    naive 7-dataset run would otherwise fail with no hint about the PT-OOD gap."""
+    from experiments import run_cka_analysis as rc
+    try:
+        rc.read_extv4_cslot_reps("sg_carpark", "test")
+    except FileNotFoundError as e:
+        assert "job_content_slot_probing.sh" in str(e) and "--extract-ood" in str(e), str(e)
+    else:
+        raise AssertionError("expected FileNotFoundError for an absent content-slot cache")
+
+
+def test_driver_extract_ood_covers_the_pt_ood_gap():
+    """--extract-ood must extract content slots for exactly the 3 PT-OOD tags, test split only,
+    and must not fit or save any probe artifact."""
+    from experiments import run_content_slot_probing as cs
+    from probing.tunnel import PT_OOD_TAGS
+    import inspect
+    src = inspect.getsource(cs.extract_ood)
+    assert cs.extract_ood.__defaults__[0] == PT_OOD_TAGS
+    assert len(PT_OOD_TAGS) == 3
+    assert '"test_rolling"' in src, "PT-OOD caches must use the _rolling split name"
+    assert "build_ood_rolling_windows" in src and "seed=SEED" in src
+    for banned in ("fit_shared_forecast_probe_explicit_val", "_save_ckpt", "json.dump"):
+        assert banned not in src, f"extract_ood must not {banned} — it is extraction only"
+
+
+def test_paper_figure_branch_targets_the_cslot_namespace():
+    """The paper-style 7-panel figure must read cslot matrices and write into the cslot figure
+    dir — never overwrite the committed fslot/content appendix figures that share the stem."""
+    from experiments import make_id_paper_figures as mp
+    assert mp.CKA_CSLOT_MAT_DIR.name == "matrices"
+    assert mp.CKA_CSLOT_MAT_DIR.parent.name == "ext_v4_future_tokens_cslot"
+    assert mp.CKA_CSLOT_FIG_DIR.parent.name == "ext_v4_future_tokens_cslot"
+    for other in (mp.CKA_FIG_DIR, mp.CKA_CONTENT_FIG_DIR):
+        assert mp.CKA_CSLOT_FIG_DIR != other
+    assert len(mp.CKA_TAGS["all7"]) == 7
+
+
+def test_paper_figure_renders_seven_panels(tmp=None):
+    """Synthetic end-to-end: 7 valid CKA matrices -> the paper-style figure actually renders as
+    PDF+PNG with the 3-per-row wrap, into the given out_dir."""
+    from experiments import make_id_paper_figures as mp
+    rng = np.random.default_rng(0)
+    n = len(mp.LABELS)
+    rows = []
+    for t in mp.CKA_TAGS["all7"]:
+        A = rng.normal(size=(n, n))
+        M = A @ A.T
+        d = np.sqrt(np.diag(M))
+        M = M / np.outer(d, d)                       # symmetric, unit diagonal
+        rows.append({"tag": t, "M": M, "l_start": None})
+    with tempfile.TemporaryDirectory() as td:
+        out = Path(td)
+        pdf, png = mp.make_cka_figure(rows, "synthetic", "appendix_id_cka", dpi=60,
+                                      ncol=3, out_dir=out)
+        assert pdf.exists() and png.exists(), (pdf, png)
+        assert pdf.parent == out, "must honour out_dir, not the default fslot dir"
+
+
 TESTS = [
     test_slot_token_registry,
     test_cache_names_disjoint_and_default_unchanged,
@@ -263,6 +349,12 @@ TESTS = [
     test_driver_shares_the_fslot_protocol,
     test_figure_and_tunnel_stages_on_synthetic_runs,
     test_figures_fail_loud_without_runs,
+    test_cka_cslot_reads_the_content_slot_cache,
+    test_cka_cslot_covers_all_seven_datasets,
+    test_cka_cslot_missing_cache_names_both_extraction_stages,
+    test_driver_extract_ood_covers_the_pt_ood_gap,
+    test_paper_figure_branch_targets_the_cslot_namespace,
+    test_paper_figure_renders_seven_panels,
 ]
 
 if __name__ == "__main__":

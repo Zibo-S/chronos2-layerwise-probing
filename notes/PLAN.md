@@ -53,6 +53,35 @@ patch-wise weight sharing"). New cell = same head, same windows, same wd grid, s
   caches and skips finished seeds) -> inspect `results/ext_v4_future_tokens/cslot/ptid_runs/` + the tunnel
   l_start values -> login CPU: `python -m experiments.run_content_slot_probing --figures`. Optional q1:
   `sbatch -J cslot_q1 job_content_slot_probing.sh --quantile-set q1`. Commit code + results separately.
+### CONTENT-SLOT CKA (7 datasets) — 2026-09-08 [BUILT & CPU-VERIFIED, NOT run]
+User ask after the cslot probe job ran: "cka for this 7 matrices for 7 datasets". Third readout map,
+alongside the committed fslot + content CKA.
+- **GAP FOUND: `--fit-ptid` only extracts the 4 PT_ID_TAGS** (it fits probes; the PT-OOD fresh-probe
+  diagnostic is not part of this line). SG Carpark / Coastal T-S / BOOM have NO cslot cache -> a
+  7-dataset CKA needs one more GPU pass. Added `run_content_slot_probing --extract-ood`: TEST split
+  only (CKA reads one split; the PT-OOD rolling TRAIN build is the expensive part), windows via
+  `build_ood_rolling_windows(seed=SEED)`, `_rolling` split names, NO probe fit / no artifact written.
+- **CODE:** `run_cka_analysis.py` += `CSLOT_POOL` (derived from `extraction.SLOT_TOKEN_TAGS` so it can
+  never drift from the extractor) + `read_extv4_cslot_reps` / `run_extv4_cslot` + `--extv4-cslot`
+  (added to the run_all guard, else the flag would re-run every analysis) -> namespace
+  `results/cka/ext_v4_future_tokens_cslot/`. Stacks (n,K,768)->(n*K,768) with the SAME FSLOT14_KEYS and
+  the same `cka.stack_slots`, so the cslot and fslot maps differ in exactly one thing: which K tokens.
+  `make_id_paper_figures.py` += `load_cka_cslot` + `--figure cka_cslot` -> the paper-style 7-panel
+  `appendix_id_cka.{pdf,png}` (ncol=3, shared 0-1 viridis, L12+RMS labels, l_start=None so no dashed
+  entrance) written into the CSLOT fig dir via the existing `out_dir` arg — the fslot/content
+  appendix figures share that stem and must not be overwritten.
+- **VERIFIED (login CPU):** 19/19 content-slot tests (13 + 6 new: cache addressing, 7-dataset roster +
+  `_rolling` split resolution, missing-cache error names BOTH extraction stages, extract_ood is
+  extraction-only, figure namespace disjoint, synthetic 7-panel render); regressions green (cka 18,
+  quantile_sets 10, shared_forecast 8, fslot_transfer 13, tunnel 13, ft_specialization 18,
+  task_shift 33, spectral 10); both new CLI paths fail loud with the producing command. `results/` untouched.
+- **RUN RECIPE:** (1) `sbatch -J cslot_ood --time=1:00:00 job_content_slot_probing.sh --extract-ood`
+  (the job script now routes --extract-ood order-independently to a single OOD-only stage and exports
+  OOD_TARGET_ROOT; without that routing the hard-coded stages would have run it twice). (2) login CPU: `python -m experiments.run_cka_analysis
+  --extv4-cslot --max-rows 4096 --seed 0 --fslot-split test` (matches the committed fslot/content
+  provenance; docstring says salloc, but this is 7 cache reads + 14x14 Grams). (3) login:
+  `python -m experiments.make_id_paper_figures --figure cka_cslot`.
+
 - **READ THE RESULT HONESTLY:** cslot ~= fslot => the shared STRUCTURE suppresses the mid-layer advantage;
   cslot ~= pooled content => the forecast TOKENS are what keep improving late. Flat/null is a valid answer —
   do NOT tune toward either. Cosmetic nit: `probes.py` prints "[fit-explicit-val fslot]" for content slots too

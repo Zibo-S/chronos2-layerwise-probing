@@ -25,6 +25,18 @@ export HF_HUB_OFFLINE=1               # compute nodes are offline; model + datas
 # cache. It is resumable twice over: the caches are written once and re-HIT on resubmit, and
 # fit_ptid skips any run seed already on disk. If the job times out, just sbatch it again.
 
+# Stage routing is order-independent: pass --extract-ood (optionally with --quantile-set) to run
+# ONLY the PT-OOD extraction, otherwise the default two-stage PT-ID pipeline runs. Without this the
+# hard-coded stages would run --extract-ood twice (once appended to each stage).
+if [[ " $* " == *" --extract-ood "* ]]; then
+    echo "=== PT-OOD content-slot TEST extraction (SG Carpark / Coastal T-S / BOOM) ==="
+    # needed for the 7-dataset CKA; --fit-ptid covers only the 4 PT-ID sources
+    export OOD_TARGET_ROOT=$SCRATCH/chronos2/ood_targets   # pre-staged OOD-target arrow shards
+    python -m experiments.run_content_slot_probing "$@"
+    echo "=== DONE ==="
+    exit 0
+fi
+
 echo "=== stage 1/2: extract content slots + fit 4 PT-ID sources x 3 seeds x 14 layers ==="
 python -m experiments.run_content_slot_probing --fit-ptid "$@"
 

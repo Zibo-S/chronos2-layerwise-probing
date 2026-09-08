@@ -57,13 +57,14 @@ import numpy as np
 import torch
 
 from probing import config
-from probing.config import NUM_LAYERS, OUTPUT_PATCH_SIZE
+from probing.config import NUM_LAYERS, OUTPUT_PATCH_SIZE, SEED
 from probing.extraction import extract_kout_features
-from probing.id_data import build_windows
+from probing.id_data import build_ood_rolling_windows, build_windows
 from probing.probes import (QUANTILE_SETS, PROBE_PROTOCOL_VERSION,
                             fit_shared_forecast_probe_explicit_val,
                             predict_shared_forecast_probe, validate_quantiles)
-from probing.tunnel import PT_ID_TAGS, tunnel_record_multi, val_curve_from_selection
+from probing.tunnel import (PT_ID_TAGS, PT_OOD_TAGS, tunnel_record_multi,
+                            val_curve_from_selection)
 
 # Import the fslot line's frozen constants + helpers rather than restating them: the whole point
 # is that everything except the token slice is identical. Importing this module is side-effect
@@ -163,6 +164,35 @@ def fit_ptid(qset, quantiles, device):
                       open(PTID_RUN_DIR / f"{src}__{qtag}__seed{seed}.json", "w"), indent=2)
             print(f"  [saved] {src}__{qtag}__seed{seed}.json")
         del w, f_tr, f_va, f_te
+        gc.collect()
+
+
+# --------------------------------------------------------------------------- #
+# Stage 1b — PT-OOD content-slot TEST features (GPU, extraction only — no probe)
+# --------------------------------------------------------------------------- #
+def extract_ood(tags=PT_OOD_TAGS):
+    """Extract the content-slot TEST features for the 3 PT-OOD targets.
+
+    --fit-ptid covers only the 4 PT-ID sources (it fits probes, and the PT-OOD fresh-probe
+    diagnostic is not part of this line). A 7-dataset CKA of the content-slot representation
+    additionally needs SG Carpark / Coastal T-S / BOOM, so this stage extracts JUST their test
+    split — no probe is fit and no probe artifact is written. Windows come from
+    build_ood_rolling_windows with the window seed FIXED at SEED, and the '_rolling' split name
+    keeps these caches disjoint from any legacy eval-only cache, exactly as the fslot line does.
+
+    Test-only is deliberate: CKA reads one split, and the PT-OOD rolling train build (SG/BOOM,
+    354 clusters) is the expensive part. Add train/val here only if a PT-OOD probe is ever wanted.
+    """
+    for tag in tags:
+        w = build_ood_rolling_windows(tag, C=C, H=H, seed=SEED)
+        m = w["meta"]
+        if m["n_test"] == 0:
+            raise RuntimeError(f"{tag}: empty test split — check the loader (run_ood_screen)")
+        print(f"[extract-ood] {SHORT.get(tag, tag):<12} test {m['n_test']} windows "
+              f"({m['n_test_clusters']} {m['cluster_unit']} clusters)")
+        f = _cslot_feats(tag, "test_rolling", w["X_test"], w["y_test"])
+        print(f"  [ok] {len(f)} readout points, {f[0].shape[0]} rows x K={f[0].shape[1]}")
+        del w, f
         gc.collect()
 
 
@@ -285,6 +315,9 @@ def _parse_args(argv=None):
     p.add_argument("--quantile-set", default="q9", choices=sorted(QUANTILE_SETS))
     p.add_argument("--fit-ptid", action="store_true",
                    help="GPU: extract content slots + fit the 4 PT-ID sources x 3 seeds")
+    p.add_argument("--extract-ood", action="store_true",
+                   help="GPU: content-slot TEST features for the 3 PT-OOD targets "
+                        "(needed for the 7-dataset CKA; extraction only, no probe)")
     p.add_argument("--tunnels-only", action="store_true", help="CPU: tunnels from saved runs")
     p.add_argument("--figures", action="store_true", help="CPU: curves + cslot-vs-fslot")
     return p.parse_args(argv)
@@ -298,12 +331,15 @@ def main(argv=None):
     quantiles = validate_quantiles(QUANTILE_SETS[qset])
     print(f"[run_content_slot_probing] readout={READOUT}  slot_tokens={SLOT_TOKENS}  "
           f"{qset}  C={C} H={H} K={K}  seeds={list(RUN_SEEDS)}")
-    if not (a.fit_ptid or a.tunnels_only or a.figures):
-        raise SystemExit("choose a stage: --fit-ptid (GPU) / --tunnels-only / --figures")
+    if not (a.fit_ptid or a.extract_ood or a.tunnels_only or a.figures):
+        raise SystemExit("choose a stage: --fit-ptid (GPU) / --extract-ood (GPU) / "
+                         "--tunnels-only / --figures")
     if a.fit_ptid:
         device = "cuda" if torch.cuda.is_available() else "cpu"
         print(f"  device={device}")
         fit_ptid(qset, quantiles, device)
+    if a.extract_ood:
+        extract_ood()
     if a.tunnels_only:
         compute_tunnels(qset)
     if a.figures:
