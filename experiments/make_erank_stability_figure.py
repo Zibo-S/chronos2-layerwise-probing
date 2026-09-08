@@ -44,8 +44,17 @@ FIG_DIR = SPEC_DIR / "figures"
 STEM = "erank_stability_{layout}__fslot__probe_input__train"
 DIAG_STEM = "erank_stability_diagnostic_2x4__fslot__probe_input__train"
 
-TAGS = {"monash_electricity_hourly": "Electricity", "uber_tlc_hourly": "Uber",
-        "m4_hourly": "M4", "wind_farms_hourly": "WindFarms"}
+PT_ID_TAGS = {"monash_electricity_hourly": "Electricity", "uber_tlc_hourly": "Uber",
+              "m4_hourly": "M4", "wind_farms_hourly": "WindFarms"}
+PT_OOD_TAGS = {"sg_carpark": "SG Carpark", "coastal_ts": "Coastal T-S", "boom_hourly": "BOOM"}
+TAGS = {**PT_ID_TAGS, **PT_OOD_TAGS}       # every dataset with a committed spectral record
+
+# layout -> (grid, figsize, datasets). The four-panel layouts are the committed PT-ID figure and
+# keep their panel size; 3x3 reuses that panel size and adds the three PT-OOD targets, so its
+# titles carry the pretraining status the way the saturation figures do.
+LAYOUTS = {"2x2": ((2, 2), (7.0, 5.7), PT_ID_TAGS),
+           "1x4": ((1, 4), (10.0, 3.2), PT_ID_TAGS),
+           "3x3": ((3, 3), (10.5, 8.55), TAGS)}
 
 # Paper labels. The final norm is T5-style RMSNorm (encoder.final_layer_norm), so the last point
 # is L12+RMS here even though the ext_v4 filenames/records spell it "L12+LN".
@@ -90,30 +99,47 @@ def summarize(full: np.ndarray, draws: np.ndarray) -> dict:
             "max_mean_gap_pct": float((100.0 * np.abs(full - sub_mean) / full).max())}
 
 
-def make_paper_figure(data: dict, meta: dict, layout: str = "2x2", dpi: int = 400):
+def make_paper_figure(data: dict, meta: dict, layout: str = "2x2", dpi: int = 400,
+                      legend_scale: float = 1.0, font_scale: float = 1.0):
     """Manuscript figure: full-sample curve + subsample interval only. `layout` picks the panel
     grid; both variants are authored at (or near) NeurIPS \\textwidth so inclusion needs little or
-    no rescaling."""
-    grid = {"2x2": ((2, 2), (7.0, 5.7)), "1x4": ((1, 4), (10.0, 3.2))}
-    if layout not in grid:
-        raise ValueError(f"unknown layout {layout!r}; choose from {sorted(grid)}")
-    (nr, nc), figsize = grid[layout]
-    with plt.rc_context(PAPER_RC):
+    no rescaling. `legend_scale` enlarges the bottom legend without shrinking the panels: the
+    canvas grows by the extra height the legend claims. `font_scale` scales every other piece of
+    type; the panel box grows more slowly than the type (0.55x the increase), so the text gets
+    bigger relative to the curves instead of the curves getting squeezed."""
+    if layout not in LAYOUTS:
+        raise ValueError(f"unknown layout {layout!r}; choose from {sorted(LAYOUTS)}")
+    (nr, nc), figsize, tags = LAYOUTS[layout]
+    if len(tags) > nr * nc:
+        raise ValueError(f"{layout}: {len(tags)} datasets do not fit {nr}x{nc} panels")
+    mixed = bool(set(tags) & set(PT_ID_TAGS)) and bool(set(tags) & set(PT_OOD_TAGS))
+    rc = {**PAPER_RC,
+          **{k: PAPER_RC[k] * font_scale for k in
+             ("font.size", "axes.labelsize", "axes.titlesize", "legend.fontsize",
+              "xtick.labelsize", "ytick.labelsize")},
+          "lines.linewidth": PAPER_RC["lines.linewidth"] * (1 + 0.4 * (font_scale - 1)),
+          "axes.linewidth": PAPER_RC["axes.linewidth"] * (1 + 0.4 * (font_scale - 1))}
+    grow = 1 + 0.55 * (font_scale - 1)               # give the type room, keep the aspect
+    figsize = (figsize[0] * grow, figsize[1] * grow)
+    with plt.rc_context(rc):
         fig, axes = plt.subplots(nr, nc, figsize=figsize, layout="constrained", squeeze=False)
         fig.get_layout_engine().set(h_pad=0.05, w_pad=0.06, hspace=0.10, wspace=0.09)
         x = np.arange(len(LABELS))
-        for ax, (tag, short) in zip(axes.ravel(), TAGS.items()):
+        for ax, (tag, short) in zip(axes.ravel(), tags.items()):
             full, s = data[tag]["full"], data[tag]["stats"]
             ax.fill_between(x, s["lo"], s["hi"], color=BAND, alpha=0.9, lw=0,
                             label=f"95% subsample interval ($m={meta['m']}$)")
-            ax.plot(x, full, "-o", ms=3.0, color=CURVE, mfc=CURVE, mec=CURVE,
+            ax.plot(x, full, "-o", ms=3.0 * grow, color=CURVE, mfc=CURVE, mec=CURVE,
                     label=f"Full-sample effective rank ($N={meta['N']}$)")
             peak = s["peak"]
-            ax.plot([peak], [full[peak]], "*", ms=8.0, color=CURVE, mec="white", mew=0.5, zorder=5)
+            ax.plot([peak], [full[peak]], "*", ms=8.0 * grow, color=CURVE, mec="white", mew=0.5,
+                    zorder=5)
             # "(200/200)" = subsamples whose peak matches the full-sample peak; spelled out in the caption
             ax.text(0.03, 0.96, f"Peak: {LABELS[peak]} ({s['peak_hits']}/{meta['B']})",
-                    transform=ax.transAxes, ha="left", va="top", fontsize=8.5, color="0.45")
-            ax.set_title(short, fontweight="bold")
+                    transform=ax.transAxes, ha="left", va="top", fontsize=8.5 * font_scale,
+                    color="0.45")
+            kind = "PT-ID" if tag in PT_ID_TAGS else "PT-OOD"
+            ax.set_title(f"{short}  [{kind}]" if mixed else short, fontweight="bold")
             ax.set_ylim(0, full.max() * 1.22)                 # headroom for the annotation
             ax.set_xticks(x)
             # narrow 1x4 panels cannot fit 14 rotated labels: keep every tick, label alternates
@@ -127,14 +153,39 @@ def make_paper_figure(data: dict, meta: dict, layout: str = "2x2", dpi: int = 40
             ax.set_axisbelow(True)
             for side in ("top", "right"):
                 ax.spines[side].set_visible(False)
+        for j in range(len(tags), nr * nc):               # blank the unused slots
+            axes.ravel()[j].axis("off")
         for ax in axes[:, 0]:
             ax.set_ylabel("Effective rank")
-        for ax in axes[-1, :]:                            # supxlabel would collide with the
-            ax.set_xlabel("Representation point")          # outside legend under constrained_layout
+        for col in range(nc):                             # supxlabel would collide with the
+            used = [r for r in range(nr) if r * nc + col < len(tags)]   # outside legend under
+            if used:                                                     # constrained_layout
+                axes[used[-1], col].set_xlabel("Representation point")
         h, l = axes[0, 0].get_legend_handles_labels()
-        fig.legend(h[::-1], l[::-1], loc="outside lower center", ncol=2, frameon=False,
-                   handlelength=1.8, handletextpad=0.5, columnspacing=1.8,
-                   borderpad=0.2, borderaxespad=0.35)
+        kw = dict(loc="outside lower center", ncol=2, frameon=False, handlelength=1.8,
+                  handletextpad=0.5, columnspacing=1.8, borderpad=0.2, borderaxespad=0.35)
+        leg_ref = PAPER_RC["legend.fontsize"] * font_scale
+        leg_pt = leg_ref * legend_scale
+        leg = fig.legend(h[::-1], l[::-1], fontsize=leg_pt, **kw)
+        fig.canvas.draw()
+        w_px = fig.get_size_inches()[0] * fig.dpi
+        if leg.get_window_extent().width > 0.98 * w_px:
+            # A scaled-up legend can outgrow the canvas and get clipped; back it off to the
+            # largest size that still fits, and say so rather than writing a cropped figure.
+            leg_pt *= 0.98 * w_px / leg.get_window_extent().width
+            leg.remove()
+            leg = fig.legend(h[::-1], l[::-1], fontsize=leg_pt, **kw)
+            fig.canvas.draw()
+            print(f"[warn] legend_scale clipped to "
+                  f"{leg_pt / leg_ref:.2f} to fit the width")
+        if leg_pt != leg_ref:
+            # An outside legend takes its height out of the axes, so a bigger legend would squash
+            # the panels. Buy the extra height from the canvas instead: the legend height is
+            # ~linear in its font size, so at scale 1 it would have been leg_h / legend_scale.
+            # At the default this branch is skipped and the committed figures are unchanged.
+            leg_h = leg.get_window_extent().height / fig.dpi
+            w_in, h_in = fig.get_size_inches()
+            fig.set_size_inches(w_in, h_in + leg_h * (1 - leg_ref / leg_pt))
         FIG_DIR.mkdir(parents=True, exist_ok=True)
         stem = STEM.format(layout=layout)
         pdf, png = FIG_DIR / f"{stem}.pdf", FIG_DIR / f"{stem}.png"
@@ -149,7 +200,7 @@ def make_diagnostic_figure(data: dict, meta: dict, dpi: int = 200):
     the paper figure. Not for the manuscript."""
     fig, axes = plt.subplots(2, 4, figsize=(19, 8.2), sharex="col")
     x = np.arange(len(LABELS))
-    for col, (tag, short) in enumerate(TAGS.items()):
+    for col, (tag, short) in enumerate(PT_ID_TAGS.items()):
         full, s = data[tag]["full"], data[tag]["stats"]
         ax = axes[0, col]
         ax.fill_between(x, s["lo"], s["hi"], color=BAND, alpha=0.45, lw=0,
@@ -187,15 +238,26 @@ def make_diagnostic_figure(data: dict, meta: dict, dpi: int = 200):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    ap.add_argument("--layout", default="2x2", choices=("2x2", "1x4", "both"),
-                    help="panel grid for the manuscript figure (default: 2x2)")
+    ap.add_argument("--layout", default="2x2", choices=("2x2", "1x4", "3x3", "both", "all"),
+                    help="panel grid for the manuscript figure: 2x2/1x4 are the four PT-ID "
+                         "datasets, 3x3 adds the three PT-OOD targets (default: 2x2)")
     ap.add_argument("--diagnostic", action="store_true",
                     help="also write the internal 2x4 noise / size-sensitivity panel")
+    ap.add_argument("--font-scale", type=float, default=1.0,
+                    help="scale all type in the manuscript figure; the panels grow more slowly "
+                         "than the type, so text gets bigger instead of curves getting squeezed")
+    ap.add_argument("--legend-scale", type=float, default=1.0,
+                    help="scale the bottom legend; the canvas grows to pay for it, so the panels "
+                         "keep their size (clipped automatically if it would overrun the width)")
     ap.add_argument("--dpi", type=int, default=400, help="PNG resolution (the PDF stays vector)")
     args = ap.parse_args()
 
+    layouts = {"both": ("2x2", "1x4"), "all": ("2x2", "1x4", "3x3")}.get(args.layout,
+                                                                          (args.layout,))
+    needed = {t: n for lay in layouts for t, n in LAYOUTS[lay][2].items()}
+
     data, meta = {}, None
-    for tag in TAGS:
+    for tag in needed:
         full, draws, m = load(tag)
         if meta is None:
             meta = m
@@ -209,14 +271,16 @@ def main():
           f"({meta['m'] / meta['N']:.0%}), without replacement")
     print(f"{'dataset':<13}{'peak':>8}{'peak held':>12}{'max 95% half-w':>17}"
           f"{'max |full-sub mean|':>22}")
-    for tag, short in TAGS.items():
+    for tag, short in needed.items():
         s = data[tag]["stats"]
         held = "{}/{}".format(s["peak_hits"], meta["B"])
         print(f"{short:<13}{LABELS[s['peak']]:>8}{held:>12}"
               f"{s['max_halfwidth_pct']:>16.2f}%{s['max_mean_gap_pct']:>21.2f}%")
 
-    for lay in (("2x2", "1x4") if args.layout == "both" else (args.layout,)):
-        pdf, png = make_paper_figure(data, meta, layout=lay, dpi=args.dpi)
+    for lay in layouts:
+        pdf, png = make_paper_figure(data, meta, layout=lay, dpi=args.dpi,
+                                     legend_scale=args.legend_scale,
+                                     font_scale=args.font_scale)
         print(f"[paper {lay}] {pdf}\n[paper {lay}] {png}")
     if args.diagnostic:
         print(f"[diagnostic] {make_diagnostic_figure(data, meta)}")

@@ -107,17 +107,33 @@ TAB_DIR = V4 / QSET / "id" / "tables"
 LABELS = ["Emb"] + [f"L{i}" for i in range(1, 13)] + ["L12+RMS"]
 
 TITLES = {"monash_electricity_hourly": "Electricity", "m4_hourly": "M4",
-          "uber_tlc_hourly": "Uber TLC", "wind_farms_hourly": "Wind Farms"}
+          "uber_tlc_hourly": "Uber TLC", "wind_farms_hourly": "Wind Farms",
+          "sg_carpark": "SG Carpark", "coastal_ts": "Coastal T-S", "boom_hourly": "BOOM"}
+# group -> (datasets, title, stem, drop_emb). drop_emb omits the input-embedding point from the
+# x axis only; the loaded curves and the emitted table stay full length.
 GROUPS = {"main": (("monash_electricity_hourly", "m4_hourly"),
                    "PT-ID forecasting: shared forecast-slot linear probe ($Q = 1$)",
-                   "main_id_testloss_erank_2x2"),
+                   "main_id_testloss_erank_2x2", False),
           "appendix": (("uber_tlc_hourly", "wind_farms_hourly"),
                        "Additional PT-ID forecasting: shared forecast-slot linear probe ($Q = 1$)",
-                       "appendix_id_testloss_erank_2x2")}
+                       "appendix_id_testloss_erank_2x2", False),
+          # copy of "main" with the PT-OOD SG Carpark column added and Emb dropped, so the
+          # post-embedding descent is not squashed by the Emb -> L2 collapse
+          "main_sg": (("monash_electricity_hourly", "m4_hourly", "sg_carpark"),
+                      "Forecasting: shared forecast-slot linear probe ($Q = 1$)",
+                      "main_id_testloss_erank_2x3_no_emb", True)}
+# group -> (title, stem, ncol). Datasets come from GROUPS[group] unless CKA_TAGS overrides them.
 CKA_GROUPS = {"main": ("PT-ID representation similarity: forecast-slot states",
-                       "main_id_cka_1x2"),
+                       "main_id_cka_1x2", 2),
               "appendix": ("Additional PT-ID representation similarity: forecast-slot states",
-                           "appendix_id_cka_1x2")}
+                           "appendix_id_cka_1x2", 2),
+              "main_sg": ("Representation similarity: forecast-slot states",
+                          "main_id_cka", 3),
+              # all seven datasets in one appendix panel, wrapping into rows of three
+              "all7": ("Representation similarity across datasets: forecast-slot states",
+                       "appendix_id_cka", 3)}
+CKA_TAGS = {"all7": ("monash_electricity_hourly", "m4_hourly", "uber_tlc_hourly",
+                     "wind_farms_hourly", "sg_carpark", "coastal_ts", "boom_hourly")}
 
 LOSS, LOSS_BAND = "#1F5FA8", "#AFC9E8"           # test-loss curve / bootstrap band
 ERANK = "#5E3C99"                                 # matches make_erank_stability_figure.py
@@ -156,18 +172,34 @@ def seed_mean_windows(tag):
 
 
 def load_dataset(tag, boot_b, seed):
-    """Everything one panel column needs: test curve + CI, validation-selected entrance, erank."""
-    wl_mean, sid = seed_mean_windows(tag)
+    """Everything one panel column needs: test curve + CI, validation-selected entrance, erank.
 
-    rec = json.load(open(_need(
-        TUNNEL_DIR / f"{tag}__fslot__{QSET}__{PROTO}__{RUNS_TAG}.json",
-        "python -m experiments.run_ptood_probing_ftok --quantile-set q1 --tunnels-only")))
-    # Gate: our seed-averaged point estimate must reproduce the committed curve exactly.
-    ref = np.asarray(rec["mean_test_loss_by_layer"], np.float64)
-    point, boot = _layer_mean_boot(wl_mean, sid, B=boot_b, seed=seed)
-    if not np.allclose(point, ref, rtol=0, atol=1e-12):
-        raise ValueError(f"{tag}: recomputed test curve disagrees with the committed tunnel record "
-                         f"(max |diff| = {np.abs(point - ref).max():.3e})")
+    PT-OOD targets come from a different producer (a fresh probe fit on the target itself, no
+    committed tunnel record), so their entrance is recomputed from the saved validation curve at
+    the same tolerance -- the identical estimand and criterion, as in ``load_eps_dataset``."""
+    from probing.tunnel import TUNNEL_TOL, tunnel_start
+
+    if tag in PT_OOD_FIG_TAGS:
+        wl_mean, sid, val = _ptood_panel_curves(tag)
+        point, boot = _layer_mean_boot(wl_mean, sid, B=boot_b, seed=seed)
+        # the PT-OOD reference is the probe's own float32 scalar reduction -> compare at float32
+        ref = np.mean([json.load(open(PTOOD_FIG_DIR / "per_target" / f"{tag}__{QSET}__seed{sd}.json"))
+                       ["test_loss_by_layer"] for sd in RUN_SEEDS], axis=0)
+        gate, rec = dict(rtol=1e-6, atol=1e-9), {"l_start": int(tunnel_start(val, tol=TUNNEL_TOL)),
+                                                 "tunnel_definition": "sustained_plateau",
+                                                 "tolerance": TUNNEL_TOL}
+    else:
+        wl_mean, sid = seed_mean_windows(tag)
+        rec = json.load(open(_need(
+            TUNNEL_DIR / f"{tag}__fslot__{QSET}__{PROTO}__{RUNS_TAG}.json",
+            "python -m experiments.run_ptood_probing_ftok --quantile-set q1 --tunnels-only")))
+        # Gate: our seed-averaged point estimate must reproduce the committed curve exactly.
+        ref = np.asarray(rec["mean_test_loss_by_layer"], np.float64)
+        point, boot = _layer_mean_boot(wl_mean, sid, B=boot_b, seed=seed)
+        gate = dict(rtol=0, atol=1e-12)
+    if not np.allclose(point, np.asarray(ref, np.float64), **gate):
+        raise ValueError(f"{tag}: recomputed test curve disagrees with the committed record "
+                         f"(max |diff| = {np.abs(point - np.asarray(ref, np.float64)).max():.3e})")
     lo, hi = ci_bounds(boot)
 
     spec = json.load(open(_need(
@@ -185,30 +217,41 @@ def load_dataset(tag, boot_b, seed):
             "erank_split": spec["split"], "erank_N": spec["sample_size"]}
 
 
-def make_figure(rows, title, stem, boot_b, dpi=400, show_title=True):
-    """2x2: columns = datasets, row 0 = test loss + CI, row 1 = effective rank."""
+def make_figure(rows, title, stem, boot_b, dpi=400, show_title=True, drop_emb=False):
+    """2 x len(rows): columns = datasets, row 0 = test loss + CI, row 1 = effective rank.
+
+    ``drop_emb`` omits the input-embedding point from the plot. Emb is where every curve starts
+    its steepest fall, so keeping it compresses everything after L2 into a few pixels; dropping it
+    changes nothing that is computed, only what is drawn."""
+    off = 1 if drop_emb else 0
+    labels = LABELS[off:]
     with plt.rc_context(PAPER_RC):
-        fig, axes = plt.subplots(2, 2, figsize=(7.2, 5.4), layout="constrained", squeeze=False,
-                                 sharex="col")
+        fig, axes = plt.subplots(2, len(rows), figsize=(3.6 * len(rows), 5.4),
+                                 layout="constrained", squeeze=False, sharex="col")
         fig.get_layout_engine().set(h_pad=0.05, w_pad=0.06, hspace=0.08, wspace=0.10)
-        x = np.arange(len(LABELS))
-        last = len(LABELS) - 1
+        x = np.arange(len(labels))
+        last = len(labels) - 1
 
         for col, d in enumerate(rows):
-            ls = d["l_start"]
+            if d["l_start"] < off or d["peak"] < off:
+                raise ValueError(f"{d['tag']}: entrance/peak falls on a dropped point — "
+                                 "drop_emb would put the marker off the axis")
+            ls = d["l_start"] - off
+            point, lo_, hi_, erank = (d["point"][off:], d["lo"][off:], d["hi"][off:],
+                                      d["erank"][off:])
             # ---- row 0: TEST loss, CI, validation-selected saturation entrance ------------------
             ax = axes[0, col]
             ax.axvspan(ls, last, color=TUNNEL_FILL, lw=0, zorder=0)
             ax.axvline(ls, color=TUNNEL_LINE, lw=1.1, zorder=1,
                        label="Saturation entrance (validation)")
-            ax.fill_between(x, d["lo"], d["hi"], color=LOSS_BAND, alpha=0.95, lw=0, zorder=2,
+            ax.fill_between(x, lo_, hi_, color=LOSS_BAND, alpha=0.95, lw=0, zorder=2,
                             label=f"95% bootstrap CI ($B={boot_b}$)")
-            ax.plot(x, d["point"], "-o", ms=ms_pt, color=LOSS, mfc=LOSS, mec=LOSS, zorder=3,
+            ax.plot(x, point, "-o", ms=3.0, color=LOSS, mfc=LOSS, mec=LOSS, zorder=3,
                     label=f"Test loss (mean of {len(RUN_SEEDS)} seeds)")
             ax.set_title(TITLES[d["tag"]], fontweight="bold")
-            span = d["hi"].max() - d["lo"].min()      # headroom: never clip the CI band
-            ax.set_ylim(d["lo"].min() - 0.06 * span, d["hi"].max() + 0.10 * span)
-            ax.annotate(LABELS[ls], xy=(ls, 1.0), xycoords=("data", "axes fraction"),
+            span = hi_.max() - lo_.min()              # headroom: never clip the CI band
+            ax.set_ylim(lo_.min() - 0.06 * span, hi_.max() + 0.10 * span)
+            ax.annotate(labels[ls], xy=(ls, 1.0), xycoords=("data", "axes fraction"),
                         xytext=(2, -9), textcoords="offset points", fontsize=7.5,
                         color=TUNNEL_LINE, ha="left", va="top")
 
@@ -216,12 +259,12 @@ def make_figure(rows, title, stem, boot_b, dpi=400, show_title=True):
             ax = axes[1, col]
             ax.axvspan(ls, last, color=TUNNEL_FILL, alpha=0.55, lw=0, zorder=0)
             ax.axvline(ls, color=TUNNEL_LINE, lw=0.9, ls=(0, (4, 2)), alpha=0.75, zorder=1)
-            ax.plot(x, d["erank"], "-o", ms=ms_pt, color=ERANK, mfc=ERANK, mec=ERANK, zorder=3,
+            ax.plot(x, erank, "-o", ms=3.0, color=ERANK, mfc=ERANK, mec=ERANK, zorder=3,
                     label="Effective rank")
-            pk = d["peak"]
-            ax.plot([pk], [d["erank"][pk]], "*", ms=9.0, color=ERANK, mec="white", mew=0.6,
+            pk = d["peak"] - off
+            ax.plot([pk], [erank[pk]], "*", ms=9.0, color=ERANK, mec="white", mew=0.6,
                     zorder=5, label=f"Peak effective rank")
-            ax.set_ylim(0, d["erank"].max() * 1.08)      # no in-panel text -> less dead space
+            ax.set_ylim(0, erank.max() * 1.08)      # no in-panel text -> less dead space
 
         for ax in axes.ravel():
             ax.set_xlim(-0.55, last + 0.55)
@@ -232,7 +275,7 @@ def make_figure(rows, title, stem, boot_b, dpi=400, show_title=True):
             for side in ("top", "right"):
                 ax.spines[side].set_visible(False)
         for ax in axes[-1, :]:
-            ax.set_xticklabels(LABELS, rotation=45, ha="right")
+            ax.set_xticklabels(labels, rotation=45, ha="right")
             ax.set_xlabel("Representation point")
         axes[0, 0].set_ylabel("Test quantile loss")
         axes[1, 0].set_ylabel("Effective rank")
@@ -936,37 +979,63 @@ def load_cka(tag):
         raise ValueError(f"{tag}: CKA matrix is {M.shape}, expected ({n}, {n})")
     if not np.allclose(np.diag(M), 1.0) or not np.allclose(M, M.T):
         raise ValueError(f"{tag}: CKA matrix is not symmetric with unit diagonal")
-    rec = json.load(open(_need(
-        TUNNEL_DIR / f"{tag}__fslot__{QSET}__{PROTO}__{RUNS_TAG}.json",
-        "python -m experiments.run_ptood_probing_ftok --quantile-set q1 --tunnels-only")))
-    return {"tag": tag, "M": M, "l_start": int(rec["l_start"])}
+    if tag in PT_OOD_FIG_TAGS:                    # no committed tunnel record for these targets:
+        from probing.tunnel import TUNNEL_TOL, tunnel_start   # recompute at the same tolerance
+        l_start = int(tunnel_start(_ptood_panel_curves(tag)[2], tol=TUNNEL_TOL))
+    else:
+        rec = json.load(open(_need(
+            TUNNEL_DIR / f"{tag}__fslot__{QSET}__{PROTO}__{RUNS_TAG}.json",
+            "python -m experiments.run_ptood_probing_ftok --quantile-set q1 --tunnels-only")))
+        l_start = int(rec["l_start"])
+    return {"tag": tag, "M": M, "l_start": l_start}
 
 
-def make_cka_figure(rows, title, stem, dpi=400, show_title=True):
-    """1x2 layer-by-layer linear-CKA heatmaps with one shared colour bar."""
-    with plt.rc_context({**PAPER_RC, **CKA_RC_BUMP}):
-        fig, axes = plt.subplots(1, 2, figsize=(7.2, 3.8), layout="constrained", squeeze=False)
+def make_cka_figure(rows, title, stem, dpi=400, show_title=True, ncol=2, font_scale=1.0):
+    """Layer-by-layer linear-CKA heatmaps with one shared colour bar.
+
+    Datasets wrap into rows of ``ncol`` panels; the panel box is square (the matrices are), so the
+    figure grows with the number of datasets instead of squeezing them. ``font_scale`` scales every
+    piece of type; the panel box grows only 0.55x as fast, so the text gets bigger relative to the
+    heatmaps rather than the heatmaps getting smaller."""
+    nr = -(-len(rows) // ncol)
+    mixed = (any(d["tag"] in PT_OOD_FIG_TAGS for d in rows)
+             and any(d["tag"] not in PT_OOD_FIG_TAGS for d in rows))
+    base = {**PAPER_RC, **CKA_RC_BUMP}
+    rc = {**base, **{k: base[k] * font_scale for k in
+                     ("font.size", "axes.labelsize", "axes.titlesize", "legend.fontsize",
+                      "xtick.labelsize", "ytick.labelsize")}}
+    grow = 1 + 0.55 * (font_scale - 1)
+    tick_pt, sup_pt, ttl_pt = 10 * font_scale, 13 * font_scale, 12 * font_scale
+    with plt.rc_context(rc):
+        fig, axes = plt.subplots(nr, ncol, figsize=(3.6 * grow * ncol, 3.8 * grow * nr),
+                                 layout="constrained", squeeze=False)
         fig.get_layout_engine().set(h_pad=0.04, w_pad=0.06, wspace=0.06)
         n = len(LABELS)
-        for ax, d in zip(axes[0], rows):
+        for ax, d in zip(axes.ravel(), rows):
             im = ax.imshow(d["M"], cmap="viridis", vmin=0.0, vmax=1.0,
                            origin="upper", interpolation="nearest")
             b = d["l_start"] - 0.5                      # boundary sits between the two cells
             for line in (ax.axvline, ax.axhline):
                 line(b, color="white", lw=0.9, ls=(0, (3, 2)), alpha=0.85)
-            ax.set_title(TITLES[d["tag"]], fontweight="bold")
+            kind = "PT-OOD" if d["tag"] in PT_OOD_FIG_TAGS else "PT-ID"
+            ax.set_title(f"{TITLES[d['tag']]}  [{kind}]" if mixed else TITLES[d["tag"]],
+                         fontweight="bold")
             ax.set_xticks(range(n)); ax.set_yticks(range(n))
-            ax.set_xticklabels(LABELS, rotation=90, fontsize=10)
-            ax.set_yticklabels(LABELS, fontsize=10)
+            ax.set_xticklabels(LABELS, rotation=90, fontsize=tick_pt)
+            ax.set_yticklabels(LABELS, fontsize=tick_pt)
             ax.tick_params(length=2.0, pad=1.2)
-        axes[0, 1].set_yticklabels([])                  # shared row labels
-        fig.supxlabel("Representation point", fontsize=13)
-        fig.supylabel("Representation point", fontsize=13)
-        cb = fig.colorbar(im, ax=axes[0].tolist(), fraction=0.046, pad=0.02, shrink=0.92)
+        for j, ax in enumerate(axes.ravel()):
+            if j >= len(rows):
+                ax.axis("off")                          # blank the unused slots
+            elif j % ncol:
+                ax.set_yticklabels([])                  # row labels only on the first column
+        fig.supxlabel("Representation point", fontsize=sup_pt)
+        fig.supylabel("Representation point", fontsize=sup_pt)
+        cb = fig.colorbar(im, ax=axes.ravel().tolist(), fraction=0.046, pad=0.02, shrink=0.92)
         cb.set_label("Linear CKA")
-        cb.ax.tick_params(labelsize=10)
+        cb.ax.tick_params(labelsize=tick_pt)
         if show_title:
-            fig.suptitle(title, fontsize=12, fontweight="bold")
+            fig.suptitle(title, fontsize=ttl_pt, fontweight="bold")
         CKA_FIG_DIR.mkdir(parents=True, exist_ok=True)
         pdf, png = CKA_FIG_DIR / f"{stem}.pdf", CKA_FIG_DIR / f"{stem}.png"
         fig.savefig(pdf)
@@ -1026,6 +1095,8 @@ EPS_BANDS = (0.05, 0.02)
 EPS_FILL = {0.05: "#E4F0E4", 0.02: "#BFDCBF"}     # looser = lighter, drawn first
 PTOOD_FIG_DIR = V4 / "ptood_probing"
 PT_OOD_FIG_TAGS = ("sg_carpark", "coastal_ts", "boom_hourly")
+LEGEND_SCALE_REF = 1.25          # the legend scale the panel geometry is calibrated at
+
 EPS_TITLES = {"monash_electricity_hourly": "Electricity", "m4_hourly": "M4",
               "uber_tlc_hourly": "Uber TLC", "wind_farms_hourly": "Wind Farms",
               "sg_carpark": "SG Carpark", "coastal_ts": "Coastal T-S", "boom_hourly": "BOOM"}
@@ -1100,8 +1171,8 @@ def load_eps_dataset(tag, boot_b, seed, epsilons=EPS_BANDS):
 
 
 def make_eps_figure(rows, title, stem, boot_b, epsilons=EPS_BANDS, ncol=None, dpi=400,
-                    show_title=True, font_scale=1.0, legend_scale=1.25, panel_w=3.45,
-                    panel_h=4.95):
+                    show_title=True, font_scale=1.0, legend_scale=LEGEND_SCALE_REF,
+                    panel_w=3.45, panel_h=4.95):
     """Test loss + effective rank per dataset, with one shaded band per tolerance.
 
     The bands nest: looser tolerances open earlier and are drawn lighter, so the darkest region is
@@ -1189,7 +1260,30 @@ def make_eps_figure(rows, title, stem, boot_b, epsilons=EPS_BANDS, ncol=None, dp
             hh, ll = a.get_legend_handles_labels()
             h += hh
             l += ll
-        fig.legend(h, l, loc="outside lower center", ncol=3, frameon=False)
+        leg_pt = rc["legend.fontsize"]
+        leg = fig.legend(h, l, loc="outside lower center", ncol=3, frameon=False)
+        fig.canvas.draw()
+        w_px = fig.get_size_inches()[0] * fig.dpi
+        if leg.get_window_extent().width > 0.98 * w_px:
+            # A scaled-up legend can outgrow the canvas and get clipped; back it off to the
+            # largest size that still fits, and say so rather than writing a cropped figure.
+            leg_pt *= 0.98 * w_px / leg.get_window_extent().width
+            leg.remove()
+            leg = fig.legend(h, l, loc="outside lower center", ncol=3, frameon=False,
+                             fontsize=leg_pt)
+            fig.canvas.draw()
+            print(f"[warn] legend_scale clipped to "
+                  f"{leg_pt / (PAPER_RC['legend.fontsize'] * font_scale):.2f} to fit the width")
+        eff_leg = leg_pt / (PAPER_RC["legend.fontsize"] * font_scale)
+        if abs(eff_leg - LEGEND_SCALE_REF) > 1e-9:
+            # An outside legend takes its height out of the axes, so a bigger legend would squash
+            # the panels. Buy the extra height from the canvas instead: the legend height is
+            # ~linear in its font size, so at LEGEND_SCALE_REF it would have been
+            # leg_h * LEGEND_SCALE_REF / eff_leg. The panels then keep the size they have at the
+            # default, where this branch is skipped and the figure is unchanged.
+            leg_h = leg.get_window_extent().height / fig.dpi
+            w_in, h_in = fig.get_size_inches()
+            fig.set_size_inches(w_in, h_in + leg_h * (1 - LEGEND_SCALE_REF / eff_leg))
         if show_title:
             fig.suptitle(title, fontweight="bold")
         for ext in ("png", "pdf"):
@@ -1203,7 +1297,14 @@ def make_eps_figure(rows, title, stem, boot_b, epsilons=EPS_BANDS, ncol=None, dp
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    ap.add_argument("--which", default="both", choices=("main", "appendix", "both"))
+    ap.add_argument("--which", default="both",
+                    choices=("main", "appendix", "both", "main_sg", "all7"),
+                    help="which figure group to build; main_sg is the three-column copy of "
+                         "main that adds SG Carpark and drops the Emb point; all7 is CKA-only "
+                         "(every dataset in one panel)")
+    ap.add_argument("--cka-font-scale", type=float, default=1.0,
+                    help="scale all type in the CKA figure; the panels grow more slowly than the "
+                         "type, so text gets bigger instead of heatmaps getting smaller")
     ap.add_argument("--eps-datasets", nargs="+",
                     default=["monash_electricity_hourly", "m4_hourly", "sg_carpark"],
                     help="columns of the saturation-sensitivity figure (PT-ID or PT-OOD)")
@@ -1215,6 +1316,9 @@ def main():
     ap.add_argument("--eps-font-scale", type=float, default=1.0,
                     help="scale all type in the saturation-sensitivity figure; the panels "
                          "grow with it, so text gets bigger instead of curves getting squeezed")
+    ap.add_argument("--eps-legend-scale", type=float, default=LEGEND_SCALE_REF,
+                    help="scale the bottom legend only; the canvas grows to pay for it, so "
+                         "the panels keep their size")
     ap.add_argument("--eps-stem", default="appendix_id_saturation_sensitivity",
                     help="output filename stem for the saturation-sensitivity figure")
     ap.add_argument("--figure", default="all", choices=("loss_erank", "cka", "transfer", "ft_boom", "nha", "eps", "all"),
@@ -1229,12 +1333,15 @@ def main():
     a = ap.parse_args()
 
     groups = ("main", "appendix") if a.which == "both" else (a.which,)
+    # "all7" is a CKA-only group (it has no loss/erank counterpart), so route it separately
+    cka_groups = ("all7",) if a.which == "all7" else groups
 
     if a.figure in ("eps", "all"):
         rows = [load_eps_dataset(t, a.boot_b, a.seed, a.epsilons) for t in a.eps_datasets]
         make_eps_figure(rows, "Saturation entrance under a stricter tolerance", a.eps_stem,
                         a.boot_b, epsilons=a.epsilons, ncol=a.eps_ncol, dpi=a.dpi,
-                        show_title=not a.no_title, font_scale=a.eps_font_scale)
+                        show_title=not a.no_title, font_scale=a.eps_font_scale,
+                        legend_scale=a.eps_legend_scale)
         if a.figure == "eps":
             return
 
@@ -1317,11 +1424,12 @@ def main():
         return
 
     if a.figure in ("cka", "all"):
-        for g in groups:
-            tags = GROUPS[g][0]
-            title, stem = CKA_GROUPS[g]
+        for g in cka_groups:
+            tags = CKA_TAGS.get(g) or GROUPS[g][0]
+            title, stem, ncol = CKA_GROUPS[g]
             rows = [load_cka(t) for t in tags]
-            pdf, png = make_cka_figure(rows, title, stem, dpi=a.dpi, show_title=not a.no_title)
+            pdf, png = make_cka_figure(rows, title, stem, dpi=a.dpi, show_title=not a.no_title,
+                                       ncol=ncol, font_scale=a.cka_font_scale)
             print(f"[cka:{g}] {' + '.join(TITLES[t] for t in tags)}")
             for d in rows:
                 M = d["M"]
@@ -1333,10 +1441,10 @@ def main():
 
     all_rows = []
     for g in groups:
-        tags, title, stem = GROUPS[g]
+        tags, title, stem, drop_emb = GROUPS[g]
         rows = [load_dataset(t, a.boot_b, a.seed) for t in tags]
         pdf, png = make_figure(rows, title, stem, a.boot_b, dpi=a.dpi,
-                               show_title=not a.no_title)
+                               show_title=not a.no_title, drop_emb=drop_emb)
         all_rows += rows
         print(f"[{g}] {' + '.join(TITLES[t] for t in tags)}")
         for d in rows:

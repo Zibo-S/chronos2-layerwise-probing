@@ -1,0 +1,649 @@
+\documentclass{article}
+\usepackage[dblblindworkshop]{neurips_2026} % After being accepted, the authors should add "final":  % \usepackage[dblblindworkshop, final]{neurips_2026}
+
+\usepackage[utf8]{inputenc} % allow utf-8 input
+\usepackage[T1]{fontenc}    % use 8-bit T1 fonts
+\usepackage{hyperref}       % hyperlinks
+\usepackage{url}            % simple URL typesetting
+\usepackage{booktabs}       % professional-quality tables
+\usepackage{amsfonts}       % blackboard math symbols
+\usepackage{nicefrac}       % compact symbols for 1/2, etc.
+\usepackage{microtype}      % microtypography
+\usepackage{xcolor}         % colors
+
+\usepackage{amsmath}
+\usepackage{graphicx}
+
+\title{Depth Compression in Time-Series Foundation Models: Saturation, Recovery, and Measured Speedups in Chronos-2}
+% or Compressing Chronos-2 by Depth: Saturation, Latency, and Dataset-Dependent Truncation
+\workshoptitle{TS-LIMITS @NeurIPS 2026 -- Generalization for Time Series in Tight Settings: Latency, Inference, Memory, prIvacy and susTainability}
+
+\author{Anonymous Authors}
+
+\begin{document}
+
+
+\maketitle
+
+
+\begin{abstract}
+Time-series foundation models (TSFMs) support zero-shot forecasting but can be too expensive for latency- and memory- constrained deployments. Most compression methods reduce parameter count or numerical precision. In this work, we ask whether model depth itself can be reduced by skipping later layers. Using Chronos-2, we find that forecasting performance using a direct linear readout saturates before the final representation under a 5\% criterion on all tested datasets, although the saturation depth varies across datasets. Effective rank and CKA reveal clear layerwise structure but do not identify a universal transition associated with saturation. We then attach lightweight linear adapters to intermediate representations and reuse the frozen Chronos-2 quantile head. Dataset-specific adapters often recover much of the native forecasting performance, whereas cross-dataset transfer is less consistent. We show that truncating at layer 3 drops \(71\%\) of the active parameters, reduces peak GPU memory by \(34\%\) (on batches of \(256\)), and provides a \(\times 3.23\) measured speedup, with a MASE increase of \(7\%\) averaged across three datasets. Depth compression can therefore provide substantial efficiency gains, with the optimal truncation depth and associated gains varying by dataset.
+% but no saturation- or geometry-based criterion determines a universal truncation depth.
+\end{abstract}
+
+
+\section{Introduction} \label{intro}
+
+Time-series foundation models (TSFMs) provide strong zero-shot forecasts, but their inference cost can prevent their use in latency- and memory-constrained settings \citep{ansari2024chronoslearninglanguagetime, das2024decoderonlyfoundationmodeltimeseries, woo2024unifiedtraininguniversaltime, ansari2025chronos2univariateuniversalforecasting}. Production monitoring and control systems may forecast thousands of series on a fixed schedule, often under limited computational resources. In these settings, latency and memory matter alongside accuracy.
+
+Common compression methods reduce numerical precision \citep{frantar2023gptqaccurateposttrainingquantization} or distill a model into a smaller architecture \citep{hinton2015distillingknowledgeneuralnetwork, sanh2020distilbertdistilledversionbert}. These approaches do not directly address whether later layers can be removed. Studies of language models have found that later transformer layers can contribute little to the final prediction, motivating structured layer dropping \citep{fan2019reducingtransformerdepthdemand}, layer pruning \citep{gromov2025unreasonableineffectivenessdeeperlayers, men2024shortgptlayerslargelanguage}, and early exit \citep{teerapittayanon2017branchynetfastinferenceearly, schwartz2020righttooljobmatching, Elhoushi_2024}. Recent work has also found that intermediate TSFM layers can outperform the final layer as frozen features for time-series classification \citep{feofanov2026mantisv2closingzeroshotgap}. It remains unclear whether similar depth redundancy exists for forecasting and, if so, how reliably a usable truncation depth can be selected.
+
+To test how much forecasting information is available at intermediate depths, we ask the following questions. First, does forecasting performance under a simple linear readout saturate across depth in Chronos-2 \citep{ansari2025chronos2univariateuniversalforecasting}? If so, is this saturation reflected in the representation geometry, independently of the probe? Finally, can intermediate representations recover near-full-model forecasting performance? We first test whether a dataset-specific linear adapter can align intermediate representations with the pretrained forecasting head, then examine whether this alignment transfers across datasets. We additionally compare truncation depths selected from forecasting saturation and representation geometry and quantify the resulting compression-performance trade-offs.
+
+\paragraph{Contribution.}
+\begin{enumerate}
+    \item \textbf{Layerwise forecasting saturation.}
+    We characterize forecasting performance across Chronos-2 depth on datasets from and outside the documented pretraining corpus and analyze how saturation relates to representation geometry.
+
+    \item \textbf{Recovery from intermediate representations.}
+    We test whether lightweight linear adapters can approach native forecasting performance from intermediate representations and whether the learned alignment transfers across datasets.
+
+    \item \textbf{Measured depth compression.}
+    We construct physically truncated models and directly measure latency and memory, showing that depth compression can provide substantial efficiency gains but that the useful truncation depth remains dataset-dependent.
+\end{enumerate}
+
+
+\section{Experimental Framework}
+
+\subsection{Models and forecasting setup} \label{sec:model-setup}
+
+\paragraph{Model and layer extraction.} We use Chronos-2 \citep{ansari2025chronos2univariateuniversalforecasting}, a ${\sim}120$M-parameter encoder-only time-series foundation model with 12 transformer encoder blocks. All Chronos-2 parameters are frozen. We use a context length \(C=512\), forecast horizon \(H=64\), and patch size \(P=16\), which corresponds to \(K=4\) forecast slots. Each input time series follows the unmodified Chronos-2 processing pipeline up to the representation being tested. We extract representations at 14 points throughout the network: the token embeddings before the first encoder block (\(\mathrm{Emb}\)), the outputs of the 12 encoder blocks (\(L1 - L12\)), and the post-RMSNorm output after the last encoder block and before the Chronos-2 quantile head, denoted \(L12 + \mathrm{RMS}\).
+
+\paragraph{Shared forecast-token probe.} At each representation point, a single linear probe is shared across all \(K\) forecast slots. Each representation dimension is standardized using statistics from the training forecast-slot states at that layer. The probe then maps each slot's 768-dimensional hidden state to \(Q\times P\) outputs, where \(Q\) is the number of quantiles. 
+% The resulting \(K\) predicted patches are concatenated along the forecast horizon to produce the full \(Q\times H\) forecast.
+
+\paragraph{Truncated models.}
+At each depth \(\ell\), let \(h_\ell\) denote the forecast-slot representation after encoder block \(\ell\). We construct a \textit{truncated model} by stopping the Chronos-2 encoder after block \(\ell\) and attaching a layer-specific linear adapter
+\(A_\ell:\mathbb{R}^{768}\rightarrow\mathbb{R}^{768}\), shared across the \(K\) forecast slots.
+The adapted representations are passed through the frozen final RMSNorm and pretrained forecasting head,
+\[
+h_\ell \rightarrow A_\ell(h_\ell)
+\rightarrow \mathrm{RMSNorm}_{\mathrm{final}}
+\rightarrow \mathrm{head}.
+\]
+All Chronos-2 parameters remain frozen, and only \(A_\ell\) is trained. When an adapter is trained and evaluated on the same dataset, we refer to it as a \textit{dataset-specific linear adapter}.
+
+\subsection{Data and evaluation} \label{sec:data-eval}
+
+\paragraph{ID/OOD protocol and datasets.}
+We use seven datasets, all evaluated at hourly resolution. Four datasets are listed in the documented Chronos-2 pretraining corpus \citep{ansari2025chronos2univariateuniversalforecasting} and are referred to as \textit{PT-ID}: M4 \citep{MAKRIDAKIS202054}, Electricity \citep{godahewa2021monashtimeseriesforecasting}, Uber TLC \citep{fivethirtyeight_uber_tlc}, and Wind Farms \citep{godahewa2021monashtimeseriesforecasting}. The remaining three datasets are not listed in the pretraining corpus and are referred to as \textit{PT-OOD}: BOOM \citep{cohen2025timedifferentobservabilityperspective}, SG Carpark \citep{qiao2026itstimegenerationtime}, and Coastal T-S \citep{qiao2026itstimegenerationtime}. Dataset descriptions are provided in Appendix~\ref{apndx:datasets}, with split construction, window selection, and filtering details in Appendix~\ref{apndx:data-splits}.
+
+\paragraph{Forecasting metrics.}
+For the saturation analysis, we train and evaluate the probes using the original Chronos-2 quantile loss \citep{ansari2025chronos2univariateuniversalforecasting}. To compare truncated models with native Chronos-2, we use mean absolute scaled error (MASE) \citep{HYNDMAN2006679}, normalized by the seasonal-naive error over the \(C=512\) context window with seasonal period \(m=24\). Probe results are averaged over three probe initializations. Each adapter is fit once. We estimate 95\% confidence intervals using 5,000 bootstrap resamples. Bootstrap details are provided in Appendix~\ref{app:implementation}.
+
+
+%%%%%%%%%%%%%%%%%% RESULTS %%%%%%%%%%%%%%%%%
+\section{Results}
+
+\subsection{Does linearly decodable forecasting performance saturate across depth?}
+\label{sec:tunnel}
+
+\paragraph{Saturation region.}
+We define the entrance to the \textit{saturation region} as the first layer whose validation loss is within \(\varepsilon\%\) of the final-layer loss. We use \(\varepsilon=5\) in the main analysis and report additional results for \(\varepsilon=2\) in Appendix~\ref{apndx:pt-id-results}. This follows the ``tunnel entrance'' criterion from the representation-learning literature \citep{masarczyk2023tunneleffectbuildingdata}.
+
+The top panels of Figure~\ref{fig:id_tunnel} show the layerwise test quantile loss for two representative PT-ID datasets and one PT-OOD dataset. For Electricity, test loss seems to change little after \(L3\), but the validation curve continues to improve and does not enter the \(5\%\) saturation region until \(L10\). M4 saturates much earlier at \(L3\), after which test performance remains nearly unchanged. SG Carpark also shows a sharp early reduction followed by a visually flatter profile, but its intermediate-layer losses remain above the final representation, and its validation-based saturation region begins only at \(L11\). Results for all PT-ID and PT-OOD datasets under both \(\varepsilon=5\%\) and \(\varepsilon=2\%\) criteria are provided in Appendix~\ref{apndx:pt-id-results}.
+
+Across all tested datasets, linearly decodable forecasting performance saturates before the final representation, both within and outside the documented Chronos-2 pretraining corpus, and the saturation depth is dataset-dependent. We next ask whether this behavior is reflected in the representation geometry, independently of the probe.
+
+\begin{figure}[t]
+    \centering
+    \includegraphics[width=0.95\linewidth]{figures/main_id_testloss_erank_2x2.png}
+    \caption{
+    Layerwise forecasting performance and representation geometry for Electricity and M4 (PT-ID) and SG Carpark (PT-OOD). \textbf{Top:} mean test quantile loss across three probe initializations using a single quantile (\(Q=1\)). Shaded bands show 95\% bootstrap confidence intervals. The saturation point (green) is selected independently from the validation curve using the 5\% criterion. \textbf{Bottom:} effective rank of the forecast-slot representations computed on the training set. Stars mark the maximum effective rank. Results for the other PT-ID and PT-OOD datasets are in Appendix \ref{apndx:pt-id-results}.
+    }
+    \label{fig:id_tunnel}
+\end{figure}
+
+\subsection{Is forecasting saturation reflected in representation geometry?}
+\label{sec:geometry}
+
+\paragraph{Effective rank.} To characterize the dimensional structure of the representations, we use \textit{effective rank} \citep{7098875}. See Appendix \ref{apndx:effective-rank} for details.
+
+The bottom panels of Figure~\ref{fig:id_tunnel} show the effective-rank profiles of the forecast-slot representations across depth. Effective rank increases from the embedding representation, peaks at \(L6\) for all three datasets, and then declines toward the final layers. However, this peak does not consistently align with the validation-selected saturation point. For Electricity and SG Carpark, the validation losses at \(L6\) are still \(12.5\%\) and \(25.7\%\) above the final-layer loss, respectively. For M4, effective rank peaks inside the saturation region. Similar trends appear for the remaining PT-ID and PT-OOD datasets in Appendix~\ref{apndx:geometry}. Additional linear centered kernel alignment (CKA) results in Appendix~\ref{apndx:cka} also show clear layerwise structure, but its relation to forecasting saturation varies across datasets.
+
+Representation analysis reveals substantial layerwise structure, although its location varies across datasets and does not consistently align with the forecasting saturation point. We next explore whether intermediate representations can support compressed forecasting with performance comparable to the full model.
+
+\subsection{Can intermediate representations recover full-model performance?}
+\label{sec:recover-chronos-performance}
+
+\subsubsection{Can a dataset-specific adapter recover native performance?}
+\label{sec:dataset-specific-adapter}
+
+\paragraph{Comparison conditions.}
+At each intermediate layer, we compare the dataset-specific adapter introduced in Section~\ref{sec:model-setup} against three reference conditions. \textit{Native Chronos-2} denotes the full frozen model. The \textit{frozen native head} passes the layer representation directly through the frozen final RMSNorm and pretrained forecasting head. The \textit{fresh linear probe} is the same layer-specific shared forecast-slot probe used for the saturation analysis in Section~\ref{sec:tunnel}.
+
+In Figure~\ref{fig:dataset-specific-adapter}, the frozen native head shows a substantial gap relative to native Chronos-2 across all three datasets. The fresh linear probe performs considerably better, but remains farther from native Chronos-2 at earlier layers. In contrast, the dataset-specific adapter approaches native Chronos-2 performance much earlier. Results for the remaining datasets show a similar pattern and are provided in Appendix~\ref{apndx:adapter-recovery}. We next ask whether this learned alignment transfers across datasets.
+
+\begin{figure*}[t]
+    \centering
+    \includegraphics[width=0.95\linewidth]{figures/main_nha_mase__mase.png}
+    \caption{
+    Dataset-specific recovery of native Chronos-2 forecasting performance for Electricity and M4 (PT-ID) and SG Carpark (PT-OOD). We compare the dataset-specific linear adapter (\textit{Linear adapter + frozen native head}) with three reference conditions: native Chronos-2, the frozen native head applied directly to each intermediate representation after the frozen final RMSNorm, and the fresh linear probe used in the saturation analysis in Section~\ref{sec:tunnel}. Shaded bands show 95\% bootstrap confidence intervals. \(L12 + \mathrm{RMS}\) is omitted.
+    }
+    \label{fig:dataset-specific-adapter}
+\end{figure*}
+
+\subsubsection{Does the recovered alignment transfer across datasets?}
+\label{sec:transfer-adapter}
+
+We freeze linear adapters trained on Electricity or M4 and evaluate them without refitting on one PT-ID and two PT-OOD datasets. We compare each transferred adapter with native Chronos-2 and a target-specific adapter.
+
+Figure~\ref{fig:adapter-transfer} shows that transfer is strongly dataset-dependent. Between Electricity and M4, transferred adapters follow the target-specific trend but remain worse across most truncation points. On SG Carpark, both source adapters transfer more effectively and approach the target-specific adapter in later layers. For Coastal T-S, estimates are less precise. Thus, the recovered alignment can transfer, but not consistently across datasets. Full transfer results are provided in Appendix~\ref{apndx:adapter-transfer}.
+
+\begin{figure*}[t]
+    \centering
+    \includegraphics[width=0.95\linewidth]{figures/main_nha_transfer__mase.png}
+    \caption{
+    Transfer of adapters trained on Electricity (top) and M4 (bottom) to one PT-ID and two PT-OOD datasets. Transferred adapters are evaluated without refitting and compared with native Chronos-2 and a target-specific adapter trained directly on each target dataset. Shaded bands show 95\% bootstrap confidence intervals. \(L12 + \mathrm{RMS}\) is omitted.
+    }
+    \label{fig:adapter-transfer}
+\end{figure*}
+
+
+\subsection{Compression-performance trade-offs: How should the truncation depth be selected?}
+\label{sec:model-setup-cost}
+
+\paragraph{Depth selection and compression metrics.} We consider two truncation depths: the entrance to the saturation region selected from validation loss and the effective-rank peak computed from the training representations. For each truncated model, we report the fraction of active parameters, measured inference speedup, and relative change in test MASE, all with respect to native Chronos-2. Speedup is the median prediction latency of native Chronos-2 divided by that of the truncated model at batch size 256. Full latency, throughput, and memory measurements are provided in Appendix~\ref{app:latency-methodology}.
+
+Table~\ref{tab:compression-selection} shows that the compression-performance trade-off achieved with dataset-specific adapters varies substantially across datasets. For Uber TLC, Wind Farms, and BOOM, the saturation criterion selects \(L3\), which retains \(29.4\%\) of the active parameters and provides a \(\times 3.23\) speedup. The corresponding MASE increases are \(8.6\%\), \(1.5\%\), and \(10.7\%\), respectively. In contrast, Electricity and SG Carpark saturate much later, at \(L10\) and \(L11\), and therefore provide smaller speedups. M4 saturates at \(L3\), but truncation at this depth increases MASE by \(55.3\%\). Moving to the effective-rank peak at \(L6\) reduces this gap to \(33.8\%\), while still providing a \(\times 1.85\) speedup.
+
+The two depth selection criteria can favor different balances between forecasting performance and compression depending on the dataset. Neither criterion defines a universal truncation point, and the preferred depth depends on the desired balance between forecasting performance and inference cost.
+
+\begin{table*}[t]
+    \centering
+    \scriptsize
+    \setlength{\tabcolsep}{2.5pt}
+    \renewcommand{\arraystretch}{0.95}
+
+    \caption{
+    Compression-performance trade-off under saturation- and effective-rank-based truncation.
+    Speedup is measured at batch size 256 relative to native Chronos-2.
+    \(\Delta\)MASE is the relative test MASE increase over native Chronos-2 with 95\% paired bootstrap confidence intervals.
+    }
+    \label{tab:compression-selection}
+
+    \begin{tabular}{lcccccccc}
+    \toprule
+    & \multicolumn{4}{c}{Saturation-selected}
+    & \multicolumn{4}{c}{Effective-rank-selected} \\
+    \cmidrule(lr){2-5}
+    \cmidrule(lr){6-9}
+    Dataset
+    & Depth & Act. params & Speedup & \(\Delta\)MASE [95\% CI]
+    & Depth & Act. params & Speedup & \(\Delta\)MASE [95\% CI] \\
+    \midrule
+
+    Electricity
+    & \(L10\) & \(84.7\%\) & \(\times 1.18\) & \(+14.6\%\,[11.6,17.8]\)
+    & \(L6\) & \(53.1\%\) & \(\times 1.85\) & \(+13.7\%\,[10.5,17.5]\) \\
+
+    Uber TLC
+    & \(L3\) & \(29.4\%\) & \(\times 3.23\) & \(+8.6\%\,[7.2,10.1]\)
+    & \(L6\) & \(53.1\%\) & \(\times 1.85\) & \(+3.9\%\,[3.0,4.7]\) \\
+
+    M4
+    & \(L3\) & \(29.4\%\) & \(\times 3.23\) & \(+55.3\%\,[45.0,67.0]\)
+    & \(L6\) & \(53.1\%\) & \(\times 1.85\) & \(+33.8\%\,[26.2,42.6]\) \\
+
+    Wind Farms
+    & \(L3\) & \(29.4\%\) & \(\times 3.23\) & \(+1.5\%\,[0.1,12.7]\)
+    & \(L8\) & \(68.9\%\) & \(\times 1.44\) & \(+3.3\%\,[1.1,20.9]\) \\
+
+    \midrule
+
+    SG Carpark
+    & \(L11\) & \(92.6\%\) & \(\times 1.08\) & \(+6.5\%\,[3.4,10.2]\)
+    & \(L6\) & \(53.1\%\) & \(\times 1.85\) & \(+12.6\%\,[8.9,16.8]\) \\
+
+    Coastal T-S
+    & \(L1\) & \(13.6\%\) & \(\times 6.42\) & \(+1.8\%\,[{-8.5},13.5]\)
+    & \(L8\) & \(68.9\%\) & \(\times 1.44\) & \(0.0\%\,[{-8.3},9.5]\) \\
+
+    BOOM
+    & \(L3\) & \(29.4\%\) & \(\times 3.23\) & \(+10.7\%\,[6.0,19.6]\)
+    & \(L8\) & \(68.9\%\) & \(\times 1.44\) & \(+15.0\%\,[8.4,26.9]\) \\
+
+    \bottomrule
+\end{tabular}
+\end{table*}
+
+\section{Conclusion and Future Work}
+
+Forecasting performance under a linear readout saturates before the final representation under our default \(\varepsilon=5\%\) criterion on all tested datasets. Representation geometry shows a related but distinct layerwise structure, and intermediate representations can often recover much of the native forecasting performance through lightweight dataset-specific adapters. Chronos-2 can often be truncated while reusing its quantile head: truncation at \(L3\) retains \(29.4\%\) of the active parameters and provides a \(\times 3.23\) measured speedup, with an average MASE increase of \(7\%\) across three datasets. However, no saturation- or geometry-based criterion determines a universal truncation depth.
+
+Future work should test whether these findings generalize across frequencies, horizons, and TSFM families \citep{ansari2024chronoslearninglanguagetime, das2024decoderonlyfoundationmodeltimeseries, woo2024unifiedtraininguniversaltime}. It could also combine depth truncation with quantization or width pruning and consider representation measures beyond effective rank and CKA.
+
+
+\newpage
+%%%%%%%%%%%%%%%% REFERENCES %%%%%%%%%%%%%%
+\bibliographystyle{plainnat}
+\bibliography{references}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\newpage
+\appendix
+
+\section{Additional Results}
+
+% \subsection{Content-Pooled Representation} \label{apndx:content-pooled-probe}
+
+% % {\color{red} [TODO, Zibo]} setup + saturation with ridge R2 and 5-quantile-bin classification \\
+
+% This appendix asks whether the saturation in
+% Section~\ref{sec:tunnel} is specific to the shared forecast-slot
+% probe. We repeat the layerwise analysis with linear probes on the
+% mean of the content (non-padding) patch states. The probe closest to
+% the main text is a quantile probe predicting the full $H$-step
+% forecast (21 quantiles); we also report a ridge regression and a
+% 5-quantile-bin logistic classifier (bins from the training split),
+% which predict the context-normalized future mean, a coarser summary
+% of the horizon. Regularization for the quantile and ridge probes is
+% selected per layer on an $80/20$ split of the training windows; each
+% probe is refit on full train and scored on test.
+
+% This is a robustness check rather than a controlled ablation: the
+% pipeline is separate from the main text, with a single seed and no
+% held-out validation split. Electricity uses a within-series temporal
+% cut; M4's series are too short for that, so M4 falls back to a
+% disjoint $70/30$ split over its 414 series, and the two datasets are
+% compared in shape, not level. Representations were extracted without
+% the embedding and post-RMSNorm taps, so all values are relative to
+% $L12$ (counts over $L1$--$L12$). Because the reference differs from
+% the main text and there is no validation split, the $5\%$ band is a
+% flatness measure, not the tunnel-entrance criterion.
+
+% A flat region is present under this readout as well
+% (Figure~\ref{fig:content-flatness}). Under the quantile loss
+% (Electricity), 10 of 12 layers lie within $5\%$ of $L12$, the
+% exceptions being $L3$ ($5.2\%$ better) and $L9$ ($5.5\%$ worse). The
+% coarser targets saturate too: under binned accuracy, 8 of 12 layers
+% are in band on each dataset, with excursions mostly upward
+% ($L6$--$L8$ beat the final layer on Electricity, peak $L7$ at
+% $+6.5\%$; on M4 every layer from $L2$ on matches or beats $L12$, peak
+% $L8$ at $+8.0\%$); ridge $R^2$ (Electricity) is the least flat, with
+% 5 of 12 in band and $L8$ missing it by $0.1$ percentage points. On
+% Electricity all three readouts put their worst layer at $L9$; this
+% rules out seed effects but not sampling variation, and it does not
+% replicate on M4 ($L9$ sits $6.2\%$ above $L12$), so we do not
+% interpret it. All numbers are single-seed test-set point estimates
+% without confidence intervals and are read as descriptive; within
+% those limits, the mid-network saturation of
+% Section~\ref{sec:tunnel} is also seen under a content-pooled readout.
+
+% \begin{figure}[h]
+%     \centering
+%     \includegraphics[width=0.85\linewidth]{figures/appendix_content_pooling_flatness.png}
+%     \caption{
+%     Content-mean-pooling performance on Electricity, relative to the
+%     last encoder block ($L12$), for the three probes. All curves are
+%     oriented so that above $100\%$ is better than $L12$; the quantile
+%     loss is mirrored about $100$ for this reason. Shaded: $\pm5\%$
+%     band. Ridge $R^2$ at $L1$ and $L2$ falls below the axis range and
+%     is annotated. M4 is not shown; its binned-accuracy values are
+%     reported in the text.
+%     }
+%     \label{fig:content-flatness}
+% \end{figure}
+
+
+
+\subsection{Additional Saturation Results}
+\label{apndx:pt-id-results}
+
+Table~\ref{tab:saturation-points} summarizes the validation-selected saturation points across all seven datasets for \(\varepsilon=5\%\) and the stricter \(\varepsilon=2\%\) criterion. Figure~\ref{fig:additional-layerwise-results} shows the corresponding layerwise forecasting performance and effective rank across all datasets.
+
+\begin{table}[t]
+    \centering
+    \caption{
+    Validation-selected saturation points across all datasets under the
+    \(\varepsilon=5\%\) criterion used in the main analysis and the stricter
+    \(\varepsilon=2\%\) criterion.
+    }
+    \label{tab:saturation-points}
+    \begin{tabular}{lccc}
+        \toprule
+        Dataset & Pretraining status & \(\varepsilon=5\%\) & \(\varepsilon=2\%\) \\
+        \midrule
+        Electricity & PT-ID & \(L10\) & \(L12+\mathrm{RMS}\) \\
+        M4 & PT-ID & \(L3\) & \(L6\) \\
+        Uber TLC & PT-ID & \(L3\) & \(L4\) \\
+        Wind Farms & PT-ID & \(L3\) & \(L4\) \\
+        \midrule
+        SG Carpark & PT-OOD & \(L11\) & \(L12\) \\
+        BOOM & PT-OOD & \(L3\) & \(L5\) \\
+        Coastal T-S & PT-OOD & \(L1\) & \(L1\) \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+\begin{figure*}[t]
+    \centering
+    \includegraphics[width=\linewidth]{figures/appendix_id_saturation_sensitivity_all7.png}
+    \caption{
+    Layerwise forecasting performance and representation geometry across all seven datasets.
+    Top panels show mean test quantile loss across three probe initializations using a single quantile (\(Q=1\)), with shaded bands indicating 95\% bootstrap confidence intervals.
+    Solid and dashed green lines mark the saturation entrances selected independently from the validation curves using \(\varepsilon=5\%\) and \(\varepsilon=2\%\), respectively.
+    Bottom panels show effective rank computed from the training forecast-slot representations, with stars marking the maximum effective rank.
+    }
+    \label{fig:additional-layerwise-results}
+\end{figure*}
+
+\subsection{Additional Representation Geometry Results}
+\label{apndx:geometry}
+
+The bottom panels of Figure \ref{fig:additional-layerwise-results} show the effective-rank profiles for Uber TLC, Wind Farms, BOOM, and Coastal T-S. Table \ref{tab:geometry-summary} summarizes the relation between the effective-rank peak and forecasting saturation across all seven datasets.
+
+
+\begin{figure*}[t]
+    \centering
+    \includegraphics[width=0.85\linewidth]{figures/appendix_id_cka.png}
+    \caption{
+    Linear CKA between forecast-slot representations across the 14 representation points for the PT-ID and PT-OOD datasets. Higher values indicate greater representational similarity. Dashed lines mark the validation-selected 5\% saturation points.
+    }
+    \label{fig:additional-cka}
+\end{figure*}
+
+\begin{table*}[t]
+    \centering
+    \caption{
+    Summary of effective-rank peaks and their relation to forecasting saturation across all datasets. ``Gap vs. final'' reports the relative validation-loss difference at the effective-rank peak compared with the final \(L12+\mathrm{RMS}\) representation, with positive values indicating worse forecasting performance. The saturation point is selected using the 5\% validation criterion.
+    }
+    \label{tab:geometry-summary}
+    \begin{tabular}{lcccc}
+        \toprule
+        Dataset & Status & ER peak & Gap vs. final & Saturation point \\
+        \midrule
+        Electricity & PT-ID  & \(L6\) & \(+12.5\%\) & \(L10\) \\
+        Uber TLC    & PT-ID  & \(L6\) & \(-1.1\%\)  & \(L3\) \\
+        M4          & PT-ID  & \(L6\) & \(+1.8\%\)  & \(L3\) \\
+        Wind Farms  & PT-ID  & \(L8\) & \(-2.2\%\)  & \(L3\) \\
+        \midrule
+        SG Carpark  & PT-OOD & \(L6\) & \(+25.7\%\) & \(L11\) \\
+        Coastal T-S & PT-OOD & \(L8\) & \(-0.6\%\)  & \(L1\) \\
+        BOOM        & PT-OOD & \(L8\) & \(+4.9\%\)  & \(L3\) \\
+        \bottomrule
+    \end{tabular}
+\end{table*}
+
+\subsection{Additional Compressed-Model Results}
+\label{apndx:compressed-models}
+
+\subsubsection{Dataset-Specific Adapter Recovery}
+\label{apndx:adapter-recovery}
+
+Figure \ref{fig:appendix-adapter-recovery} shows the dataset-specific adapter results for all PT-ID and PT-OOD datasets. Across datasets, the linear adapter generally reduces the gap between intermediate representations and the frozen native forecasting head, although the amount of recovery varies with dataset and truncation depth.
+
+\begin{figure*}[t]
+    \centering
+    \includegraphics[width=\linewidth]{figures/appendix_nha_mase__mase.png}
+    \caption{
+    Dataset-specific adapter recovery across all PT-ID and PT-OOD datasets.
+    }
+    \label{fig:appendix-adapter-recovery}
+\end{figure*}
+
+\subsubsection{Cross-Dataset Adapter Transfer}
+\label{apndx:adapter-transfer}
+
+Figure \ref{fig:appendix-adapter-transfer} shows the complete transfer results for adapters trained on Electricity and M4. Each adapter is frozen and evaluated without refitting on the remaining PT-ID and PT-OOD datasets. The target-specific adapter is shown as a reference for the performance obtained when the adapter is trained directly on the target dataset.
+
+\begin{figure*}[t]
+    \centering
+    \includegraphics[width=\linewidth]{figures/appendix_nha_transfer__mase.png}
+    \caption{
+    Cross-dataset transfer of adapters trained on Electricity (top two rows) and M4 (bottom two rows). Each transferred adapter is evaluated without refitting on the remaining PT-ID and PT-OOD datasets. Target-specific adapters are shown as a reference. Dashed lines mark native Chronos-2 performance, and shaded bands show 95\% bootstrap confidence intervals.
+    }
+    \label{fig:appendix-adapter-transfer}
+\end{figure*}
+
+\section{Representation Diagnostics}
+
+\subsection{Effective Rank} \label{apndx:effective-rank}
+
+We use effective rank \citep{7098875} to quantify how broadly representation variance is distributed across feature directions.
+
+First, we center a representation matrix \(X\in\mathbb{R}^{N\times d}\), where \(N\) is the number of sampled forecast-slot states and \(d=768\) is the hidden-state dimension:
+\[
+X_c = X-\bar{X}.
+\]
+
+Then, we compute the singular values \(s_i\) of \(X_c\) and define the normalized variance spectrum as
+\[
+p_i=\frac{s_i^2}{\sum_j s_j^2}.
+\]
+
+The effective rank of the matrix \(X_c\) is defined as
+\[
+r_{\mathrm{eff}}
+=
+\exp\left(-\sum_i p_i\log p_i\right).
+\]
+
+For intuition, \(r_{\mathrm{eff}}=1\) when all variance lies along one direction. If it is distributed equally across \(k\) directions, then \(r_{\mathrm{eff}}=k\).
+
+For each representation point, the training split contains \(n=1394\) forecasting windows, with \(K=4\) forecast-slot states of dimension \(d=768\) per window. We reshape the representations as
+\[
+(n,K,d)\rightarrow(nK,d),
+\]
+which gives \(5576\times768\) available forecast-slot states. We sample \(N=4096\) rows without replacement with seed 0 and use the same row indices across all 14 representation points. 
+
+To characterize the native representation geometry, effective rank is computed directly from the extracted forecast-slot representations, before they are standardized using training-set statistics. Probe parameters, predictions, and forecast targets do not enter the calculation.
+
+As a stability check, we recompute effective rank over $200$ random \(80\%\) subsamples drawn without replacement. As shown in Figure~\ref{fig:effective_rank_stability}, the layerwise profiles remain stable, and the peak effective-rank layer is preserved across all 200 subsamples for each dataset.
+
+\begin{figure}[t]
+    \centering
+    \includegraphics[width=\linewidth]{figures/erank_stability_3x3__fslot__probe_input__train.png}
+    \caption{
+    Stability of layerwise effective-rank estimates under subsampling.
+    Solid curves show effective rank computed from the full sample of
+    \(N=4096\) forecast-slot states, and shaded regions show the
+    $2.5\text{th} - 97.5\text{th}$ percentile range across 200 random \(80\%\) subsamples
+    (\(m=3277\)) drawn without replacement.
+    The layerwise profiles are stable across subsamples, and the peak
+    effective-rank representation point is preserved in all 200
+    subsamples for each dataset.
+    }
+    \label{fig:effective_rank_stability}
+\end{figure}
+
+\subsection{Centered Kernel Alignment}
+\label{apndx:cka}
+
+Centered kernel alignment (CKA) provides a way to compare representations from different parts of a neural network \citep{kornblith2019similarityneuralnetworkrepresentations, cortes2024algorithmslearningkernelsbased}. For two representation matrices \(X\in\mathbb{R}^{N\times d_x}\) and \(Y\in\mathbb{R}^{N\times d_y}\), where \(N\) is the number of observations and \(d_x\) and \(d_y\) are the representation dimensions, we center each feature across the \(N\) observations:
+\[
+X_c = X-\bar{X}, \qquad Y_c = Y-\bar{Y},
+\]
+and then compute
+\[
+\mathrm{CKA}(X,Y)
+=
+\frac{\lVert X_c^\top Y_c\rVert_F^2}
+{\lVert X_c^\top X_c\rVert_F
+ \lVert Y_c^\top Y_c\rVert_F},
+\]
+where \(\|\cdot\|_F\) denotes the Frobenius norm.
+
+Each representation point contains \(K=4\) forecast-slot states of dimension \(d=768\) per forecasting window, which we reshape before computing CKA:
+\[
+(n,K,d)\rightarrow(nK,d),
+\]
+where $n=262$ is the number of forecasting windows in the ID test set for a given dataset. 
+
+We evaluate CKA for every pair of the 14 representation points (\(\mathrm{Emb}\), \(L1 - L12\), and \(L12 + \mathrm{RMS}\)), which gives a symmetric \(14\times14\) layer-similarity matrix with a unit diagonal. Probe parameters, predictions, and forecast targets do not enter the CKA calculation.
+
+Figure~\ref{fig:additional-cka} shows the CKA matrices for the tested datasets. The representations exhibit one or more blocks of high similarity, but the location and sharpness of these structures vary across datasets and do not consistently align with the validation-selected saturation points.
+
+\section{Data and Evaluation}
+
+\subsection{Datasets}
+\label{apndx:datasets}
+
+We use four hourly datasets presented in the Chronos-2 pretraining corpus
+\citep{ansari2025chronos2univariateuniversalforecasting}:
+
+\paragraph{M4 Hourly.}
+M4 Hourly consists of 414 anonymized real-world hourly time series from the M4 forecasting competition, obtained from various domains \citep{MAKRIDAKIS202054}. The series range from 748 to 1,008 observations in length.
+
+\paragraph{Electricity.}
+Electricity contains hourly electricity-load measurements from 321 clients in the Monash Time Series Forecasting Archive \citep{godahewa2021monashtimeseriesforecasting}. Each series contains 26,304 hourly observations.
+
+\paragraph{Uber TLC.}
+Uber TLC contains hourly Uber pickup counts across locations in New York City, derived from data released by the New York City Taxi and Limousine Commission \citep{fivethirtyeight_uber_tlc}. The dataset contains 262 series, each spanning 4,344 hours.
+
+\paragraph{Wind Farms.}
+Wind Farms contains hourly power-production measurements from 337 Australian wind farms \citep{godahewa2021monashtimeseriesforecasting}. The series vary in length from 1,715 to 8,784 observations. 
+% About 17\% of values are missing, so after discarding windows with non-finite values, we retain 328 eligible series (Appendix \ref{apndx:data-splits}).
+
+For experiments involving datasets outside the documented Chronos-2 pretraining corpus, we use:
+
+\paragraph{BOOM.}
+BOOM contains real-world observability metrics from Datadog for evaluating forecasting models in complex environments such as infrastructure, networking, databases, security, and applications \citep{cohen2025timedifferentobservabilityperspective}. We restrict the dataset to its 378 native-hourly metric queries.
+
+\paragraph{SG Carpark.}
+SG Carpark contains available parking-lot counts from 354 public carparks in Singapore. We use the 15-minute version provided through the TIME benchmark \citep{qiao2026itstimegenerationtime}.
+
+\paragraph{Coastal T-S.}
+Coastal T-S contains sea-water temperature, practical salinity, and relative-pressure measurements from 24 Australian coastal moorings. We use the hourly version distributed through TIME \citep{qiao2026itstimegenerationtime}.
+
+
+\subsection{Preprocessing and rolling-origin splits}
+\label{apndx:data-splits}
+
+\paragraph{Rolling-origin splits.}
+The datasets contain different numbers of time series with different lengths, so we construct examples using a rolling-origin split with non-overlapping forecast horizons. Within each series, the final forecast origin is assigned to test, the preceding origin to validation, and all earlier origins to training. For the PT-ID datasets, we set the train and validation/test budgets by the limiting dataset in each case: 1,394 training, 262 validation, and 262 test windows per dataset. PT-OOD evaluation uses all eligible test windows after preprocessing and filtering.
+
+\paragraph{Dataset-specific preprocessing.}
+For BOOM, we apply an additional pre-selection rule when choosing one variate from each query: a candidate is accepted only if at most \(20\%\) of its values are missing and it yields at least one valid forecasting window. For Coastal T-S, we keep temperature and salinity and discard relative pressure, which gives us 48 univariate series. For SG Carpark, 15-minute observations are aggregated to hourly resolution when at least three of four samples are available.  
+
+\paragraph{Window construction and filtering.}
+Windows with non-finite context/target values or near-constant contexts (\(\sigma<10^{-6}\)) are discarded. A series is retained only if at least three \(H\)-spaced windows remain: one for validation, one for test, and at least one for training. After preprocessing and filtering, 354 BOOM queries remain eligible. Wind Farms contains approximately \(17\%\) missing values, and 328 of the original 337 series remain eligible after filtering.
+
+\section{Implementation Details}
+\label{app:implementation}
+
+This section collects implementation settings that are not naturally described alongside the corresponding methods. The optimizer, training schedule, and candidate weight-decay grid are fixed across experiments. Weight decay is the only training hyperparameter selected separately for each dataset and layer, always using validation loss.
+
+\paragraph{Probe fitting.}
+The shared forecast-slot probe is fit on the \(K\) forecast-slot states of the training windows. Each of the 768 representation dimensions is standardized using statistics computed from the training slot states at that layer, and the same statistics are applied at validation and test. The probe is a single
+\(\mathbb{R}^{768} \rightarrow \mathbb{R}^{Q \times P}\) linear map shared across slots. We train it with AdamW at a learning rate of \(10^{-2}\) for 300 full-batch epochs without early stopping. Weight decay is applied to the weight matrix only, with the bias left unregularized, and is selected per layer from
+\(\{10^{-5},10^{-4},10^{-3},10^{-2},10^{-1},0.3,1,3\}\)
+using validation loss. Probes are fit under three initializations with seeds 0, 1, and 2. The backbone and training data are fixed across these runs, so probe initialization is the source of variation intentionally varied across fits.
+
+\paragraph{Adapter fitting.}
+The linear adapter uses the same optimizer, learning rate, training duration, and weight-decay grid as the probe. Weight decay is again applied only to the weight matrix and selected using validation loss. Each adapter is initialized to the identity and fit once from this fixed initialization. We therefore do not average adapter results over multiple initialization seeds, and adapter confidence intervals reflect test-set bootstrap uncertainty. Adapters are trained through the frozen final RMSNorm and forecasting head against the normalized forecast targets. All Chronos-2 parameters remain frozen, with only the adapter parameters updated.
+
+\paragraph{Effective rank.}
+Effective rank is computed on the training split from the \(K\) forecast-slot states stacked into an
+\((N \cdot K) \times 768\) matrix. We use the representations before the per-layer standardization applied to the probe, so the resulting effective rank characterizes the representation itself. For each layer, we draw 4,096 forecast-slot states and report the mean effective rank over 200 subsamples containing 80\% of these states, sampled without replacement with seed 0.
+
+\paragraph{Uncertainty and seeds.}
+The global seed is 0 for NumPy, PyTorch, and scikit-learn, and window construction is deterministic given this seed, so all conditions are evaluated on identical windows. Confidence intervals use 5,000 cluster-bootstrap resamples with seed 0. Whole test series form the resampling unit for PT-ID datasets, while the corresponding parent cluster, namely carpark, station, or metric query, is used for PT-OOD datasets. A single resampling matrix is generated per dataset and reused across layers, conditions, and metrics to preserve paired comparisons.
+
+\paragraph{Hardware and software.}
+Experiments were run on a single NVIDIA A100-SXM4-40GB GPU with an AMD EPYC host CPU under SLURM. The software stack consists of Python 3.11.4, PyTorch 2.12.1 with CUDA 13.2 and cuDNN 9.21.1, and \texttt{chronos-forecasting} 2.3.1 for the \texttt{amazon/chronos-2} pipeline. We additionally use NumPy 1.26.4, scikit-learn 1.7.1, and Matplotlib 3.10.8. All computations use \texttt{float32}; we do not use \texttt{torch.compile}, mixed precision, or manual kernel fusion. The latency and memory benchmarking protocol is described separately in Appendix~\ref{app:latency-methodology}.
+
+\paragraph{Reproducing the results.}
+Each experimental stage has a separate entry point and writes the records consumed by subsequent stages. Representation extraction and probe fitting, including saturation-point selection, use
+\texttt{run\_ptood\_probing\_ftok}; effective rank uses
+\texttt{run\_spectral}; layer similarity uses
+\texttt{run\_cka\_analysis}; and the frozen-head, adapter, and native conditions use
+\texttt{run\_native\_head\_adapter}. Compression-cost tables and depth-selection rules are produced by
+\texttt{run\_compression\_cost}, latency and memory measurements by
+\texttt{run\_latency}, and paper figures by
+\texttt{make\_id\_paper\_figures}. Representation extraction and model fitting are run on a GPU, while the tables, summary statistics, and figures are regenerated from the stored records on CPU. The aggregation stages verify the recomputed quantities against the stored records before producing the final outputs.
+
+% \paragraph{Code availability.} Code and result records are available at \url{...}.
+
+\section{Latency and Memory Methodology}
+\label{app:latency-methodology}
+
+All latency and memory measurements reported in this paper are obtained directly from the native and physically truncated models rather than inferred from parameter or FLOP counts. This appendix describes the benchmarking protocol used to obtain these measurements. The harness is implemented in \texttt{experiments/run\_latency.py} and evaluates the native model and each truncated variant under the same protocol.
+
+\paragraph{Physical truncation and verification.}
+The layerwise forecasting experiments in the main text obtain intermediate representations by running the full 12-block encoder and recording its hidden states with forward hooks. This produces the same representation at layer \(\ell\) as a model physically truncated after that layer, since later encoder blocks cannot influence \(h_\ell\). For latency and memory measurements, however, we explicitly construct the truncated model by removing encoder blocks \(\ell+1,\ldots,12\) and placing the trained linear adapter before the frozen final RMSNorm. Before benchmarking we perform two checks. First, at every measured depth, the physically truncated encoder must reproduce the corresponding states extracted from the full model. Second, at depth 12 with an identity-initialized adapter, the spliced path must reproduce the unmodified model's final quantile forecasts, which verifies the adapter and RMSNorm splice rather than only the block removal. The maximum absolute deviation was \texttt{0.0e+00} in both cases, so the truncated models are numerically identical to the hooked reference under this verification.
+
+\paragraph{Hardware.}
+Experiments were performed on a single NVIDIA A100-SXM4-40GB GPU with 39\,GiB of VRAM and compute capability 8.0, using driver version 580.178.04. The host machine used an AMD EPYC 7543 32-Core Processor, with two CPU cores allocated to the benchmarking job.
+
+\paragraph{Software and precision.}
+The benchmark used Python 3.11.4, PyTorch 2.12.1, CUDA 13.2, and \texttt{amazon/chronos-2}. The cuDNN version was 9.21.1 (\texttt{torch.backends.cudnn.version()} \(=\) 92101). All computations use \texttt{float32}, matching the precision used for the forecasting experiments in the main text. We do not use \texttt{torch.compile}, automatic mixed precision, or manual kernel fusion. TF32 matrix multiplication is disabled, while TF32 for cuDNN operations is enabled.
+
+\paragraph{Workload.}
+We use the same forecasting configuration as in the main experiments, with context length \(C=512\) and forecast horizon \(H=64\). This gives \(K=4\) forecast slots and an encoder sequence of 37 tokens, consisting of 32 context patches, one REG token, and four forecast slots. We benchmark batch sizes 1, 32, and 256 to cover both single-request and batched-throughput regimes. Inputs are synthetic random walks. Because the model has no data-dependent control flow, the computational path is unchanged across input values, so the benchmark does not depend on a particular dataset.
+
+\paragraph{Timing protocol.}
+Each configuration is first run for 20 warm-up iterations, which are discarded, followed by 100 timed repetitions. Since CUDA operations are asynchronous, \texttt{torch.cuda.synchronize()} is called before and after each timed region so that the reported latency includes GPU execution rather than only CPU-side dispatch. We report the median latency across repetitions as the primary statistic and the 95th percentile as a measure of tail latency.
+
+We record two complementary latency measurements. \texttt{predict} measures \texttt{Chronos2Pipeline.predict\_quantiles} from host-resident inputs and therefore includes preprocessing and host-to-device transfer. In contrast, \texttt{encode} measures only the encoder forward pass on an input tensor already resident on the GPU. Speedups reported in the main text are based on \texttt{predict}, which provides the more conservative end-to-end comparison because its fixed preprocessing and transfer costs do not decrease with truncation.
+
+\paragraph{Throughput.}
+Throughput is reported in series per second and is computed as the batch size divided by the median \texttt{predict} latency. Larger batches amortize fixed per-call costs and make better use of the GPU, so throughput can increase substantially even though the latency of processing an entire batch also increases.
+
+\paragraph{Memory.}
+Peak GPU memory is measured with \texttt{torch.cuda.max\_memory\_allocated()} after resetting the peak-memory statistics with \texttt{torch.cuda.reset\_peak\_memory\_stats()}. We use PyTorch's allocated-memory measurement rather than \texttt{nvidia-smi}, whose reported reservation includes memory retained by the CUDA caching allocator and therefore does not directly reflect the memory released by truncation. For each depth, the model is loaded and truncated independently so that parameters belonging to removed blocks are released before measurement and allocations from a previous configuration do not affect the result.
+
+\paragraph{Measured results.}
+Table~\ref{tab:latency-full} reports the measured latency, throughput, and peak GPU memory across truncation depths and batch sizes. These quantities depend on truncation depth and batch size rather than on the forecasting dataset. Consequently, the dataset-specific speedups reported in the main text are obtained by evaluating this table at the truncation depth selected for each dataset, relative to the \texttt{Native} row at the same batch size.
+
+\begin{table}[t]
+    \centering
+    \small
+    \caption{
+    Measured latency, throughput, and peak GPU memory across truncation depths.
+    \texttt{Native} is the unmodified pretrained model; the \(L\ell\) rows are truncated at \(\ell\) blocks and carry the linear adapter, so \(L12\) is not the native model.
+    \texttt{predict} measures the full prediction path from host-resident inputs, including preprocessing and host-to-device transfer, while \texttt{encode} measures the encoder forward pass on a device-resident tensor.
+    }
+    \label{tab:latency-full}
+    \begin{tabular}{llrrrrrr}
+        \toprule
+        Batch & Depth & Blocks & predict (ms) & p95 (ms) & encode (ms) & series/s & peak (MiB) \\
+        \midrule
+        1 & \texttt{Native} & 12 & 18.45 & 18.75 & 17.65 & 54 & 466.3 \\
+         & \(L1\) & 1 & 3.60 & 3.75 & 2.74 & 278 & 72.3 \\
+         & \(L3\) & 3 & 6.34 & 6.49 & 5.47 & 158 & 144.5 \\
+         & \(L6\) & 6 & 10.42 & 10.68 & 9.56 & 96 & 252.5 \\
+         & \(L8\) & 8 & 13.10 & 13.43 & 12.23 & 76 & 324.5 \\
+         & \(L10\) & 10 & 15.78 & 16.09 & 14.96 & 63 & 396.5 \\
+         & \(L11\) & 11 & 17.17 & 17.47 & 16.38 & 58 & 432.5 \\
+         & \(L12\) & 12 & 18.53 & 18.84 & 17.74 & 54 & 468.5 \\
+        \midrule
+        32 & \texttt{Native} & 12 & 26.08 & 26.33 & 24.24 & 1227 & 511.0 \\
+         & \(L1\) & 1 & 5.33 & 5.41 & 3.47 & 6008 & 113.7 \\
+         & \(L3\) & 3 & 9.13 & 9.30 & 7.27 & 3507 & 190.0 \\
+         & \(L6\) & 6 & 14.81 & 15.04 & 12.96 & 2161 & 298.0 \\
+         & \(L8\) & 8 & 18.59 & 18.84 & 16.74 & 1722 & 370.0 \\
+         & \(L10\) & 10 & 22.39 & 22.67 & 20.54 & 1429 & 442.1 \\
+         & \(L11\) & 11 & 24.31 & 24.58 & 22.44 & 1317 & 478.1 \\
+         & \(L12\) & 12 & 26.21 & 26.45 & 24.36 & 1221 & 513.3 \\
+        \midrule
+        256 & \texttt{Native} & 12 & 178.07 & 178.54 & 168.51 & 1438 & 956.4 \\
+         & \(L1\) & 1 & 27.76 & 28.12 & 18.29 & 9222 & 534.7 \\
+         & \(L3\) & 3 & 55.19 & 55.52 & 45.72 & 4639 & 634.5 \\
+         & \(L6\) & 6 & 96.39 & 96.73 & 86.83 & 2656 & 742.5 \\
+         & \(L8\) & 8 & 123.80 & 124.08 & 114.25 & 2068 & 814.6 \\
+         & \(L10\) & 10 & 151.20 & 151.53 & 141.65 & 1693 & 886.6 \\
+         & \(L11\) & 11 & 164.94 & 165.29 & 155.40 & 1552 & 922.6 \\
+         & \(L12\) & 12 & 178.70 & 179.07 & 169.13 & 1433 & 958.6 \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\clearpage
+\input{checklist.tex}
+
+
+
+\end{document}

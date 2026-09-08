@@ -1,0 +1,154 @@
+\paragraph{What we measure.}
+We ask where Chronos-2's usable computation ends by turning intermediate representations into complete forecasting models. At each truncation depth, we remove the remaining encoder blocks and attach the small linear adapter described below. We quantify the resulting compression-performance trade-off through the fraction of active parameters relative to native Chronos-2, measured inference speedup, and forecasting performance measured by MASE relative to native Chronos-2. We additionally report throughput and peak GPU memory across batch sizes, while the number of retained encoder blocks directly determines the retained encoder-block FLOPs. Truncation depths are selected either from validation performance or from representation geometry and are never chosen using test performance. Appendix~\ref{app:latency-methodology} describes the timing harness, verifies the physically truncated models against the corresponding hooked representations, and reports the full latency, throughput, and memory measurements. We use truncation to study where usable computation ends rather than to propose a new truncation algorithm.
+
+\subsection{Compression-performance trade-offs: How should the truncation depth be selected?}
+\label{sec:compression-cost}
+
+Finally, we quantify the compression-performance trade-off for the dataset-specific adapters. We consider two truncation depths motivated by the preceding analyses: the saturation point selected from validation loss and the effective-rank peak computed from the training representations. Neither criterion uses test MASE for depth selection. For each truncated model, we report the fraction of active parameters relative to native Chronos-2 and the measured inference speedup of the physically truncated model. Speedup is computed from median wall-clock prediction latency relative to native Chronos-2, measured separately under the same protocol, at batch size 256 on an NVIDIA A100. Full latency, throughput, and memory measurements across batch sizes are provided in Appendix \ref{app:latency-methodology}.
+
+Table \ref{tab:compression-selection} shows that the achievable compression-performance trade-off varies substantially across datasets. For Uber TLC, Wind Farms, and BOOM, the saturation criterion selects \(L3\), which retains \(29.4\%\) of the active parameters and provides a \(3.23\times\) speedup. The corresponding MASE increases are \(8.6\%\), \(1.5\%\), and \(10.7\%\), respectively. Coastal T-S selects \(L1\), retaining only \(13.6\%\) of the active parameters and providing a \(6.42\times\) speedup, although its MASE estimate is the least certain in the table (24 series clusters, 48 test windows; both intervals include zero). In contrast, Electricity and SG Carpark saturate much later, at \(L10\) and \(L11\), and therefore provide smaller speedups.
+
+M4 highlights the distinction between saturation of linearly decodable forecasting performance and the performance of the resulting truncated model. Although its linear probe saturates at \(L3\), truncation at this depth increases MASE by \(55.3\%\). Moving to the effective-rank peak at \(L6\) reduces this gap to \(33.8\%\), while still providing a \(1.85\times\) speedup. More generally, the two criteria identify different operating points across datasets, and their relative ordering also varies: the effective-rank peak can occur either before or after the saturation point. As a result, each criterion can favor a different balance between forecasting performance and compression depending on the dataset. Overall, neither criterion defines a universal truncation point, and the preferred depth depends on the desired balance between forecasting performance and inference cost.
+
+\begin{table*}[t]
+    \centering
+    \small
+    \setlength{\tabcolsep}{4pt}
+    \caption{
+    Compression-performance trade-off under two truncation-depth criteria.
+    Speedup is the measured median prediction latency of native Chronos-2
+    divided by that of the truncated model at batch size 256.
+    \(\Delta\)MASE is the relative test MASE increase over native Chronos-2,
+    with 95\% paired bootstrap confidence intervals.
+    }
+    \label{tab:compression-selection}
+    \begin{tabular}{llcccc}
+        \toprule
+        Dataset & Criterion & Depth & Active params & Speedup (\(B=256\)) &
+        \(\Delta\)MASE [95\% CI] \\
+        \midrule
+        Electricity
+        & Saturation & \(L10\) & \(84.7\%\) & \(1.18\times\) &
+        \(+14.6\,[11.6,17.8]\%\) \\
+        & Effective rank & \(L6\) & \(53.1\%\) & \(1.85\times\) &
+        \(+13.7\,[10.5,17.5]\%\) \\
+        \addlinespace
+
+        Uber TLC
+        & Saturation & \(L3\) & \(29.4\%\) & \(3.23\times\) &
+        \(+8.6\,[7.2,10.1]\%\) \\
+        & Effective rank & \(L6\) & \(53.1\%\) & \(1.85\times\) &
+        \(+3.9\,[3.0,4.7]\%\) \\
+        \addlinespace
+
+        M4
+        & Saturation & \(L3\) & \(29.4\%\) & \(3.23\times\) &
+        \(+55.3\,[45.0,67.0]\%\) \\
+        & Effective rank & \(L6\) & \(53.1\%\) & \(1.85\times\) &
+        \(+33.8\,[26.2,42.6]\%\) \\
+        \addlinespace
+
+        Wind Farms
+        & Saturation & \(L3\) & \(29.4\%\) & \(3.23\times\) &
+        \(+1.5\,[0.1,12.7]\%\) \\
+        & Effective rank & \(L8\) & \(68.9\%\) & \(1.44\times\) &
+        \(+3.3\,[1.1,20.9]\%\) \\
+        \midrule
+
+        SG Carpark
+        & Saturation & \(L11\) & \(92.6\%\) & \(1.08\times\) &
+        \(+6.5\,[3.4,10.2]\%\) \\
+        & Effective rank & \(L6\) & \(53.1\%\) & \(1.85\times\) &
+        \(+12.6\,[8.9,16.8]\%\) \\
+        \addlinespace
+
+        Coastal T-S
+        & Saturation & \(L1\) & \(13.6\%\) & \(6.42\times\) &
+        \(+1.8\,[-8.5,13.5]\%\) \\
+        & Effective rank & \(L8\) & \(68.9\%\) & \(1.44\times\) &
+        \(0.0\,[-8.3,9.5]\%\) \\
+        \addlinespace
+
+        BOOM
+        & Saturation & \(L3\) & \(29.4\%\) & \(3.23\times\) &
+        \(+10.7\,[6.0,19.6]\%\) \\
+        & Effective rank & \(L8\) & \(68.9\%\) & \(1.44\times\) &
+        \(+15.0\,[8.4,26.9]\%\) \\
+        \bottomrule
+    \end{tabular}
+\end{table*}
+
+
+\section{Latency and Memory Methodology}
+\label{app:latency-methodology}
+
+All latency and memory measurements reported in this paper are obtained directly from the physically truncated models rather than inferred from parameter or FLOP counts. This appendix describes the benchmarking protocol used to obtain these measurements. The harness is implemented in \texttt{experiments/run\_latency.py} and evaluates the native model and each truncated variant under the same protocol.
+
+\paragraph{Physical truncation and verification.}
+The layerwise forecasting experiments in the main text obtain intermediate representations by running the full 12-block encoder and recording its hidden states with forward hooks. This produces the same representation at layer \(\ell\) as a model physically truncated after that layer, since later encoder blocks cannot influence \(h_\ell\). For latency and memory measurements, however, we explicitly construct the truncated model by removing encoder blocks \(\ell+1,\ldots,12\) and placing the trained linear adapter before the frozen final RMSNorm. Before benchmarking we perform two checks. First, at every measured depth, the physically truncated encoder must reproduce the corresponding states extracted from the full model. Second, at depth 12 with an identity-initialised adapter, the spliced path must reproduce the unmodified model's final quantile forecasts, which verifies the adapter and RMSNorm splice rather than only the block removal. The maximum absolute deviation was \texttt{0.0e+00} in both cases, so the truncated models are numerically identical to the hooked reference under this verification.
+
+\paragraph{Hardware.}
+Experiments were performed on a single NVIDIA A100-SXM4-40GB GPU with 39\,GiB of VRAM and compute capability 8.0, using driver version 580.178.04. The host machine used an AMD EPYC 7543 32-Core Processor, with two CPU cores allocated to the benchmarking job.
+
+\paragraph{Software and precision.}
+The benchmark used Python 3.11.4, PyTorch 2.12.1, CUDA 13.2, and \texttt{amazon/chronos-2}. The cuDNN version was 9.21.1 (\texttt{torch.backends.cudnn.version()} \(=\) 92101). All computations use \texttt{float32}, matching the precision used for the forecasting experiments in the main text. We do not use \texttt{torch.compile}, automatic mixed precision, or manual kernel fusion. TF32 matrix multiplication is disabled, while TF32 for cuDNN operations is enabled.
+
+\paragraph{Workload.}
+We use the same forecasting configuration as in the main experiments, with context length \(C=512\) and forecast horizon \(H=64\). This gives \(K=4\) forecast slots and an encoder sequence of 37 tokens, consisting of 32 context patches, one REG token, and four forecast slots. We benchmark batch sizes 1, 32, and 256 to cover both single-request and batched-throughput regimes. Inputs are synthetic random walks. Because the model has no data-dependent control flow, the computational path is unchanged across input values, so the benchmark does not depend on a particular dataset.
+
+\paragraph{Timing protocol.}
+Each configuration is first run for 20 warm-up iterations, which are discarded, followed by 100 timed repetitions. Since CUDA operations are asynchronous, \texttt{torch.cuda.synchronize()} is called before and after each timed region so that the reported latency includes GPU execution rather than only CPU-side dispatch. We report the median latency across repetitions as the primary statistic and the 95th percentile as a measure of tail latency.
+
+We record two complementary latency measurements. \texttt{predict} measures \texttt{Chronos2Pipeline.predict\_quantiles} from host-resident inputs and therefore includes preprocessing and host-to-device transfer. In contrast, \texttt{encode} measures only the encoder forward pass on an input tensor already resident on the GPU. Speedups reported in the main text are based on \texttt{predict}, which provides the more conservative end-to-end comparison because its fixed preprocessing and transfer costs do not decrease with truncation.
+
+\paragraph{Throughput.}
+Throughput is reported in series per second and is computed as the batch size divided by the median \texttt{predict} latency. Larger batches amortize fixed per-call costs and make better use of the GPU, so throughput can increase substantially even though the latency of processing an entire batch also increases.
+
+\paragraph{Memory.}
+Peak GPU memory is measured with \texttt{torch.cuda.max\_memory\_allocated()} after resetting the peak-memory statistics with \texttt{torch.cuda.reset\_peak\_memory\_stats()}. We use PyTorch's allocated-memory measurement rather than \texttt{nvidia-smi}, whose reported reservation includes memory retained by the CUDA caching allocator and therefore does not directly reflect the memory released by truncation. For each depth, the model is loaded and truncated independently so that parameters belonging to removed blocks are released before measurement and allocations from a previous configuration do not affect the result.
+
+\paragraph{Measured results.}
+Table~\ref{tab:latency-full} reports the measured latency, throughput, and peak GPU memory across truncation depths and batch sizes. These quantities depend on truncation depth and batch size rather than on the forecasting dataset. Consequently, the dataset-specific speedups reported in the main text are obtained by evaluating this table at the truncation depth selected for each dataset, relative to the \texttt{Native} row at the same batch size.
+
+\begin{table}[t]
+    \centering
+    \small
+    \caption{
+    Measured latency, throughput, and peak GPU memory across truncation depths.
+    \texttt{Native} is the unmodified pretrained model; the \(L\ell\) rows are truncated at \(\ell\) blocks and carry the linear adapter, so \(L12\) is not the native model.
+    \texttt{predict} measures the full prediction path from host-resident inputs, including preprocessing and host-to-device transfer, while \texttt{encode} measures the encoder forward pass on a device-resident tensor.
+    }
+    \label{tab:latency-full}
+    \begin{tabular}{llrrrrrr}
+        \toprule
+        Batch & Depth & Blocks & predict (ms) & p95 (ms) & encode (ms) & series/s & peak (MiB) \\
+        \midrule
+        1 & \texttt{Native} & 12 & 18.45 & 18.75 & 17.65 & 54 & 466.3 \\
+         & \(L1\) & 1 & 3.60 & 3.75 & 2.74 & 278 & 72.3 \\
+         & \(L3\) & 3 & 6.34 & 6.49 & 5.47 & 158 & 144.5 \\
+         & \(L6\) & 6 & 10.42 & 10.68 & 9.56 & 96 & 252.5 \\
+         & \(L8\) & 8 & 13.10 & 13.43 & 12.23 & 76 & 324.5 \\
+         & \(L10\) & 10 & 15.78 & 16.09 & 14.96 & 63 & 396.5 \\
+         & \(L11\) & 11 & 17.17 & 17.47 & 16.38 & 58 & 432.5 \\
+         & \(L12\) & 12 & 18.53 & 18.84 & 17.74 & 54 & 468.5 \\
+        \midrule
+        32 & \texttt{Native} & 12 & 26.08 & 26.33 & 24.24 & 1227 & 511.0 \\
+         & \(L1\) & 1 & 5.33 & 5.41 & 3.47 & 6008 & 113.7 \\
+         & \(L3\) & 3 & 9.13 & 9.30 & 7.27 & 3507 & 190.0 \\
+         & \(L6\) & 6 & 14.81 & 15.04 & 12.96 & 2161 & 298.0 \\
+         & \(L8\) & 8 & 18.59 & 18.84 & 16.74 & 1722 & 370.0 \\
+         & \(L10\) & 10 & 22.39 & 22.67 & 20.54 & 1429 & 442.1 \\
+         & \(L11\) & 11 & 24.31 & 24.58 & 22.44 & 1317 & 478.1 \\
+         & \(L12\) & 12 & 26.21 & 26.45 & 24.36 & 1221 & 513.3 \\
+        \midrule
+        256 & \texttt{Native} & 12 & 178.07 & 178.54 & 168.51 & 1438 & 956.4 \\
+         & \(L1\) & 1 & 27.76 & 28.12 & 18.29 & 9222 & 534.7 \\
+         & \(L3\) & 3 & 55.19 & 55.52 & 45.72 & 4639 & 634.5 \\
+         & \(L6\) & 6 & 96.39 & 96.73 & 86.83 & 2656 & 742.5 \\
+         & \(L8\) & 8 & 123.80 & 124.08 & 114.25 & 2068 & 814.6 \\
+         & \(L10\) & 10 & 151.20 & 151.53 & 141.65 & 1693 & 886.6 \\
+         & \(L11\) & 11 & 164.94 & 165.29 & 155.40 & 1552 & 922.6 \\
+         & \(L12\) & 12 & 178.70 & 179.07 & 169.13 & 1433 & 958.6 \\
+        \bottomrule
+    \end{tabular}
+\end{table}
