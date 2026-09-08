@@ -237,6 +237,57 @@ def test_extv4_fslot_end_to_end_synthetic(tmp_root=None):
     print("  PASS test_extv4_fslot_end_to_end_synthetic")
 
 
+def test_extv4_content_reads_the_same_cache_as_fslot():
+    """Content and fslot readers must resolve to the SAME npz — same rows, same K=4 pass — so the
+    two maps differ only in which tokens are pooled."""
+    from unittest import mock
+    import experiments.run_cka_analysis as R
+    seen = []
+
+    def fake_cache_path(prefix, split, corruption, pooling):
+        seen.append((prefix, split, corruption, pooling))
+        return Path(f"/nonexistent/{prefix}__{split}__{pooling}.npz")
+
+    with mock.patch.object(R, "_cache_path", fake_cache_path), \
+         mock.patch.object(R.cka, "load_npz_reps",
+                           lambda path, keys: [np.zeros((6, 5)) for _ in keys]):
+        for tag in ("m4_hourly", "boom_hourly"):
+            seen.clear()
+            R.read_extv4_fslot_reps(tag, "test")
+            R.read_extv4_content_reps(tag, "test")
+            assert len(seen) == 2 and seen[0] == seen[1], (tag, seen)
+            assert seen[0][3] == R.FSLOT_POOL, seen[0]
+    assert set(R.CONTENT14_KEYS) != set(R.FSLOT14_KEYS)
+    print("  PASS test_extv4_content_reads_the_same_cache_as_fslot")
+
+
+def test_extv4_content_end_to_end_synthetic():
+    """Content branch: 14x14 artifacts in its OWN namespace, rows == windows, fslot untouched."""
+    import json as _json, pathlib, tempfile
+    from unittest import mock
+    import experiments.run_cka_analysis as R
+    tags, n, d = ["m4_hourly", "boom_hourly"], 12, 9
+    rng = np.random.default_rng(0)
+    reps = {t: [rng.normal(size=(n, d)) for _ in range(14)] for t in tags}
+    with tempfile.TemporaryDirectory() as td:
+        with mock.patch.object(R, "OUT", pathlib.Path(td)), \
+             mock.patch.object(R, "read_extv4_content_reps", lambda tag, split: reps[tag]):
+            R.run_extv4_content(max_rows=None, seed=0, split="test", tags=tags)
+        root = pathlib.Path(td) / R.CONTENT_ANALYSIS
+        assert not (pathlib.Path(td) / "ext_v4_future_tokens_fslot").exists(), "namespace bleed"
+        for t in tags:
+            M = np.load(root / "matrices" / f"{t}__content__layerxlayer.npy")
+            assert M.shape == (14, 14) and np.allclose(np.diag(M), 1.0) and np.allclose(M, M.T)
+            assert (root / "figures" / f"{t}__content__layerxlayer.png").exists()
+            assert (root / "tables" / f"{t}__content__layerxlayer.csv").exists()
+        prov = _json.load(open(root / "provenance.json"))
+        assert prov["readout"] == "content" and prov["analysis"] == R.CONTENT_ANALYSIS
+        assert prov["per_dataset"]["m4_hourly"]["rows_used"] == n
+        assert prov["per_dataset"]["m4_hourly"]["windows"] == n
+        assert prov["per_dataset"]["boom_hourly"]["cache_split"] == "test_rolling"
+    print("  PASS test_extv4_content_end_to_end_synthetic")
+
+
 if __name__ == "__main__":
     tests = [
         test_cka_identity_and_unrelated,
@@ -254,6 +305,8 @@ if __name__ == "__main__":
         test_extv4_fslot_roster_covers_all_seven,
         test_extv4_fslot_matches_stage0_reader,
         test_extv4_fslot_end_to_end_synthetic,
+        test_extv4_content_reads_the_same_cache_as_fslot,
+        test_extv4_content_end_to_end_synthetic,
         test_figure_smoke,
     ]
     for t in tests:
