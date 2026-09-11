@@ -1350,6 +1350,21 @@ def make_eps_figure(rows, title, stem, boot_b, epsilons=EPS_BANDS, ncol=None, dp
 # here is instead the target's OWN probe on the SAME test windows, so the vertical distance
 # between the two lines IS the transfer penalty at that depth.
 #
+# On top of the full layerwise curves this reports ONE selection-based scalar per cell, the
+# transfer gap of the v4 design:
+#
+#     gap(s,t) = L_{s->t}(l_s) / L_{t->t}(l_t) - 1
+#
+# with l_s and l_t chosen INDEPENDENTLY by the 5% first-crossing rule on each dataset's own
+# VALIDATION curve -- no test data touches either choice. Because l_s != l_t in general, that
+# scalar mixes two effects, so it is reported together with its exact multiplicative split:
+#
+#     1 + gap = [ L_{s->t}(l_s) / L_{t->t}(l_s) ] * [ L_{t->t}(l_s) / L_{t->t}(l_t) ]
+#                 probe penalty (depth FIXED)        depth mismatch (target's own curve)
+#
+# This matters: Electricity->Uber reads as gap -1.4% (better than Uber's own probe) while the
+# probe penalty is +5.5% -- the whole apparent win is a -6.5% depth-mismatch term.
+#
 # Where each target's own-probe curve comes from: the 4 PT-ID targets have a diagonal cell in
 # the 4x4 run (probe fit on the target, scored on its own test windows); the 3 PT-OOD targets
 # have no diagonal there, so their fresh per-target probe comes from run_ptood_probing_ftok's
@@ -1359,6 +1374,7 @@ ID_REF_SUB = {"monash_electricity_hourly": "cross_dataset", "uber_tlc_hourly": "
               "m4_hourly": "cross_dataset", "wind_farms_hourly": "cross_dataset",
               "sg_carpark": "ptood", "coastal_ts": "ptood", "boom_hourly": "ptood"}
 TVI_TRANSFER, TVI_OWN = "#7570B3", "#111111"       # M4's source colour vs a neutral reference
+TVI_CRITERION = "first_crossing_95"                # the rule the committed tunnel records carry
 
 
 def _seed_mean_npz(paths, how):
@@ -1384,8 +1400,53 @@ def load_own_probe(tag):
                           f"python -m experiments.run_ptood_probing_ftok --quantile-set {QSET}")
 
 
-def load_transfer_vs_own(src, targets, boot_b, seed):
-    """One row per target: both layerwise curves, their CIs, and the PAIRED relative gap."""
+def val_curve(tag):
+    """Mean-over-runs VALIDATION curve (14 points) for `tag`. PT-ID reads the committed tunnel
+    record; PT-OOD has no such record and reads the per-target JSONs the fresh-probe run wrote."""
+    if tag in PT_OOD_FIG_TAGS:
+        return np.mean([json.load(open(_need(
+            PTOOD_FIG_DIR / "per_target" / f"{tag}__{QSET}__seed{s}.json",
+            f"python -m experiments.run_ptood_probing_ftok --quantile-set {QSET}")))
+            ["val_loss_by_layer"] for s in RUN_SEEDS], axis=0)
+    rec = json.load(open(_need(
+        TUNNEL_DIR / f"{tag}__fslot__{QSET}__{PROTO}__{RUNS_TAG}.json",
+        f"python -m experiments.run_ptood_probing_ftok --quantile-set {QSET} --tunnels-only")))
+    return np.asarray(rec["mean_val_loss_by_layer"], np.float64)
+
+
+def first_crossing_layer(tag, tol=None):
+    """Earliest representation point within `tol` of the FINAL point's VALIDATION loss.
+
+    Reuses probing.tunnel.tunnel_start (the repo's authoritative criterion) rather than
+    re-implementing the scan. That function's definition has changed once before, so for every
+    tag that HAS a committed tunnel record this gates the recomputation against it: the record's
+    own `tunnel_definition`, `tolerance` and `l_start` must all agree. A criterion change then
+    fails loud here instead of silently re-selecting every layer. The 3 PT-OOD targets carry no
+    record, so they rest on the gate the PT-ID tags just passed."""
+    from probing.tunnel import TUNNEL_TOL, tunnel_start
+    tol = TUNNEL_TOL if tol is None else float(tol)
+    l = int(tunnel_start(val_curve(tag), tol=tol))
+    if tag not in PT_OOD_FIG_TAGS:
+        rec = json.load(open(TUNNEL_DIR / f"{tag}__fslot__{QSET}__{PROTO}__{RUNS_TAG}.json"))
+        if rec["tunnel_definition"] != TVI_CRITERION:
+            raise ValueError(
+                f"{tag}: this figure selects layers with the {TVI_CRITERION} rule, but the "
+                f"committed tunnel record was built under '{rec['tunnel_definition']}' -- "
+                "re-run --tunnels-only, or state which criterion the paper uses")
+        if abs(float(rec["tolerance"]) - tol) > 1e-12 or int(rec["l_start"]) != l:
+            raise ValueError(
+                f"{tag}: recomputed first-crossing layer L{l} at tol={tol} disagrees with the "
+                f"committed record (l_start=L{rec['l_start']}, tol={rec['tolerance']}) -- "
+                "probing.tunnel.tunnel_start no longer reproduces the committed selection")
+    return l
+
+
+def load_transfer_vs_own(src, targets, boot_b, seed, tol=None):
+    """One row per target: both layerwise curves, their CIs, the selected layers and the gap."""
+    if src not in SRC_COLOR:
+        raise ValueError(f"source '{src}' has no 4x4/pt_ood transfer cells; this figure reads "
+                         f"{sorted(SRC_COLOR)} (BOOM-as-source lives in run_boom_source_transfer)")
+    ls = first_crossing_layer(src, tol)
     rows = []
     for tgt in targets:
         sub = "cross_dataset" if ID_REF_SUB[tgt] == "cross_dataset" else "unseen"
@@ -1399,20 +1460,74 @@ def load_transfer_vs_own(src, targets, boot_b, seed):
             raise ValueError(f"{src}->{tgt}: the transferred and own-probe evaluations do not "
                              f"share test windows ({tw.shape} vs {ow.shape}) -- refusing to overlay")
         # Identical cluster ids => identical S => _layer_mean_boot draws the SAME multinomial
-        # count matrix for both curves at this (B, seed), so the gap is formed INSIDE paired
-        # replicates -- the same construction as tunnel.d_stat_boot, applied across probes.
+        # count matrix for both curves at this (B, seed), so every ratio below is formed INSIDE
+        # paired replicates -- the same construction as tunnel.d_stat_boot.
         tp, tb = _layer_mean_boot(tw, ts, B=boot_b, seed=seed)
         op, ob = _layer_mean_boot(ow, os_, B=boot_b, seed=seed)
+        lt = first_crossing_layer(tgt, tol)
         gap, gap_b = 100.0 * (tp / op - 1.0), 100.0 * (tb / ob - 1.0)
         glo, ghi = ci_bounds(gap_b)
         tlo, thi = ci_bounds(tb)
         olo, ohi = ci_bounds(ob)
-        rows.append({"target": tgt, "kind": "PT-OOD" if tgt in PT_OOD_FIG_TAGS else "PT-ID",
+
+        def _stat(num_p, num_b, den_p, den_b):
+            pt = 100.0 * (num_p / den_p - 1.0)
+            bt = 100.0 * (num_b / den_b - 1.0)
+            lo, hi = ci_bounds(bt)
+            return {"pct": float(pt), "lo": float(lo), "hi": float(hi),
+                    "excludes_zero": bool(lo > 0 or hi < 0)}
+
+        total = _stat(tp[ls], tb[:, ls], op[lt], ob[:, lt])       # the v4 transfer gap
+        penalty = _stat(tp[ls], tb[:, ls], op[ls], ob[:, ls])     # depth FIXED at l_s
+        depth = _stat(op[ls], ob[:, ls], op[lt], ob[:, lt])       # target's own curve only
+        rows.append({"source": src, "target": tgt,
+                     "kind": "PT-OOD" if tgt in PT_OOD_FIG_TAGS else "PT-ID",
                      "transfer": tp, "t_lo": tlo, "t_hi": thi,
                      "own": op, "o_lo": olo, "o_hi": ohi,
                      "gap": gap, "gap_lo": glo, "gap_hi": ghi,
+                     "l_s": ls, "l_t": lt, "total": total, "penalty": penalty, "depth": depth,
                      "n_windows": int(tw.shape[1]), "n_clusters": int(np.unique(ts).size)})
     return rows
+
+
+def write_transfer_vs_own_table(rows, src, boot_b, seed):
+    """Tidy CSV: the selected layers, the gap, its two factors, and the final-point gap."""
+    d_ = TRANSFER_OUT / "tables"
+    d_.mkdir(parents=True, exist_ok=True)
+    p = d_ / f"transfer_vs_own__{SHORT[src].lower().replace(' ', '_').replace('-', '')}__{QSET}.csv"
+    cols = ["source", "target", "target_kind", "quantile_set", "criterion", "tolerance",
+            "l_s", "l_s_label", "l_t", "l_t_label",
+            "loss_transfer_at_l_s", "loss_own_at_l_t", "loss_own_at_l_s",
+            "gap_pct", "gap_ci_lo", "gap_ci_hi", "gap_excludes_zero",
+            "probe_penalty_pct", "probe_penalty_ci_lo", "probe_penalty_ci_hi",
+            "probe_penalty_excludes_zero",
+            "depth_mismatch_pct", "depth_mismatch_ci_lo", "depth_mismatch_ci_hi",
+            "gap_at_final_pct", "gap_at_final_ci_lo", "gap_at_final_ci_hi",
+            "n_windows", "n_clusters", "boot_b", "boot_seed"]
+    from probing.tunnel import TUNNEL_TOL
+    with open(p, "w", newline="") as fh:
+        w = csv.DictWriter(fh, fieldnames=cols)
+        w.writeheader()
+        for r in rows:
+            ls, lt = r["l_s"], r["l_t"]
+            w.writerow({
+                "source": r["source"], "target": r["target"], "target_kind": r["kind"],
+                "quantile_set": QSET, "criterion": TVI_CRITERION, "tolerance": TUNNEL_TOL,
+                "l_s": ls, "l_s_label": LABELS[ls], "l_t": lt, "l_t_label": LABELS[lt],
+                "loss_transfer_at_l_s": r["transfer"][ls], "loss_own_at_l_t": r["own"][lt],
+                "loss_own_at_l_s": r["own"][ls],
+                "gap_pct": r["total"]["pct"], "gap_ci_lo": r["total"]["lo"],
+                "gap_ci_hi": r["total"]["hi"], "gap_excludes_zero": r["total"]["excludes_zero"],
+                "probe_penalty_pct": r["penalty"]["pct"], "probe_penalty_ci_lo": r["penalty"]["lo"],
+                "probe_penalty_ci_hi": r["penalty"]["hi"],
+                "probe_penalty_excludes_zero": r["penalty"]["excludes_zero"],
+                "depth_mismatch_pct": r["depth"]["pct"], "depth_mismatch_ci_lo": r["depth"]["lo"],
+                "depth_mismatch_ci_hi": r["depth"]["hi"],
+                "gap_at_final_pct": r["gap"][-1], "gap_at_final_ci_lo": r["gap_lo"][-1],
+                "gap_at_final_ci_hi": r["gap_hi"][-1],
+                "n_windows": r["n_windows"], "n_clusters": r["n_clusters"],
+                "boot_b": boot_b, "boot_seed": seed})
+    return p
 
 
 def make_transfer_vs_own_figure(rows, src, boot_b, dpi=400, show_title=True, ncol=3,
@@ -1420,27 +1535,37 @@ def make_transfer_vs_own_figure(rows, src, boot_b, dpi=400, show_title=True, nco
     """2 x 3 panels: the frozen `src` probe and the target's own probe on the same windows.
 
     Absolute test loss, so the vertical distance between the lines is the transfer penalty in
-    the units the probe is actually scored in. y-limits are PER PANEL -- these are different
-    datasets and their losses are not comparable to each other, only within a panel."""
+    the units the probe is actually scored in. Stars mark each probe's INDEPENDENTLY validation-
+    selected layer (5% first crossing): the source's l_s on the transferred curve, the target's
+    l_t on its own curve -- the two points the reported gap compares. y-limits are PER PANEL;
+    these are different datasets and their losses are not comparable to each other."""
     x = np.arange(len(LABELS))
     nr = int(np.ceil(len(rows) / ncol))
     with plt.rc_context({**PAPER_RC, "xtick.labelsize": 8.5, "ytick.labelsize": 9}):
-        fig, axes = plt.subplots(nr, ncol, figsize=(3.3 * ncol, 2.85 * nr), layout="constrained",
+        fig, axes = plt.subplots(nr, ncol, figsize=(3.45 * ncol, 3.0 * nr), layout="constrained",
                                  squeeze=False)
         for ax, r in zip(axes.ravel(), rows):
+            ls, lt = r["l_s"], r["l_t"]
             ax.fill_between(x, r["own"], r["transfer"], color=TVI_TRANSFER, alpha=0.13, lw=0,
                             zorder=1)
-            for key, lo, hi, c, m, lab in (
-                    ("own", "o_lo", "o_hi", TVI_OWN, "o", f"{SHORT[r['target']]}'s own probe"),
-                    ("transfer", "t_lo", "t_hi", TVI_TRANSFER, "s", f"{SHORT[src]} probe, frozen")):
+            for key, lo, hi, c, m in (("own", "o_lo", "o_hi", TVI_OWN, "o"),
+                                      ("transfer", "t_lo", "t_hi", TVI_TRANSFER, "s")):
                 ax.fill_between(x, r[lo], r[hi], color=c, alpha=0.18, lw=0, zorder=2)
-                ax.plot(x, r[key], color=c, marker=m, ms=3.2, lw=1.5, label=lab, zorder=3)
-            g, glo, ghi = r["gap"][-1], r["gap_lo"][-1], r["gap_hi"][-1]
+                ax.plot(x, r[key], color=c, marker=m, ms=3.2, lw=1.5, zorder=3)
+            for l, key, c in ((lt, "own", TVI_OWN), (ls, "transfer", TVI_TRANSFER)):
+                ax.axvline(l, color=c, ls=":", lw=0.9, alpha=0.6, zorder=0)
+                ax.plot([l], [r[key][l]], marker="*", ms=12, color=c, mec="white", mew=0.8,
+                        ls="none", zorder=5)
+            t_, p_, d_ = r["total"], r["penalty"], r["depth"]
             ax.set_title(f"{SHORT[r['target']]}   ({r['kind']})", fontsize=10.5,
                          fontweight="bold", loc="left", pad=3)
-            ax.text(0.97, 0.94, f"gap at L12+RMS  {g:+.1f}%\n[{glo:+.1f}, {ghi:+.1f}]",
-                    transform=ax.transAxes, ha="right", va="top", fontsize=8,
-                    bbox=dict(fc="white", ec="0.8", lw=0.6, alpha=0.9, pad=2.2))
+            ax.text(0.97, 0.95,
+                    f"$\\ell_s$={LABELS[ls]}  vs  $\\ell_t$={LABELS[lt]}\n"
+                    f"gap {t_['pct']:+.1f}%  [{t_['lo']:+.1f}, {t_['hi']:+.1f}]\n"
+                    f"probe {p_['pct']:+.1f}%  $\\times$  depth {d_['pct']:+.1f}%",
+                    transform=ax.transAxes, ha="right", va="top", fontsize=7.6,
+                    linespacing=1.35,
+                    bbox=dict(fc="white", ec="0.8", lw=0.6, alpha=0.92, pad=2.4))
             ax.set_xticks(x)
             ax.set_xticklabels(LABELS, rotation=45, ha="right")
             ax.grid(alpha=0.25, lw=0.5)
@@ -1453,22 +1578,23 @@ def make_transfer_vs_own_figure(rows, src, boot_b, dpi=400, show_title=True, nco
             ax.set_visible(False)
         h = [plt.Line2D([], [], color=TVI_OWN, marker="o", ms=3.6, lw=1.5),
              plt.Line2D([], [], color=TVI_TRANSFER, marker="s", ms=3.6, lw=1.5),
-             plt.Rectangle((0, 0), 1, 1, fc=TVI_TRANSFER, alpha=0.13, ec="none")]
+             plt.Rectangle((0, 0), 1, 1, fc=TVI_TRANSFER, alpha=0.13, ec="none"),
+             plt.Line2D([], [], color="0.35", marker="*", ms=10, ls="none")]
         fig.legend(h, ["target's own probe (fit on the target)",
                        f"{SHORT[src]} probe, transferred frozen",
-                       "transfer gap"],
-                   loc="outside lower center", ncol=3, frameon=False)
+                       "transfer gap",
+                       "validation-selected layer (5% first crossing)"],
+                   loc="outside lower center", ncol=4, frameon=False)
         if show_title:
             fig.suptitle(f"Transferred {SHORT[src]} probe vs each target's own probe "
                          f"(same test windows)", fontsize=11, fontweight="bold")
-        d_ = TRANSFER_OUT / "figures"
-        d_.mkdir(parents=True, exist_ok=True)
+        d_out = TRANSFER_OUT / "figures"
+        d_out.mkdir(parents=True, exist_ok=True)
         stem = stem or ("transfer_vs_own__"
                         + SHORT[src].lower().replace(" ", "_").replace("-", ""))
-        pdf, png = d_ / f"{stem}.pdf", d_ / f"{stem}.png"
+        pdf, png = d_out / f"{stem}.pdf", d_out / f"{stem}.png"
         fig.savefig(pdf); fig.savefig(png, dpi=dpi); plt.close(fig)
     return pdf, png
-
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
@@ -1559,12 +1685,16 @@ def main():
         rows = load_transfer_vs_own(a.main_source, tgts, a.boot_b, a.seed)
         pdf, png = make_transfer_vs_own_figure(rows, a.main_source, a.boot_b, dpi=a.dpi,
                                                show_title=not a.no_title)
+        csv_p = write_transfer_vs_own_table(rows, a.main_source, a.boot_b, a.seed)
+        print(f"[tvo] source {SHORT[a.main_source]}, 5% first-crossing entrance "
+              f"l_s = {LABELS[rows[0]['l_s']]}   (gap = probe penalty x depth mismatch)")
         for r in rows:
-            g = r["gap"]
-            print(f"[tvo] {SHORT[r['target']]:<12} {r['kind']:<7} gap: L1 {g[1]:+7.1f}%  "
-                  f"min {g.min():+6.1f}% @{LABELS[int(g.argmin())]:<8} "
-                  f"final {g[-1]:+6.1f}% [{r['gap_lo'][-1]:+.1f}, {r['gap_hi'][-1]:+.1f}]")
-        print(f"    -> {png.relative_to(REPO_ROOT)}")
+            t_, p_, d_ = r["total"], r["penalty"], r["depth"]
+            print(f"      {SHORT[r['target']]:<12} {r['kind']:<7} l_t={LABELS[r['l_t']]:<8} "
+                  f"gap {t_['pct']:+7.1f}% [{t_['lo']:+6.1f}, {t_['hi']:+6.1f}]"
+                  f"{'*' if t_['excludes_zero'] else ' '}  = probe {p_['pct']:+7.1f}% "
+                  f"x depth {d_['pct']:+6.1f}%   (at L12+RMS {r['gap'][-1]:+6.1f}%)")
+        print(f"    -> {png.relative_to(REPO_ROOT)}\n    -> {csv_p.relative_to(REPO_ROOT)}")
         if a.figure == "transfer_vs_own":
             return
 

@@ -2,43 +2,71 @@
 _Rolling notes. Edit freely; run `/plan` to fold in recent conversation._
 _Last updated: 2026-09-11_
 
-## TRANSFER-vs-OWN-PROBE OVERLAY (`--figure transfer_vs_own`) — 2026-09-11 [BUILT & VERIFIED, NOT run, NOT committed]
-User ask, looking at `main_delta_vs_final__m4.png`: "i don't think it was a good idea to use the last layer as a
-reference here. we should've compared it to its id performance". Correct as a SECOND view, not a replacement —
-the two references answer different questions and BOTH are kept:
-  - Delta vs L12+RMS (make_delta_figure, committed): WITHIN-curve — is an intermediate layer better than the
-    final one for this transferred probe? = the tunnel question. Blind to whether the probe is good at all.
-  - vs the target's OWN probe (NEW): the TRANSFER PENALTY in absolute loss units. Answers "how close/far".
-- **ENABLING FACT (verified before plotting, not assumed):** for all 6 targets the M4-transfer npz and the
-  target's own-probe npz have IDENTICAL `window_loss` shape AND identical `series_test` ids. So (a) the overlay
-  is window-for-window legitimate, and (b) since `_layer_mean_boot` derives its multinomial matrix from
-  (S, B, seed), both curves get the SAME resamples -> the gap CI is formed inside PAIRED replicates, same
-  construction as `tunnel.d_stat_boot`. `load_transfer_vs_own` FAILS LOUD if that ever stops holding.
-- **Own-probe curve provenance:** 4x4 DIAGONAL (`<t>__to__<t>`) for Elec/Uber/Wind — verified == `ptid_runs`
-  to 2e-9 (float32 vs float64 chain); fresh per-target PT-OOD probe (`ptood_probing/bootstrap_inputs/`) for
-  SG/Coastal/BOOM. Same estimand, different producer — the split `_ptood_panel_curves` already documents.
-- **CODE (additive only; every committed figure path byte-identical):** `experiments/make_id_paper_figures.py`
-  += `ID_REF_SUB` / `_seed_mean_npz` / `load_own_probe` / `load_transfer_vs_own` /
-  `make_transfer_vs_own_figure` (2x3 panels, absolute test loss, CI bands on both curves + shaded gap,
-  per-panel gap-at-L12+RMS with CI), `--figure transfer_vs_own` choice + a `main()` branch that returns only
-  when explicitly selected (so `--figure all` still falls through to every other family). y-limits are PER
-  PANEL — different datasets, losses not comparable across panels.
-- **RESULT (q1, B=5000, seed 0):** the M4 probe is above the target's own probe essentially everywhere, the gap
-  is huge early and CLOSES with depth. gap at L1 -> at L12+RMS: Elec +16.8 -> +8.5 [+6.8,+10.3]; Uber +33.5 ->
-  +2.9 [+2.0,+3.7]; Wind +102.5 -> +11.0 [+7.3,+15.1]; SG +42.8 -> +29.2 [+25.3,+33.1]; Coastal +116.1 ->
-  +12.6 [+3.0,+25.0]; BOOM +175.0 -> +12.0 [+9.7,+14.6]. For Uber/Wind/BOOM the gap is SMALLEST at the very
-  last point. READ: depth buys SOURCE-INDEPENDENCE — which is also why the committed Delta-vs-final heatmap
-  came out uniformly positive. **SG Carpark is the honest exception** (gap never closes, ~20-30% throughout).
-  **Coastal has 24 clusters / 48 windows** -> widest CI; flag as under-powered, do NOT over-read it.
-- **VERIFIED (local Mac CPU, OMP=2):** py_compile clean; the real `main()` branch exercised end-to-end with
-  `TRANSFER_OUT` redirected to a scratchpad (both PDF+PNG render, printed gaps match); `results/` UNTOUCHED;
-  argparse rejects unknown `--figure`; tests/test_content_slot_probe 19/19 (the only module importing this file).
+## TRANSFER-vs-OWN-PROBE OVERLAY + 5% VAL-SELECTED TRANSFER GAP — 2026-09-11 [BUILT & VERIFIED, NOT run, NOT committed]
+`experiments/make_id_paper_figures.py --figure transfer_vs_own`. User ask, looking at
+`main_delta_vs_final__m4.png`: "i don't think it was a good idea to use the last layer as a reference here. we
+should've compared it to its id performance". Correct as a SECOND view, not a replacement — BOTH are kept:
+  - Delta vs L12+RMS (make_delta_figure, committed): WITHIN-curve, = the tunnel question. Blind to whether the
+    transferred probe is any good at all.
+  - vs the target's OWN probe (NEW): the TRANSFER PENALTY in absolute loss units.
+- **THE SCALAR (user-specified 2026-09-11, = the v4 design's transfer gap):** `gap(s,t) =
+  L_{s->t}(l_s)/L_{t->t}(l_t) - 1`, with l_s and l_t chosen INDEPENDENTLY by the **5% FIRST-CROSSING** rule on
+  each dataset's own VALIDATION curve. Leakage-free (no test contact in either choice).
+- **CONFOUND — NAMED AND MEASURED, do not drop it:** l_s != l_t, so the scalar mixes two effects. Reported with
+  its EXACT multiplicative split: `1+gap = [L_{s->t}(l_s)/L_{t->t}(l_s)] * [L_{t->t}(l_s)/L_{t->t}(l_t)]`
+  = probe penalty (depth FIXED) x depth mismatch (inside the target's own curve). It is NOT cosmetic:
+  **Elec->Uber reads gap -1.4% ("beats Uber's own probe") while the probe penalty is +5.5%** — the entire
+  apparent win is a -6.5% depth term. Same story SG (+10.2%) and BOOM (+6.4%) under Electricity.
+- **SELECTION RULE — THE REPO DISAGREES WITH ITSELF, resolved deliberately:**
+  (a) `run_fslot_transfer._val_selected_layer` = `argmin(mean_val_loss_by_layer)`, NOT the 5% rule
+      (M4 committed l_s = **L12**; 5% rule says **L3**). LEFT ALONE per user — the committed `G` in
+      `transfer_summary__4x4__q1.csv` is unchanged; the 5% rule is used ONLY by this new figure.
+  (b) **`probing/tunnel.py` on branch `content-slots-analysis` implements FIRST-CROSSING**
+      ("Tunnel boundary = FIRST-CROSSING"), and every committed record agrees
+      (`tunnel_definition: "first_crossing_95"`) — so nothing on disk is stale. **BUT the 2026-08-10 PLAN entry
+      below ("TUNNEL CRITERION -> SUSTAINED-PLATEAU ONLY", claiming `tunnel_start` "now IS the sustained
+      backward-scan") is WRONG for this branch.** They disagree materially: Wind Farms first-cross **L3** vs
+      sustained **L12**; BOOM **L3** vs **L12+RMS**. Elec/Uber/M4/SG/Coastal agree.
+      -> `first_crossing_layer()` REUSES `tunnel.tunnel_start` but GATES it against each committed record's
+      `tunnel_definition` + `tolerance` + `l_start`; a criterion flip fails loud (VERIFIED by monkeypatching a
+      sustained rule -> raises on wind_farms) instead of silently re-selecting layers.
+- **5% first-crossing entrances (val):** Elec L10 / Uber L3 / M4 L3 / Wind L3 / SG L11 / Coastal L1 / BOOM L3.
+- **ENABLING FACT (verified, not assumed):** for all 6 targets the transfer npz and the own-probe npz have
+  IDENTICAL `window_loss` shape AND `series_test` ids. So the overlay is window-for-window legitimate, and since
+  `_layer_mean_boot` derives its count matrix from (S,B,seed), both curves get the SAME resamples -> every ratio
+  is formed inside PAIRED replicates (as `tunnel.d_stat_boot` does). `load_transfer_vs_own` FAILS LOUD otherwise.
+- **Own-probe provenance:** 4x4 DIAGONAL (`<t>__to__<t>`) for Elec/Uber/Wind — verified == `ptid_runs` to 2e-9;
+  fresh per-target PT-OOD probe (`ptood_probing/`) for SG/Coastal/BOOM (same estimand, different producer).
+- **RESULTS (q1, B=5000, seed 0; * = CI excludes 0).** M4 is a BAD source, Electricity an EXCELLENT one:
+  - **M4 (l_s=L3):** Elec +27.4%* [23.5,31.8] / Uber +18.7%* / Wind +36.3%* / SG +53.7%* / Coastal +32.4%* /
+    BOOM +69.9%* [59.9,81.3].
+  - **Electricity (l_s=L10):** Uber **-1.4% [-4.1,+2.0] (spans 0)** / M4 **-0.5% [-4.3,+3.7] (spans 0)** /
+    Wind +16.0%* / SG +3.5%* / Coastal +9.8% (spans 0) / BOOM +27.6%*. Electricity's L10 probe is statistically
+    INDISTINGUISHABLE from Uber's and M4's own probes — invisible in the committed M4-only figure.
+  - Layerwise (kept): the gap is huge early and CLOSES with depth (BOOM L1 +175% -> L12+RMS +12.0%); for
+    Uber/Wind/BOOM under M4 the minimum gap is at the very LAST point. READ: depth buys SOURCE-INDEPENDENCE,
+    which is also why the committed Delta-vs-final heatmap came out uniformly positive.
+  - **SG Carpark is the honest exception** (gap never closes, ~20-30% throughout). **Coastal has 24 clusters /
+    48 windows** -> widest CI; flag as under-powered, do NOT over-read it.
+- **CODE (additive only; every committed figure path byte-identical):** += `ID_REF_SUB`, `TVI_CRITERION`,
+  `_seed_mean_npz`, `load_own_probe`, `val_curve`, `first_crossing_layer` (gated), `load_transfer_vs_own`,
+  `write_transfer_vs_own_table`, `make_transfer_vs_own_figure` (2x3 panels, absolute loss, CI bands on both
+  curves + shaded gap, STARS at l_s / l_t, per-panel gap + split); `--figure transfer_vs_own` + a `main()`
+  branch that returns only when explicitly selected (so `--figure all` still reaches every other family).
+  y-limits PER PANEL — different datasets, losses not comparable across panels. Guard: a source outside the
+  4 PT-ID tags raises and points at run_boom_source_transfer.
+- **VERIFIED (local Mac CPU, OMP=2):** py_compile clean; real `main()` exercised end-to-end for BOTH sources
+  with `TRANSFER_OUT`/`REPO_ROOT` redirected to a scratchpad (figures + CSVs render, printed numbers match an
+  independent recomputation); `results/` UNTOUCHED; criterion gate fires on a swapped rule; degenerate
+  source-as-own-target gives gap/penalty/depth all exactly 0; argparse rejects unknown `--figure`;
+  tests/test_content_slot_probe 19/19 (the only module importing this file).
 - **RUN (login node OK — post-hoc plotting off committed npz, no model/cache/probe fit, seconds):**
-  `export OMP_NUM_THREADS=2` then `python -m experiments.make_id_paper_figures --figure transfer_vs_own`
-  -> `results/ext_v4_future_tokens/q1/transfer_summary/figures/transfer_vs_own__m4.{pdf,png}`.
-  Any source via `--main-source <tag>`. Commit code + results separately.
-- **PARKED (offered, not built):** an `Emb`-dropped variant — Emb squashes the L3..L12 region in every panel
-  (`make_figure` already has a `drop_emb` flag for exactly this).
+  `export OMP_NUM_THREADS=2`
+  `python -m experiments.make_id_paper_figures --figure transfer_vs_own --main-source m4_hourly`
+  `python -m experiments.make_id_paper_figures --figure transfer_vs_own --main-source monash_electricity_hourly`
+  -> `results/ext_v4_future_tokens/q1/transfer_summary/{figures/transfer_vs_own__<src>.{pdf,png},
+  tables/transfer_vs_own__<src>__q1.csv}`. Commit code + results separately.
+- **PARKED (offered, not built):** an `Emb`-dropped variant (`make_figure` already has a `drop_emb` flag).
 
 ## CONTENT-SLOT SHARED HEAD (readout 2x2, 4th cell) — 2026-09-08 [BUILT & CPU-VERIFIED, NOT run, NOT committed]
 User ask: "implement shared heads but using content tokens", after the content-pooled CKA branch (a6264c9).
