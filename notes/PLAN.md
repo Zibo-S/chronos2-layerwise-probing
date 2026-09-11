@@ -1,6 +1,44 @@
 # Working plan — chronos2-layerwise-probing
 _Rolling notes. Edit freely; run `/plan` to fold in recent conversation._
-_Last updated: 2026-09-08_
+_Last updated: 2026-09-11_
+
+## TRANSFER-vs-OWN-PROBE OVERLAY (`--figure transfer_vs_own`) — 2026-09-11 [BUILT & VERIFIED, NOT run, NOT committed]
+User ask, looking at `main_delta_vs_final__m4.png`: "i don't think it was a good idea to use the last layer as a
+reference here. we should've compared it to its id performance". Correct as a SECOND view, not a replacement —
+the two references answer different questions and BOTH are kept:
+  - Delta vs L12+RMS (make_delta_figure, committed): WITHIN-curve — is an intermediate layer better than the
+    final one for this transferred probe? = the tunnel question. Blind to whether the probe is good at all.
+  - vs the target's OWN probe (NEW): the TRANSFER PENALTY in absolute loss units. Answers "how close/far".
+- **ENABLING FACT (verified before plotting, not assumed):** for all 6 targets the M4-transfer npz and the
+  target's own-probe npz have IDENTICAL `window_loss` shape AND identical `series_test` ids. So (a) the overlay
+  is window-for-window legitimate, and (b) since `_layer_mean_boot` derives its multinomial matrix from
+  (S, B, seed), both curves get the SAME resamples -> the gap CI is formed inside PAIRED replicates, same
+  construction as `tunnel.d_stat_boot`. `load_transfer_vs_own` FAILS LOUD if that ever stops holding.
+- **Own-probe curve provenance:** 4x4 DIAGONAL (`<t>__to__<t>`) for Elec/Uber/Wind — verified == `ptid_runs`
+  to 2e-9 (float32 vs float64 chain); fresh per-target PT-OOD probe (`ptood_probing/bootstrap_inputs/`) for
+  SG/Coastal/BOOM. Same estimand, different producer — the split `_ptood_panel_curves` already documents.
+- **CODE (additive only; every committed figure path byte-identical):** `experiments/make_id_paper_figures.py`
+  += `ID_REF_SUB` / `_seed_mean_npz` / `load_own_probe` / `load_transfer_vs_own` /
+  `make_transfer_vs_own_figure` (2x3 panels, absolute test loss, CI bands on both curves + shaded gap,
+  per-panel gap-at-L12+RMS with CI), `--figure transfer_vs_own` choice + a `main()` branch that returns only
+  when explicitly selected (so `--figure all` still falls through to every other family). y-limits are PER
+  PANEL — different datasets, losses not comparable across panels.
+- **RESULT (q1, B=5000, seed 0):** the M4 probe is above the target's own probe essentially everywhere, the gap
+  is huge early and CLOSES with depth. gap at L1 -> at L12+RMS: Elec +16.8 -> +8.5 [+6.8,+10.3]; Uber +33.5 ->
+  +2.9 [+2.0,+3.7]; Wind +102.5 -> +11.0 [+7.3,+15.1]; SG +42.8 -> +29.2 [+25.3,+33.1]; Coastal +116.1 ->
+  +12.6 [+3.0,+25.0]; BOOM +175.0 -> +12.0 [+9.7,+14.6]. For Uber/Wind/BOOM the gap is SMALLEST at the very
+  last point. READ: depth buys SOURCE-INDEPENDENCE — which is also why the committed Delta-vs-final heatmap
+  came out uniformly positive. **SG Carpark is the honest exception** (gap never closes, ~20-30% throughout).
+  **Coastal has 24 clusters / 48 windows** -> widest CI; flag as under-powered, do NOT over-read it.
+- **VERIFIED (local Mac CPU, OMP=2):** py_compile clean; the real `main()` branch exercised end-to-end with
+  `TRANSFER_OUT` redirected to a scratchpad (both PDF+PNG render, printed gaps match); `results/` UNTOUCHED;
+  argparse rejects unknown `--figure`; tests/test_content_slot_probe 19/19 (the only module importing this file).
+- **RUN (login node OK — post-hoc plotting off committed npz, no model/cache/probe fit, seconds):**
+  `export OMP_NUM_THREADS=2` then `python -m experiments.make_id_paper_figures --figure transfer_vs_own`
+  -> `results/ext_v4_future_tokens/q1/transfer_summary/figures/transfer_vs_own__m4.{pdf,png}`.
+  Any source via `--main-source <tag>`. Commit code + results separately.
+- **PARKED (offered, not built):** an `Emb`-dropped variant — Emb squashes the L3..L12 region in every panel
+  (`make_figure` already has a `drop_emb` flag for exactly this).
 
 ## CONTENT-SLOT SHARED HEAD (readout 2x2, 4th cell) — 2026-09-08 [BUILT & CPU-VERIFIED, NOT run, NOT committed]
 User ask: "implement shared heads but using content tokens", after the content-pooled CKA branch (a6264c9).

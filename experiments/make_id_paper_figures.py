@@ -1341,6 +1341,135 @@ def make_eps_figure(rows, title, stem, boot_b, epsilons=EPS_BANDS, ncol=None, dp
               "  ".join(f"eps={e:.0%} -> {LABELS[d['starts'][e]]}" for e in order))
 
 
+# ---------------------------------------------------------------------------------------
+# Transfer vs the target's OWN probe (the "how much did we lose by not training here?" view)
+# ---------------------------------------------------------------------------------------
+# make_delta_figure references every point to the SAME curve's final point, which answers the
+# tunnel question ("is an intermediate layer better than L12+RMS *within* this transfer?") but
+# says nothing about whether the transferred probe is any good in absolute terms. The reference
+# here is instead the target's OWN probe on the SAME test windows, so the vertical distance
+# between the two lines IS the transfer penalty at that depth.
+#
+# Where each target's own-probe curve comes from: the 4 PT-ID targets have a diagonal cell in
+# the 4x4 run (probe fit on the target, scored on its own test windows); the 3 PT-OOD targets
+# have no diagonal there, so their fresh per-target probe comes from run_ptood_probing_ftok's
+# default mode -- same estimand (fslot probe, wd chosen on that dataset's own validation split),
+# different producer, exactly as _ptood_panel_curves already documents.
+ID_REF_SUB = {"monash_electricity_hourly": "cross_dataset", "uber_tlc_hourly": "cross_dataset",
+              "m4_hourly": "cross_dataset", "wind_farms_hourly": "cross_dataset",
+              "sg_carpark": "ptood", "coastal_ts": "ptood", "boom_hourly": "ptood"}
+TVI_TRANSFER, TVI_OWN = "#7570B3", "#111111"       # M4's source colour vs a neutral reference
+
+
+def _seed_mean_npz(paths, how):
+    """Per-window test losses averaged over the 3 probe-init runs + the shared series ids."""
+    wls, sids = [], []
+    for p in paths:
+        z = np.load(_need(p, how))
+        wls.append(np.asarray(z["window_loss"], np.float64))
+        sids.append(np.asarray(z["series_test"], np.int64))
+    assert all(w.shape == wls[0].shape for w in wls), f"{paths[0].name}: windows differ across runs"
+    assert all(np.array_equal(s, sids[0]) for s in sids), f"{paths[0].name}: series differ across runs"
+    return np.mean(wls, axis=0), sids[0]
+
+
+def load_own_probe(tag):
+    """(seed-mean per-window TEST loss, series ids) for the probe fit on `tag` itself."""
+    if ID_REF_SUB[tag] == "cross_dataset":
+        return _seed_mean_npz([V4 / QSET / "cross_dataset" / "bootstrap_inputs" /
+                               f"{tag}__to__{tag}__{QSET}__seed{s}.npz" for s in RUN_SEEDS],
+                              "python -m experiments.run_fslot_transfer  (the 4x4 diagonal)")
+    return _seed_mean_npz([PTOOD_FIG_DIR / "bootstrap_inputs" / f"{tag}__{QSET}__seed{s}.npz"
+                           for s in RUN_SEEDS],
+                          f"python -m experiments.run_ptood_probing_ftok --quantile-set {QSET}")
+
+
+def load_transfer_vs_own(src, targets, boot_b, seed):
+    """One row per target: both layerwise curves, their CIs, and the PAIRED relative gap."""
+    rows = []
+    for tgt in targets:
+        sub = "cross_dataset" if ID_REF_SUB[tgt] == "cross_dataset" else "unseen"
+        tw, ts = _seed_mean_npz([V4 / QSET / sub / "bootstrap_inputs" /
+                                 f"{src}__to__{tgt}__{QSET}__seed{s}.npz" for s in RUN_SEEDS],
+                                "python -m experiments.run_fslot_transfer (see the ext_v4 recipe)")
+        ow, os_ = load_own_probe(tgt)
+        # The overlay is only honest if both probes were scored on the SAME windows in the SAME
+        # order. Fail loud rather than silently plotting two different test sets on one axis.
+        if tw.shape != ow.shape or not np.array_equal(ts, os_):
+            raise ValueError(f"{src}->{tgt}: the transferred and own-probe evaluations do not "
+                             f"share test windows ({tw.shape} vs {ow.shape}) -- refusing to overlay")
+        # Identical cluster ids => identical S => _layer_mean_boot draws the SAME multinomial
+        # count matrix for both curves at this (B, seed), so the gap is formed INSIDE paired
+        # replicates -- the same construction as tunnel.d_stat_boot, applied across probes.
+        tp, tb = _layer_mean_boot(tw, ts, B=boot_b, seed=seed)
+        op, ob = _layer_mean_boot(ow, os_, B=boot_b, seed=seed)
+        gap, gap_b = 100.0 * (tp / op - 1.0), 100.0 * (tb / ob - 1.0)
+        glo, ghi = ci_bounds(gap_b)
+        tlo, thi = ci_bounds(tb)
+        olo, ohi = ci_bounds(ob)
+        rows.append({"target": tgt, "kind": "PT-OOD" if tgt in PT_OOD_FIG_TAGS else "PT-ID",
+                     "transfer": tp, "t_lo": tlo, "t_hi": thi,
+                     "own": op, "o_lo": olo, "o_hi": ohi,
+                     "gap": gap, "gap_lo": glo, "gap_hi": ghi,
+                     "n_windows": int(tw.shape[1]), "n_clusters": int(np.unique(ts).size)})
+    return rows
+
+
+def make_transfer_vs_own_figure(rows, src, boot_b, dpi=400, show_title=True, ncol=3,
+                                stem=None):
+    """2 x 3 panels: the frozen `src` probe and the target's own probe on the same windows.
+
+    Absolute test loss, so the vertical distance between the lines is the transfer penalty in
+    the units the probe is actually scored in. y-limits are PER PANEL -- these are different
+    datasets and their losses are not comparable to each other, only within a panel."""
+    x = np.arange(len(LABELS))
+    nr = int(np.ceil(len(rows) / ncol))
+    with plt.rc_context({**PAPER_RC, "xtick.labelsize": 8.5, "ytick.labelsize": 9}):
+        fig, axes = plt.subplots(nr, ncol, figsize=(3.3 * ncol, 2.85 * nr), layout="constrained",
+                                 squeeze=False)
+        for ax, r in zip(axes.ravel(), rows):
+            ax.fill_between(x, r["own"], r["transfer"], color=TVI_TRANSFER, alpha=0.13, lw=0,
+                            zorder=1)
+            for key, lo, hi, c, m, lab in (
+                    ("own", "o_lo", "o_hi", TVI_OWN, "o", f"{SHORT[r['target']]}'s own probe"),
+                    ("transfer", "t_lo", "t_hi", TVI_TRANSFER, "s", f"{SHORT[src]} probe, frozen")):
+                ax.fill_between(x, r[lo], r[hi], color=c, alpha=0.18, lw=0, zorder=2)
+                ax.plot(x, r[key], color=c, marker=m, ms=3.2, lw=1.5, label=lab, zorder=3)
+            g, glo, ghi = r["gap"][-1], r["gap_lo"][-1], r["gap_hi"][-1]
+            ax.set_title(f"{SHORT[r['target']]}   ({r['kind']})", fontsize=10.5,
+                         fontweight="bold", loc="left", pad=3)
+            ax.text(0.97, 0.94, f"gap at L12+RMS  {g:+.1f}%\n[{glo:+.1f}, {ghi:+.1f}]",
+                    transform=ax.transAxes, ha="right", va="top", fontsize=8,
+                    bbox=dict(fc="white", ec="0.8", lw=0.6, alpha=0.9, pad=2.2))
+            ax.set_xticks(x)
+            ax.set_xticklabels(LABELS, rotation=45, ha="right")
+            ax.grid(alpha=0.25, lw=0.5)
+            ax.set_axisbelow(True)
+        for ax in axes[:, 0]:
+            ax.set_ylabel("Test quantile loss ($Q = 1$)")
+        for ax in axes[-1]:
+            ax.set_xlabel("Representation point")
+        for ax in axes.ravel()[len(rows):]:
+            ax.set_visible(False)
+        h = [plt.Line2D([], [], color=TVI_OWN, marker="o", ms=3.6, lw=1.5),
+             plt.Line2D([], [], color=TVI_TRANSFER, marker="s", ms=3.6, lw=1.5),
+             plt.Rectangle((0, 0), 1, 1, fc=TVI_TRANSFER, alpha=0.13, ec="none")]
+        fig.legend(h, ["target's own probe (fit on the target)",
+                       f"{SHORT[src]} probe, transferred frozen",
+                       "transfer gap"],
+                   loc="outside lower center", ncol=3, frameon=False)
+        if show_title:
+            fig.suptitle(f"Transferred {SHORT[src]} probe vs each target's own probe "
+                         f"(same test windows)", fontsize=11, fontweight="bold")
+        d_ = TRANSFER_OUT / "figures"
+        d_.mkdir(parents=True, exist_ok=True)
+        stem = stem or ("transfer_vs_own__"
+                        + SHORT[src].lower().replace(" ", "_").replace("-", ""))
+        pdf, png = d_ / f"{stem}.pdf", d_ / f"{stem}.png"
+        fig.savefig(pdf); fig.savefig(png, dpi=dpi); plt.close(fig)
+    return pdf, png
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--which", default="both",
@@ -1367,7 +1496,7 @@ def main():
                          "the panels keep their size")
     ap.add_argument("--eps-stem", default="appendix_id_saturation_sensitivity",
                     help="output filename stem for the saturation-sensitivity figure")
-    ap.add_argument("--figure", default="all", choices=("loss_erank", "cka", "cka_content", "cka_cslot", "transfer", "ft_boom", "nha", "eps", "all"),
+    ap.add_argument("--figure", default="all", choices=("loss_erank", "cka", "cka_content", "cka_cslot", "transfer", "transfer_vs_own", "ft_boom", "nha", "eps", "all"),
                     help="which figure family to build (default: all)")
     ap.add_argument("--boot-b", type=int, default=5000, help="bootstrap resamples (default 5000)")
     ap.add_argument("--seed", type=int, default=SEED)
@@ -1424,6 +1553,20 @@ def main():
             print(f"  {lab:<20} " + "  ".join(ent))
     if a.figure == "ft_boom":
         return
+
+    if a.figure in ("transfer_vs_own", "all"):
+        tgts = [t for t in COMBINED_TARGETS if t != a.main_source]
+        rows = load_transfer_vs_own(a.main_source, tgts, a.boot_b, a.seed)
+        pdf, png = make_transfer_vs_own_figure(rows, a.main_source, a.boot_b, dpi=a.dpi,
+                                               show_title=not a.no_title)
+        for r in rows:
+            g = r["gap"]
+            print(f"[tvo] {SHORT[r['target']]:<12} {r['kind']:<7} gap: L1 {g[1]:+7.1f}%  "
+                  f"min {g.min():+6.1f}% @{LABELS[int(g.argmin())]:<8} "
+                  f"final {g[-1]:+6.1f}% [{r['gap_lo'][-1]:+.1f}, {r['gap_hi'][-1]:+.1f}]")
+        print(f"    -> {png.relative_to(REPO_ROOT)}")
+        if a.figure == "transfer_vs_own":
+            return
 
     if a.figure in ("transfer", "all"):
         cells = load_transfer_cells(a.boot_b, a.seed)
