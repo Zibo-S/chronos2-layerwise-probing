@@ -6,13 +6,26 @@ feature-space formula that experiments/run_task_shift.py::_linear_cka already us
 here with a matched-row guard, degeneracy handling, and the matrix/diagonal helpers the
 CKA analysis driver needs.
 
-Linear CKA (Kornblith et al. 2019), feature-space (biased-HSIC) form — memory O(d^2), NOT
-O(n^2), which is what we want for n up to a few thousand and d = 768:
+Linear CKA (Kornblith et al. 2019), feature-space form — memory O(d^2), NOT O(n^2), which is
+what we want for n up to a few thousand and d = 768:
 
     CKA(X, Y) = ||Xc^T Yc||_F^2 / (||Xc^T Xc||_F * ||Yc^T Yc||_F)
 
 with Xc/Yc column-centered. Invariant to orthogonal transforms and isotropic scaling of the
 features, in [0, 1] (up to float rounding). All accumulation is float64.
+
+TWO ESTIMATORS, selected by `estimator=`; the DEFAULT IS "biased" everywhere, so every number
+produced before this option existed is reproduced byte-identically:
+
+  "biased"   (default) the ratio above. This is the biased-HSIC estimator: bounded in [0, 1],
+             with an O(1/n) UPWARD bias that only bites when n is small relative to the
+             representations' effective rank.
+  "unbiased" the Song et al. (2012) unbiased-HSIC ("debiased") variant, in the same O(d^2)
+             feature-space form as the `debiased=True` branch of the reference implementation
+             released with Kornblith et al. (2019). Needs n >= 4 and is NOT bounded: unrelated
+             representations give values scattered around 0, including slightly negative ones,
+             which is exactly what makes it unbiased. Use it when n is small, when averaging
+             over minibatches, or as a robustness check on a biased result.
 
 SCIENTIFIC RULE (enforced structurally): CKA rows must be the SAME examples. Every helper
 here asserts matching row counts; there is no code path that pairs two different datasets'
@@ -74,13 +87,63 @@ def _cka_from_centered(Xc: np.ndarray, fx: float, Yc: np.ndarray, fy: float) -> 
     return hsic / denom
 
 
-def linear_cka(X, Y) -> float:
+ESTIMATORS = ("biased", "unbiased")
+
+
+def _check_estimator(estimator: str) -> str:
+    if estimator not in ESTIMATORS:
+        raise ValueError(f"unknown CKA estimator {estimator!r}; choose one of {ESTIMATORS}")
+    return estimator
+
+
+def _require_unbiased_n(n: int) -> None:
+    """The unbiased estimator divides by (n-2) and (n-3); below 4 rows it is undefined."""
+    if n < 4:
+        raise ValueError(f"the unbiased CKA estimator needs at least 4 rows, got {n}")
+
+
+def _debias_dot(xty: float, ssr_x, ssr_y, sq_x: float, sq_y: float, n: int) -> float:
+    """Unbiased-HSIC correction applied to a squared cross-Gram term.
+
+    `xty` = ||Xc^T Yc||_F^2 ; `ssr_*` = per-row squared norms of the centered matrices ; `sq_*` =
+    their sums. The 1/(n(n-3)) prefactor of HSIC_1 is common to CKA's numerator and denominator
+    and so is omitted here. Equivalent to the O(n^2) Gram-space HSIC_1 of Song et al. (2012)."""
+    return (xty
+            - n / (n - 2.0) * float(np.dot(ssr_x, ssr_y))
+            + sq_x * sq_y / ((n - 1) * (n - 2)))
+
+
+def _unbiased_terms(Xc: np.ndarray):
+    """Per-representation quantities the unbiased estimator reuses across every pair: the row
+    squared norms, their sum, and the debiased self-similarity that normalizes the ratio."""
+    ssr = np.einsum("ij,ij->i", Xc, Xc)
+    sq = float(ssr.sum())
+    G = Xc.T @ Xc
+    return ssr, sq, _debias_dot(float(np.sum(G * G)), ssr, ssr, sq, sq, Xc.shape[0])
+
+
+def _cka_unbiased_from_centered(Xc: np.ndarray, tx, Yc: np.ndarray, ty) -> float:
+    """Unbiased linear CKA from centered matrices and their cached `_unbiased_terms`."""
+    ssr_x, sq_x, dx = tx
+    ssr_y, sq_y, dy = ty
+    if not (np.isfinite(dx) and np.isfinite(dy)) or dx <= 0.0 or dy <= 0.0:
+        return float("nan")                # constant / degenerate representation
+    cross = Xc.T @ Yc
+    num = _debias_dot(float(np.sum(cross * cross)), ssr_x, ssr_y, sq_x, sq_y, Xc.shape[0])
+    return float(num / np.sqrt(dx * dy))
+
+
+def linear_cka(X, Y, *, estimator: str = "biased") -> float:
     """Linear CKA between two (n, d) matrices with matched rows. 1 = identical up to an orthogonal
-    transform + isotropic scale; 0 = unrelated. Returns NaN if either side is constant/degenerate."""
+    transform + isotropic scale; 0 = unrelated. Returns NaN if either side is constant/degenerate.
+    See the module docstring for "biased" (default) vs "unbiased"."""
     Xc, Yc = _as_2d_f64(X), _as_2d_f64(Y)
     require_matched_rows([Xc, Yc])
     Xc, Yc = _center(Xc), _center(Yc)
-    return _cka_from_centered(Xc, _self_fro(Xc), Yc, _self_fro(Yc))
+    if _check_estimator(estimator) == "biased":
+        return _cka_from_centered(Xc, _self_fro(Xc), Yc, _self_fro(Yc))
+    _require_unbiased_n(Xc.shape[0])
+    return _cka_unbiased_from_centered(Xc, _unbiased_terms(Xc), Yc, _unbiased_terms(Yc))
 
 
 # --------------------------------------------------------------------------- #
@@ -96,7 +159,7 @@ def _prep_layers(reps):
     return cen, fro
 
 
-def cka_matrix(rows, cols=None) -> np.ndarray:
+def cka_matrix(rows, cols=None, *, estimator: str = "biased") -> np.ndarray:
     """Layer x layer linear-CKA matrix.
 
     - `cols is None`  -> symmetric within-set matrix M[i, j] = CKA(rows[i], rows[j]) (the layer x
@@ -106,7 +169,11 @@ def cka_matrix(rows, cols=None) -> np.ndarray:
 
     `rows` (and `cols`) is an ordered list of (n, d) matrices, one per layer. All row matrices must
     share n; if `cols` is given, its matrices must share the SAME n as `rows` (same examples through
-    both checkpoints)."""
+    both checkpoints).
+
+    `estimator` is "biased" (default) or "unbiased" — see the module docstring. Per-layer terms are
+    computed once and reused across pairs, so the unbiased matrix costs the same matmuls as the
+    biased one."""
     rcen, rfro = _prep_layers(rows)
     symmetric = cols is None
     if symmetric:
@@ -116,30 +183,39 @@ def cka_matrix(rows, cols=None) -> np.ndarray:
         if rcen[0].shape[0] != ccen[0].shape[0]:
             raise ValueError(f"cross-CKA row mismatch: rows have {rcen[0].shape[0]} examples, cols "
                              f"have {ccen[0].shape[0]} — cross-stage CKA needs the same examples")
+    unbiased = _check_estimator(estimator) == "unbiased"
+    if unbiased:
+        _require_unbiased_n(rcen[0].shape[0])
+        rterm = [_unbiased_terms(c) for c in rcen]
+        cterm = rterm if symmetric else [_unbiased_terms(c) for c in ccen]
     L, M = len(rcen), len(ccen)
     out = np.empty((L, M), dtype=np.float64)
     for i in range(L):
         j0 = i if symmetric else 0
         for j in range(j0, M):
-            out[i, j] = _cka_from_centered(rcen[i], rfro[i], ccen[j], cfro[j])
+            if unbiased:
+                out[i, j] = _cka_unbiased_from_centered(rcen[i], rterm[i], ccen[j], cterm[j])
+            else:
+                out[i, j] = _cka_from_centered(rcen[i], rfro[i], ccen[j], cfro[j])
             if symmetric:
                 out[j, i] = out[i, j]
     return out
 
 
-def same_layer_diagonal(reps_a, reps_b) -> np.ndarray:
+def same_layer_diagonal(reps_a, reps_b, *, estimator: str = "biased") -> np.ndarray:
     """CKA(a_l, b_l) per layer l — the same-layer drift curve between two checkpoints. Equals the
     diagonal of cka_matrix(reps_a, reps_b). Both lists must have equal length and matched rows."""
     if len(reps_a) != len(reps_b):
         raise ValueError(f"same_layer_diagonal length mismatch: {len(reps_a)} vs {len(reps_b)}")
-    return np.array([linear_cka(a, b) for a, b in zip(reps_a, reps_b)], dtype=np.float64)
+    return np.array([linear_cka(a, b, estimator=estimator) for a, b in zip(reps_a, reps_b)],
+                    dtype=np.float64)
 
 
-def cka_to_reference(reps, ref_index: int = -1) -> np.ndarray:
+def cka_to_reference(reps, ref_index: int = -1, *, estimator: str = "biased") -> np.ndarray:
     """CKA(layer_l, layer_ref) per layer — how similar each layer is to a reference layer (default
     the last, ref_index=-1). Used for the 'CKA-to-final-representation' summary curve."""
     ref = reps[ref_index]
-    return np.array([linear_cka(r, ref) for r in reps], dtype=np.float64)
+    return np.array([linear_cka(r, ref, estimator=estimator) for r in reps], dtype=np.float64)
 
 
 # --------------------------------------------------------------------------- #
