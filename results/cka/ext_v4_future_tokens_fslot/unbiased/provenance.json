@@ -1,0 +1,47 @@
+{
+  "analysis": "ext_v4_future_tokens_fslot / biased vs unbiased linear CKA",
+  "representation": "forecast slots (n,K,768) -> (n*K,768), 14 points Emb..L12+LN",
+  "backbone": "pretrained amazon/chronos-2 (frozen)",
+  "biased_estimator": "Kornblith et al. 2019 feature-space ratio (repo default)",
+  "unbiased_estimator": "Song et al. 2012 unbiased HSIC_1, feature-space O(d^2) form",
+  "requested_split": "test",
+  "max_rows": 4096,
+  "seed": 0,
+  "gate": "recomputed biased == committed matrices to 1e-10",
+  "per_dataset": [
+    {
+      "dataset": "monash_electricity_hourly",
+      "short": "Electricity",
+      "kind": "PT-ID",
+      "cache_split": "test",
+      "rows_available": 1048,
+      "rows_used": 1048,
+      "windows": 262,
+      "biased_gate_max_dev": 0.0,
+      "offdiag_biased_min": 0.11594191078302417,
+      "offdiag_biased_max": 0.9968738295440405,
+      "offdiag_biased_mean": 0.6856273874143715,
+      "offdiag_unbiased_min": 0.11477036292766934,
+      "offdiag_unbiased_max": 0.9968690042426904,
+      "offdiag_unbiased_mean": 0.684695318406092,
+      "max_abs_delta_offdiag": 0.004163470683139547
+    },
+    {
+      "dataset": "m4_hourly",
+      "short": "M4",
+      "kind": "PT-ID",
+      "cache_split": "test",
+      "rows_available": 1048,
+      "rows_used": 1048,
+      "windows": 262,
+      "biased_gate_max_dev": 0.0,
+      "offdiag_biased_min": 0.030537377035231277,
+      "offdiag_biased_max": 0.9974373360083928,
+      "offdiag_biased_mean": 0.6616575593319518,
+      "offdiag_unbiased_min": 0.028985028200391505,
+      "offdiag_unbiased_max": 0.9974333817345283,
+      "offdiag_unbiased_mean": 0.6606948940353967,
+      "max_abs_delta_offdiag": 0.002984520453031436
+    }
+  ]
+}
