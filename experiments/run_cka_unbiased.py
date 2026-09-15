@@ -66,8 +66,49 @@ def plain_heatmap(M, labels, path, *, vmin=0.0, vmax=1.0, dpi=300):
     return path
 
 
+def panel_heatmaps(mats, labels, path, *, titles=None, vmin=0.0, vmax=1.0, dpi=300):
+    """1 x N row of CKA heatmaps sharing ONE colour bar, in the same bare style as `plain_heatmap`:
+    no figure title, no axis labels, no colour-bar label. The panels plot identical axes, so row
+    tick labels appear only on the leftmost one. Writes `path` (.png) + its .pdf sibling."""
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    mats = [np.asarray(M, dtype=float) for M in mats]
+    n = len(labels)
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    # the panels are square (the matrices are), so the figure width is set by the panel HEIGHT,
+    # not the other way round; over-wide figures just open a gap between the panels.
+    fig, axes = plt.subplots(1, len(mats), figsize=(2.7 * len(mats) + 1.5, 3.6),
+                             layout="constrained", squeeze=False)
+    fig.get_layout_engine().set(w_pad=0.03, h_pad=0.03, wspace=0.04)
+    axes = axes.ravel()
+    im = None
+    for k, (ax, M) in enumerate(zip(axes, mats)):
+        im = ax.imshow(M, vmin=vmin, vmax=vmax, cmap="viridis", aspect="equal",
+                       origin="upper", interpolation="nearest")
+        ax.set_xticks(np.arange(n))
+        ax.set_xticklabels(labels, rotation=45, ha="right", fontsize=6)
+        ax.set_yticks(np.arange(n))
+        ax.set_yticklabels(labels if k == 0 else [], fontsize=6)
+        ax.tick_params(length=2, pad=1.5)
+        if titles:
+            ax.set_title(titles[k], fontsize=8)
+    cb = fig.colorbar(im, ax=axes.tolist(), fraction=0.046, pad=0.02, shrink=0.92)
+    cb.ax.tick_params(labelsize=6, length=2)
+    cb.outline.set_linewidth(0.5)
+    fig.savefig(path, dpi=dpi)
+    fig.savefig(path.with_suffix(".pdf"))
+    plt.close(fig)
+    return path
+
+
 def export(tag, split, max_rows, seed, root, gate=True):
-    """Both estimators for one dataset: gate, matrices, tables, figures. Returns a summary dict."""
+    """Both estimators for one dataset: gate, matrices, tables, figures.
+
+    Returns (summary dict, biased matrix, unbiased matrix) — the caller reuses the matrices for the
+    combined panel rather than recomputing them."""
     reps = read_extv4_fslot_reps(tag, split)
     n_avail = reps[0].shape[0]
     idx = cka.subsample_indices(n_avail, max_rows, seed)
@@ -124,7 +165,7 @@ def export(tag, split, max_rows, seed, root, gate=True):
     print(f"     off-diag unbiased min/mean/max = {summary['offdiag_unbiased_min']:.4f} / "
           f"{summary['offdiag_unbiased_mean']:.4f} / {summary['offdiag_unbiased_max']:.4f}")
     print(f"     max |biased - unbiased| off-diagonal = {summary['max_abs_delta_offdiag']:.6f}")
-    return summary
+    return summary, B, U
 
 
 def main():
@@ -135,6 +176,9 @@ def main():
     ap.add_argument("--split", default="test", choices=["train", "test"])
     ap.add_argument("--max-rows", type=int, default=4096, help="match the committed provenance")
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--panel-only", action="store_true",
+                    help="rebuild the combined panel from the saved .npy matrices — no feature "
+                         "cache, no model, no GPU, so it runs anywhere (login node, laptop)")
     ap.add_argument("--no-gate", action="store_true",
                     help="skip the biased-reproduces-committed check (only for a new split)")
     args = ap.parse_args()
@@ -147,8 +191,33 @@ def main():
     for sub in ("matrices", "tables", "figures"):
         (root / sub).mkdir(parents=True, exist_ok=True)
 
-    rows = [export(t, args.split, args.max_rows, args.seed, root, gate=not args.no_gate)
-            for t in args.tags]
+    titles = [SHORT.get(t, t) for t in args.tags]
+    stem = f"panel_1x{len(args.tags)}__fslot"
+
+    if args.panel_only:
+        for name in ("biased", "unbiased"):
+            mats = []
+            for t in args.tags:
+                f = root / "matrices" / f"{t}__fslot__layerxlayer__{name}.npy"
+                if not f.exists():
+                    raise SystemExit(f"missing {f} — run `python -m experiments.run_cka_unbiased` "
+                                     "(without --panel-only) on a compute node first")
+                mats.append(np.load(f))
+            panel_heatmaps(mats, LEGACY_LABELS_14, root / "figures" / f"{stem}__{name}.png")
+        print(f"[cka-unbiased] rebuilt 1x{len(args.tags)} panel from saved matrices, "
+              f"untitled, left to right: {' | '.join(titles)}")
+        return
+
+    out = [export(t, args.split, args.max_rows, args.seed, root, gate=not args.no_gate)
+           for t in args.tags]
+    rows = [o[0] for o in out]
+
+    # combined 1 x N panel (the datasets side by side on one shared colour scale)
+    for name, k in (("biased", 1), ("unbiased", 2)):
+        panel_heatmaps([o[k] for o in out], LEGACY_LABELS_14,
+                       root / "figures" / f"{stem}__{name}.png")
+    print(f"[cka-unbiased] combined 1x{len(args.tags)} panel, untitled, "
+          f"left to right: {' | '.join(titles)}")
 
     with open(root / "tables" / "summary.csv", "w", newline="") as fh:
         w = csv.DictWriter(fh, list(rows[0]))

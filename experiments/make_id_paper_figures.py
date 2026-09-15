@@ -1169,6 +1169,150 @@ def _ptood_panel_curves(tag):
     return np.mean(wls, axis=0), sids[0], np.mean(vals, axis=0)
 
 
+def make_cka_probe_figure(tags, boot_b, seed, stem="main_id_cka_probe_2x2", dpi=400,
+                          show_title=False, drop_emb=True, show_panel_titles=False, gap=0.12,
+                          out_dir=None):
+    """2 x len(tags): row 0 = the shared forecast-slot probe's TEST loss, row 1 = the forecast-slot
+    layer x layer CKA of the representations that probe reads.
+
+    A column is two views of ONE depth sweep on ONE dataset -- how linearly decodable the forecast
+    is (top) and how similar the representations are to each other (bottom) -- so both rows sit on
+    the SAME representation-point axis, including the gap before the post-final-norm point.
+
+    ``L12 (post-LN)`` is the encoder's post-final-norm state (the native head's actual input). It is
+    a different KIND of readout point from a block output, so it is set apart by a gap and drawn as
+    a detached open marker rather than joined to the curve. ``gap`` is that separation in cell
+    widths: it is also the width of the blank cell in the heatmap, so keep it small enough that the
+    white stripe reads as a seam rather than a band. The open marker and the axis label carry the
+    distinction; the gap only has to hint at it.
+
+    ``drop_emb`` removes the input embedding from BOTH rows: it is where the loss curve starts its
+    steepest fall and, being near rank-1, the point that dominates the CKA colour scale.
+
+    The dotted line is the 5% tolerance above the FINAL point's test loss -- the loss-side reading
+    of the same "95% rule" that defines the tunnel (lower is better here, so the band sits above).
+    The shaded region starts at the VALIDATION-selected entrance, so the test curve need not cross
+    the dotted line exactly where the shading begins; that gap is a real train/test difference.
+
+    No bootstrap CI is drawn. ``load_dataset`` still computes it, because the point estimate it
+    returns alongside is what the committed-record gate checks."""
+    from probing.tunnel import TUNNEL_TOL
+
+    off = 1 if drop_emb else 0
+    # the paper module spells the last point "L12+RMS"; this figure follows the screenshot style
+    labels = (["Embed"] if not off else []) + [f"L{i}" for i in range(1, 13)] + ["L12 (post-LN)"]
+    rows = [load_dataset(t, boot_b, seed) for t in tags]
+    ckas = [load_cka(t) for t in tags]
+    for d, c in zip(rows, ckas):
+        if d["l_start"] != c["l_start"]:            # same record feeds both; a mismatch = drift
+            raise ValueError(f"{d['tag']}: probe and CKA disagree on the entrance "
+                             f"({d['l_start']} vs {c['l_start']})")
+        if d["l_start"] < off:
+            raise ValueError(f"{d['tag']}: entrance falls on the dropped Emb point")
+
+    # x geometry: block outputs on the integer grid, then a GAP, then the post-final-norm point.
+    # The mesh gets an EMPTY (NaN) cell spanning the gap, so the heatmap's post-LN row/column is
+    # detached exactly like the curve's marker instead of the L12 cell stretching to fill it.
+    n = len(labels)
+    nb = n - 1                                     # number of block-output points
+    GAP = float(gap)
+    pos = np.concatenate([np.arange(nb), [nb + GAP]])
+    edges = np.concatenate([np.arange(nb + 1) - 0.5, [nb + GAP - 0.5, nb + GAP + 0.5]])
+    xlo, xhi = edges[0] - 0.05, edges[-1] + 0.05
+
+    def _with_gap(M):
+        """(n, n) -> (n+1, n+1) with a NaN row/column inserted before the post-final-norm point."""
+        k = M.shape[0] - 1
+        A = np.full((M.shape[0] + 1, M.shape[1] + 1), np.nan)
+        A[:k, :k], A[:k, k + 1:] = M[:k, :k], M[:k, k:]
+        A[k + 1:, :k], A[k + 1:, k + 1:] = M[k:, :k], M[k:, k:]
+        return A
+
+    gap_cmap = plt.get_cmap("viridis").copy()
+    gap_cmap.set_bad(alpha=0.0)                    # the gap cell draws as nothing
+    pct_lo, pct_hi = int(round((1 - TUNNEL_TOL) * 100)), int(round((1 + TUNNEL_TOL) * 100))
+
+    with plt.rc_context(PAPER_RC):
+        fig, axes = plt.subplots(2, len(tags), figsize=(3.7 * len(tags) + 0.7, 6.2),
+                                 layout="constrained", squeeze=False, sharex="col")
+        fig.get_layout_engine().set(h_pad=0.05, w_pad=0.06, hspace=0.06, wspace=0.10)
+        im = None
+
+        for col, (d, c) in enumerate(zip(rows, ckas)):
+            ls = d["l_start"] - off
+            point = d["point"][off:]
+
+            # ---- row 0: shared forecast-slot probe, TEST loss ------------------------------
+            ax = axes[0, col]
+            thr = float(point[-1] * (1.0 + TUNNEL_TOL))
+            # the tunnel is a statement about the BLOCK stack, so the shading stops at L12 and
+            # does not run under the detached post-final-norm point
+            ax.axvspan(pos[ls] - 0.5, pos[-2] + 0.5, color=TUNNEL_FILL, lw=0, zorder=0,
+                       label=f"nominal tunnel ({pct_lo}% rule)")
+            ax.axhline(thr, color=LOSS, lw=0.9, ls=(0, (2, 2)), alpha=0.8, zorder=2,
+                       label=f"{pct_hi}% of final-point loss")
+            ax.plot(pos[:-1], point[:-1], "-o", ms=3.6, color=LOSS, mfc=LOSS, mec=LOSS, zorder=3,
+                    label="shared forecast-slot probe")
+            ax.plot(pos[-1], point[-1], "s", ms=6.0, mfc="none", mec=LOSS, mew=1.4, zorder=4,
+                    label="probe, post-LN")
+            top, bot = max(point.max(), thr), min(point.min(), thr)
+            span = top - bot
+            ax.set_ylim(bot - 0.10 * span, top + 0.10 * span)
+            ax.set_ylabel("test quantile loss", color=LOSS)
+            ax.tick_params(axis="y", colors=LOSS)
+            ax.spines["left"].set_color(LOSS)
+            if not col:
+                pass
+            else:
+                ax.set_ylabel("")
+            if show_panel_titles:
+                ax.set_title(TITLES[d["tag"]], fontweight="bold")
+            ax.grid(axis="y", alpha=0.18, lw=0.5)
+            ax.set_axisbelow(True)
+            for side in ("top", "right"):
+                ax.spines[side].set_visible(False)
+
+            # ---- row 1: layer x layer forecast-slot CKA -----------------------------------
+            ax = axes[1, col]
+            im = ax.pcolormesh(edges, edges, _with_gap(c["M"][off:, off:]), cmap=gap_cmap,
+                               vmin=0.0, vmax=1.0, shading="flat")
+            ax.invert_yaxis()                      # L1 at the top, like every other CKA panel
+            ax.set_yticks(pos)
+            ax.set_yticklabels(labels if col == 0 else [])
+            ax.set_xticks(pos)
+            ax.set_xticklabels(labels, rotation=45, ha="right")
+            ax.set_xlim(xlo, xhi)
+
+        for ax in axes.ravel():
+            ax.tick_params(length=2.5, pad=1.5)
+        for ax in axes[0, :]:
+            ax.tick_params(labelbottom=False)
+        axes[1, 0].set_ylabel("representation point")
+
+        cb = fig.colorbar(im, ax=axes.ravel().tolist(), fraction=0.030, pad=0.015, shrink=0.45,
+                          anchor=(0.0, 0.0))
+        cb.set_label("linear CKA")
+        cb.ax.tick_params(length=2.0)
+
+        h, l = axes[0, 0].get_legend_handles_labels()
+        order = sorted(range(len(l)), key=lambda i: ("probe" not in l[i], "post-LN" in l[i]))
+        fig.legend([h[i] for i in order], [l[i] for i in order], loc="outside lower center",
+                   ncol=2, frameon=True, fancybox=False, edgecolor="0.7", framealpha=1.0,
+                   handlelength=1.8, handletextpad=0.5, columnspacing=1.4, borderpad=0.5,
+                   borderaxespad=0.3, fontsize=9.0)
+        if show_title:
+            fig.suptitle("Linear decodability and representation similarity by depth",
+                         fontsize=10, fontweight="bold")
+
+        dst = out_dir if out_dir is not None else FIG_DIR
+        dst.mkdir(parents=True, exist_ok=True)
+        pdf, png = dst / f"{stem}.pdf", dst / f"{stem}.png"
+        fig.savefig(pdf)
+        fig.savefig(png, dpi=dpi)
+        plt.close(fig)
+    return pdf, png
+
+
 def load_eps_dataset(tag, boot_b, seed, epsilons=EPS_BANDS):
     """One panel column, with the entrance recomputed at every tolerance in ``epsilons``."""
     from probing.tunnel import TUNNEL_TOL, tunnel_start
@@ -1622,7 +1766,7 @@ def main():
                          "the panels keep their size")
     ap.add_argument("--eps-stem", default="appendix_id_saturation_sensitivity",
                     help="output filename stem for the saturation-sensitivity figure")
-    ap.add_argument("--figure", default="all", choices=("loss_erank", "cka", "cka_content", "cka_cslot", "transfer", "transfer_vs_own", "ft_boom", "nha", "eps", "all"),
+    ap.add_argument("--figure", default="all", choices=("loss_erank", "cka", "cka_content", "cka_cslot", "cka_probe", "transfer", "transfer_vs_own", "ft_boom", "nha", "eps", "all"),
                     help="which figure family to build (default: all)")
     ap.add_argument("--boot-b", type=int, default=5000, help="bootstrap resamples (default 5000)")
     ap.add_argument("--seed", type=int, default=SEED)
@@ -1631,7 +1775,28 @@ def main():
     ap.add_argument("--dpi", type=int, default=400)
     ap.add_argument("--no-title", action="store_true",
                     help="omit the figure-level title (let the LaTeX caption carry it)")
+    ap.add_argument("--cka-probe-tags", nargs="+",
+                    default=["monash_electricity_hourly", "m4_hourly"],
+                    help="datasets (columns) for --figure cka_probe")
+    ap.add_argument("--cka-probe-keep-emb", action="store_true",
+                    help="keep the input-embedding point in the cka_probe figure (both rows)")
+    ap.add_argument("--cka-probe-panel-titles", action="store_true",
+                    help="add per-column dataset titles to the cka_probe figure (off by default)")
+    ap.add_argument("--cka-probe-title", action="store_true",
+                    help="add the figure-level title to the cka_probe figure (off by default)")
+    ap.add_argument("--cka-probe-gap", type=float, default=0.12,
+                    help="separation before the post-LN point, in cell widths; also the width of "
+                         "the blank seam in the heatmap (default 0.12)")
     a = ap.parse_args()
+
+    if a.figure == "cka_probe":
+        pdf, png = make_cka_probe_figure(
+            a.cka_probe_tags, a.boot_b, a.seed, dpi=a.dpi,
+            show_title=a.cka_probe_title and not a.no_title,
+            drop_emb=not a.cka_probe_keep_emb,
+            show_panel_titles=a.cka_probe_panel_titles, gap=a.cka_probe_gap)
+        print(f"[cka_probe] {' | '.join(TITLES[t] for t in a.cka_probe_tags)}\n  {png}\n  {pdf}")
+        return
 
     groups = ("main", "appendix") if a.which == "both" else (a.which,)
     # "all7" is a CKA-only group (it has no loss/erank counterpart), so route it separately
