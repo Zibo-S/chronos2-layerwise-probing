@@ -81,7 +81,7 @@ export PYTHONHASHSEED=0
 CACHE_DIR=${TFM3_LT_CACHE_DIR:-$SCRATCH/timesfm3_last_token/features_cache}
 PROBE_SUMMARY=${TFM3_PROBE_SUMMARY:-$SCRATCH/timesfm3_last_token/results/timesfm3_last_token_paper7_q9/timesfm3_last_token_summary.json}
 WORK=${TFM3_GEOM_OUT_ROOT:-$SCRATCH/timesfm3_geometry}
-CKPT=${TIMESFM3_CHECKPOINT:-$SCRATCH/timesfm3/checkpoints/timesfm-3.0-pytorch}
+CKPT=${TIMESFM3_CHECKPOINT:-google/timesfm-3.0-pytorch}
 
 RUN_GEOM=1; RUN_HEAD=1; EXTRA=()
 for a in "$@"; do
