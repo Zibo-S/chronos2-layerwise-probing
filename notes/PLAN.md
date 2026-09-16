@@ -24,6 +24,36 @@ its ONE last real context token (index 15 for C=512, H=64). No artificial shared
 The two caches/results namespaces are disjoint and the loader **refuses** the other line's cache
 (metadata + array-rank check, test 21). No Chronos-2 file is touched by either.
 
+## Dataset suite (corrected 2026-09-16): the Chronos-2 paper SEVEN
+
+`--suite paper7` (the default) probes the same seven datasets, on the same windows, as the
+Chronos-2 run, taken from the Chronos-2 sources and never re-declared:
+
+| paper name | internal key | kind | windows |
+|---|---|---|---|
+| M4 | `m4_hourly` | PT-ID | `build_windows` under `extended_v3_rolling` |
+| Electricity | `monash_electricity_hourly` | PT-ID | same |
+| Uber TLC | `uber_tlc_hourly` | PT-ID | same |
+| Wind Farms | `wind_farms_hourly` | PT-ID | same |
+| SG Carpark | `sg_carpark` | PT-OOD | `build_ood_rolling_windows(tag, C=512, H=64, seed=0)` |
+| Coastal T-S | `coastal_ts` | PT-OOD | same |
+| BOOM | `boom_hourly` | PT-OOD | same |
+
+Roster from `probing/tunnel.py` (`PT_ID_TAGS` + `PT_OOD_TAGS`), display names from
+`experiments/make_id_paper_figures.py:314`, window dispatch copied from
+`run_native_head_adapter._windows()`. Expected counts (train/val/test): 1394/262/262 for the four
+PT-ID, 1394/354/354 for SG Carpark and BOOM, 1394/48/48 (24 stations) for Coastal T-S.
+
+Every run ABORTS unless the window counts **and** the per-window test series/cluster ids match
+`results/ext_v5_native_head_adapter/{configs,bootstrap_inputs}` element-wise
+(`--allow-window-mismatch` downgrades that to a report). `--audit-only` runs just that check with
+no GPU and no model.
+
+Validation is the datasets' own dedicated rolling split (full-train fit, wd chosen on val, **no
+refit** — `probes.fit_quantile_probe_explicit_val`'s contract), not the 80/20 carve. KDD Cup 2018
+and Pedestrian Counts are no longer in the headline default; they remain reachable via
+`--suite extended_v1` for implementation checks.
+
 ## Files (all new)
 
 - `probing/timesfm3_last_token.py` — geometry, full-context preprocessing/targets, single-pass
@@ -37,6 +67,8 @@ The two caches/results namespaces are disjoint and the loader **refuses** the ot
 ## Run order (Narval)
 
 1. login node: `python -m tests.test_timesfm3_last_token_probe` (~4 s, 2 threads).
+1b. window audit (compute node, no GPU/model):
+   `sbatch --gres=gpu:0 --time=0:40:00 -J tfm3lt-audit job_timesfm3_last_token_q9.sh --audit-only --device cpu`
 2. GPU smoke: `sbatch --time=0:30:00 -J tfm3lt-smoke job_timesfm3_last_token_q9.sh
    --cache-dir $SCRATCH/timesfm3_last_token/smoke_cache
    --out-root $SCRATCH/timesfm3_last_token/smoke_results
@@ -51,12 +83,36 @@ The two caches/results namespaces are disjoint and the loader **refuses** the ot
   `chronos2_quantile_loss/(2Q)`, context-only preprocessing, target round-trip 3.9e-09,
   5%/2% tunnel rule, end-to-end fit, cache isolation.
 - Full driver dry run with the backbone mocked: targets → 21 probes → MASE → native baseline →
-  cluster bootstrap → tunnel → summary JSON → bootstrap npz → 5 figures, all green.
+  cluster bootstrap → tunnel → summary JSON → bootstrap npz → 5 figures, all green (now with
+  rolling-shaped windows, a dedicated val split and the PT-ID/PT-OOD panels).
+- Tests 22/23/24: the paper7 roster equals `PT_ID_TAGS + PT_OOD_TAGS` and its display names equal
+  the paper figures'; the parity checker reads all 7 committed Chronos-2 artifacts and rejects a
+  shuffled/short/miscounted window set; the explicit-val protocol fits on full train with no refit.
 - Cache dtype is now **float32 by default** (tag `tfm3-last-token-q9-fp32-v1`, ~2 GB across the
   four datasets); float16 is opt-in via `--feature-dtype float16`. The bumped tag means an old
   float16 cache can never be silently reused. The 1e-2 dtype bar is UNCHANGED: float32 clears it
   bit-exactly (cache identity 0.0 of the layer std), and float16's measured ~1.2e-2 cost is
   exactly why it is no longer the default.
+
+## Weight-decay grid + null baseline (2026-09-16)
+
+**Selection grid** `WD_GRID_LAST_TOKEN` = `probes.WD_GRID_V2` extended by 10/30 → 10 candidates
+`1e-5 1e-4 1e-3 1e-2 1e-1 0.3 1 3 10 30` (the Chronos-2 grid itself is untouched). The probe is
+737k parameters on 1394 train rows, so the optimum can sit above the old ceiling of 3; max
+`lr*wd` = 0.3, safely inside AdamW's well-behaved decoupled-decay regime.
+
+It **stops at 30 deliberately**. Measured at lr=1e-2 on synthetic features: `wd=100` (lr·wd = 1)
+zeroes the weight every step → max|W| ≈ lr, a bias-only fit; `wd=300` (lr·wd = 3) → |1−lr·wd| > 1,
+max|W| 3.8e7, loss 5.5e8. Selecting either would report an optimizer artifact as a probe, so the
+driver **refuses** a `--wd-grid` containing them.
+
+**Null baseline** `--null-wd 100` (default): one extra fit per layer at that extreme decay,
+reported next to the probe as the no-information floor (≈ marginal-quantile forecast), with its
+fitted max|W| recorded so the label is a measurement. `selected: False` always; `null_wd` inside
+the grid raises. It is drawn as a grey curve on the Q=9 figure.
+
+Robustness kept: non-finite candidates are counted (`nonfinite_wd_candidates`) and skipped, and
+an all-non-finite grid raises. `wd=300` / `wd=1e9` survive only as test fixtures for that path.
 
 ## Open / to check on the first GPU run
 

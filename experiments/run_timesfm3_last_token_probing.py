@@ -50,19 +50,196 @@ import numpy as np
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
 # ONE definition of MASE / cluster CIs for both TimesFM-3 lines (read-only import of the
-# ablation driver; those helpers are geometry- and quantile-agnostic).
+# ablation driver; those helpers are geometry- and quantile-agnostic). The MASE denominator is
+# byte-identical to run_id_forecasting._mase_denominator, which run_native_head_adapter uses for
+# all seven Chronos-2 datasets.
 from experiments.run_timesfm3_probing import (MASE_DEN_FLOOR, M_SEASON, cluster_ci,  # noqa: E402
                                               mase_denominator, per_window_mase)
+from probing.config import SEED as CANON_SEED  # noqa: E402
+from probing.timesfm3_last_token_probes import (WD_GRID_LAST_TOKEN,  # noqa: E402
+                                                WD_NULL_BASELINE)
+from probing.tunnel import PT_ID_TAGS, PT_OOD_TAGS  # noqa: E402  (the roster's source of truth)
 
-BOOT_METRICS = ("q9_loss", "median_loss", "mase_context")
+# --------------------------------------------------------------------------- #
+# dataset suites
+# --------------------------------------------------------------------------- #
+# The HEADLINE suite is the Chronos-2 paper's seven datasets, taken from the SAME sources the
+# Chronos-2 drivers use -- nothing is re-declared or re-derived here:
+#     roster        probing/tunnel.py   PT_ID_TAGS + PT_OOD_TAGS
+#     PT-ID windows id_data.build_windows under dataset set "extended_v3_rolling"
+#                   (-> _build_rolling_windows, budgets (1394, 262, 262), seed 0)
+#     PT-OOD windows id_data.build_ood_rolling_windows(tag, C=512, H=64, seed=SEED)
+#     display names experiments/make_id_paper_figures.py:314  SHORT
+#     PT-ID/PT-OOD  experiments/run_native_head_adapter.py:72  DATASET_KIND
+# The dispatch below is the exact twin of run_native_head_adapter._windows() (== 
+# run_ft_specialization.target_windows()), so both models see the same x[1:512] -> x[513:576].
+PTID_SET = "extended_v3_rolling"
+PAPER7 = tuple(PT_ID_TAGS) + tuple(PT_OOD_TAGS)
+KIND = {**{t: "PT-ID" for t in PT_ID_TAGS}, **{t: "PT-OOD" for t in PT_OOD_TAGS}}
+SHORT = {"monash_electricity_hourly": "Electricity", "uber_tlc_hourly": "Uber TLC",
+         "m4_hourly": "M4", "wind_farms_hourly": "Wind Farms", "sg_carpark": "SG Carpark",
+         "coastal_ts": "Coastal T-S", "boom_hourly": "BOOM"}
+# committed Chronos-2 artifacts for those seven datasets: per-window test series/cluster ids and
+# the window counts. This is what makes "same windows" a CHECK rather than a claim.
+CHRONOS_REF_ROOT = REPO_ROOT / "results" / "ext_v5_native_head_adapter"
+
+
+def suite_tags(suite: str) -> list[str]:
+    """The dataset roster of a suite. ``paper7`` = the Chronos-2 headline seven, PT-ID first."""
+    if suite == "paper7":
+        return list(PAPER7)
+    from probing.id_data import ID_DATASET_SPECS
+    if suite in ID_DATASET_SPECS:
+        return list(ID_DATASET_SPECS[suite])
+    raise SystemExit(f"unknown suite {suite!r}; known: 'paper7' (the headline seven) or any "
+                     f"id_data.ID_DATASET_SPECS key {sorted(ID_DATASET_SPECS)}")
+
+
+def windows_for(tag: str, suite: str, args):
+    """Windows for one dataset -- the EXACT twin of run_native_head_adapter._windows().
+
+    paper7:  PT-OOD -> build_ood_rolling_windows(tag, C=512, H=64, seed=SEED)
+             PT-ID  -> config.set_dataset_set("extended_v3_rolling"); build_windows(tag)
+    other :  the legacy auto-split path (build_windows with this driver's C/H/stride/seed).
+
+    Non-default C/H/seed are REFUSED for paper7: the committed Chronos-2 windows are C=512,
+    H=64, seed=0, and silently building different ones would break the whole point.
+    """
+    from probing import config
+    from probing.id_data import build_ood_rolling_windows, build_windows
+    if suite != "paper7":
+        config.set_dataset_set(suite)
+        return build_windows(tag, C=args.context_len, H=args.horizon, stride=args.stride,
+                             seed=args.seed)
+    bad = {k: v for k, v in (("--context-len", (args.context_len, 512)),
+                             ("--horizon", (args.horizon, 64)),
+                             ("--seed", (args.seed, CANON_SEED))) if v[0] != v[1]}
+    if bad:
+        raise SystemExit(
+            "the paper7 suite reproduces the COMMITTED Chronos-2 windows, which are C=512, "
+            f"H=64, seed={CANON_SEED}; refusing " +
+            ", ".join(f"{k}={v[0]} (must be {v[1]})" for k, v in bad.items()))
+    if tag in PT_OOD_TAGS:
+        # evaluation-only rosters: the cluster id (carpark / station / metric-query) is the
+        # bootstrap unit and travels in series_*, exactly as in the Chronos-2 run.
+        return build_ood_rolling_windows(tag, C=512, H=64, seed=CANON_SEED)
+    config.set_dataset_set(PTID_SET)
+    return build_windows(tag)
+
+
+# --------------------------------------------------------------------------- #
+# window parity with the committed Chronos-2 run
+# --------------------------------------------------------------------------- #
+
+def chronos_reference(tag: str, root=CHRONOS_REF_ROOT):
+    """The committed Chronos-2 artifacts for ``tag``: window counts + per-window test series ids.
+
+    configs/native_head_adapter__<tag>__config.json  -> n_train / n_val / n_test / C / H / kind
+    bootstrap_inputs/native_head_adapter__<tag>.npz  -> series_test, one id per test window
+    Returns None when the dataset is not part of that committed run (e.g. KDD / pedestrian).
+    """
+    cfg = Path(root) / "configs" / f"native_head_adapter__{tag}__config.json"
+    npz = Path(root) / "bootstrap_inputs" / f"native_head_adapter__{tag}.npz"
+    if not (cfg.exists() and npz.exists()):
+        return None
+    c = json.loads(cfg.read_text())
+    with np.load(npz, allow_pickle=False) as z:
+        sid = np.asarray(z["series_test"], np.int64)
+    return {"config": c, "series_test": sid,
+            "paths": {"config": str(cfg.relative_to(REPO_ROOT)),
+                      "bootstrap_inputs": str(npz.relative_to(REPO_ROOT))}}
+
+
+def window_identity(tag, w):
+    """The reportable identity of one dataset's windows (counts + the first few identifiers)."""
+    sid = np.asarray(w["series_test"], np.int64)
+    origins = (w["meta"].get("origins", {}) or {}).get("test")
+    ids = ([f"s{int(a)}@t{int(b)}" for a, b in zip(sid[:6], origins[:6])] if origins
+           else [f"s{int(a)}" for a in sid[:6]])
+    return {"dataset": tag, "short": SHORT.get(tag, tag), "kind": KIND.get(tag, "unclassified"),
+            "split_mode": w["meta"].get("split_mode"),
+            "n_train_windows": int(len(w["X_train"])),
+            "n_val_windows": int(len(w["X_val"])) if "X_val" in w else None,
+            "n_test_windows": int(len(sid)),
+            "n_test_series": int(len(np.unique(sid))),
+            "cluster_unit": w["meta"].get("cluster_unit", "series"),
+            "first_test_identifiers": ids,
+            "test_series_first6": [int(x) for x in sid[:6]]}
+
+
+def assert_window_parity(tag, w, ref, *, strict=True):
+    """TimesFM-3 must receive the SAME x[1:512] -> x[513:576] windows as Chronos-2.
+
+    Checks, against the committed artifacts: C, H, seasonal m, the train/val/test window COUNTS,
+    and -- the decisive one -- the per-window test series/cluster ids ELEMENT-WISE. Raises on any
+    mismatch unless ``strict=False`` (then the failures are reported and carried in the record).
+    """
+    ident = window_identity(tag, w)
+    if ref is None:
+        ident.update(chronos_parity="no_committed_reference", parity_ok=None)
+        return ident
+    c, m = ref["config"], w["meta"]
+    sid = np.asarray(w["series_test"], np.int64)
+    rsid = ref["series_test"]
+    fails = []
+    for name, got, want in (("C", m.get("C"), c["C"]), ("H", m.get("H"), c["H"]),
+                            ("seasonal_m", m.get("m_season"), c["seasonal_m"]),
+                            ("n_train", int(len(w["X_train"])), c["n_train"]),
+                            ("n_test", int(len(sid)), c["n_test"]),
+                            ("kind", KIND.get(tag), c["kind"])):
+        if got != want:
+            fails.append(f"{name}: TimesFM={got!r} vs Chronos-2={want!r}")
+    if "X_val" in w and int(len(w["X_val"])) != c["n_val"]:
+        fails.append(f"n_val: TimesFM={len(w['X_val'])} vs Chronos-2={c['n_val']}")
+    if sid.shape != rsid.shape:
+        fails.append(f"series_test shape: {sid.shape} vs {rsid.shape}")
+    elif not np.array_equal(sid, rsid):
+        d = int((sid != rsid).sum())
+        first = int(np.flatnonzero(sid != rsid)[0])
+        fails.append(f"series_test differs in {d}/{len(sid)} windows (first at index {first}: "
+                     f"{int(sid[first])} vs {int(rsid[first])})")
+    ident.update(chronos_parity="match" if not fails else "MISMATCH",
+                 parity_ok=not fails, parity_failures=fails,
+                 chronos_reference=ref["paths"],
+                 chronos_counts={"n_train": c["n_train"], "n_val": c["n_val"],
+                                 "n_test": c["n_test"], "dataset_set": c["dataset_set"]})
+    if fails and strict:
+        raise RuntimeError(
+            f"WINDOW PARITY FAILED for {tag}: TimesFM-3 is not being evaluated on the same "
+            f"windows as Chronos-2.\n    " + "\n    ".join(fails) +
+            f"\n  Reference: {ref['paths']['config']} + {ref['paths']['bootstrap_inputs']}.\n"
+            "  Fix the window construction -- do NOT proceed with mismatched windows.")
+    return ident
+
+
+def print_roster_audit(rows):
+    """The per-dataset window audit (the spec's required diagnostic)."""
+    def cut(x, n):
+        x = str(x)
+        return x if len(x) <= n else x[:n - 1] + "~"
+    hdr = (f"  {'dataset':<26}{'kind':<7}{'split_mode':<34}{'n_train':>8}{'n_val':>7}"
+           f"{'n_test':>7}{'n_unit':>7}  {'parity':<12} first test windows")
+    print("\n  WINDOW AUDIT -- these must be the SAME windows Chronos-2 was evaluated on")
+    print(hdr)
+    print("  " + "-" * (len(hdr) - 2))
+    for r in rows:
+        print(f"  {cut(r['dataset'], 25):<26}{cut(r['kind'], 6):<7}"
+              f"{cut(r['split_mode'], 33):<34}{r['n_train_windows']:>8}"
+              f"{str(r['n_val_windows']):>7}{r['n_test_windows']:>7}"
+              f"{r['n_test_series']:>7}  {cut(r.get('chronos_parity'), 11):<12}"
+              f"{' '.join(r['first_test_identifiers'][:4])}")
+    ok = [r for r in rows if r.get("parity_ok")]
+    nor = [r for r in rows if r.get("parity_ok") is None]
+    print(f"  -> {len(ok)}/{len(rows)} datasets match the committed Chronos-2 windows "
+          f"(counts + element-wise test series ids)" +
+          (f"; {len(nor)} have no committed reference" if nor else ""))
 
 
 # --------------------------------------------------------------------------- #
 # one dataset
 # --------------------------------------------------------------------------- #
 
-def run_dataset(tag, args, geom, paths, model, device):
-    from probing.id_data import build_windows
+def run_dataset(tag, args, geom, paths, model, device, windows=None, ident=None):
     from probing.timesfm3_last_token import (LAST_LAYER, LAYER_NAMES, NUM_LAYERS, NUM_QUANTILES,
                                              assert_target_roundtrip, build_last_token_targets,
                                              cached_last_token_features, denormalize,
@@ -70,13 +247,21 @@ def run_dataset(tag, args, geom, paths, model, device):
     from probing.timesfm3_last_token_probes import (last_token_layerwise, native_reference,
                                                     tunnel_entrance, tunnel_entrances)
 
-    print(f"\n{'=' * 82}\n[{tag}]\n{'=' * 82}")
+    kind, short = KIND.get(tag, "unclassified"), SHORT.get(tag, tag)
+    print(f"\n{'=' * 82}\n[{tag}]  {short}  ({kind})\n{'=' * 82}")
     t0 = time.time()
-    w = build_windows(tag, C=args.context_len, H=args.horizon, stride=args.stride,
-                      seed=args.seed)
+    w = windows_for(tag, args.suite, args) if windows is None else windows
+    if ident is None:
+        ident = assert_window_parity(tag, w, chronos_reference(tag),
+                                     strict=not args.allow_window_mismatch)
     meta = w["meta"]
-    print(f"  windows: {meta['n_train']} train / {meta['n_test']} test  "
-          f"({meta['split_mode']}, {meta['n_test_series']} test series)")
+    has_val = "X_val" in w and len(w["X_val"]) > 0
+    print(f"  windows: {ident['n_train_windows']} train / "
+          f"{ident['n_val_windows'] if has_val else 'carve'} val / "
+          f"{ident['n_test_windows']} test  ({meta['split_mode']}, "
+          f"{ident['n_test_series']} test "
+          f"{ident['cluster_unit']}{'' if ident['cluster_unit'].endswith('s') else 's'})  "
+          f"[Chronos-2 window parity: {ident.get('chronos_parity')}]")
 
     layers = list(range(NUM_LAYERS)) if args.layers is None else sorted(set(args.layers))
     if LAST_LAYER not in layers:
@@ -90,12 +275,13 @@ def run_dataset(tag, args, geom, paths, model, device):
     # ---- features: ONE full-context decode() pass per batch, token 15 only ----
     ex = dict(geom=geom, model=model, device=device, batch_size=args.extract_batch_size,
               layers=layers, feature_dtype=np.dtype(args.feature_dtype),
-              detrend=not args.no_detrend, cache_dir=paths["cache"],
+              detrend=not args.no_detrend, cache_dir=paths["cache"], suite=args.suite,
               checkpoint=args.checkpoint, seed=args.seed, force=args.force_extract,
               allow_sorted_reference=args.allow_sorted_reference,
               bypass_sorting=not args.no_sorting_bypass)
     tr = cached_last_token_features(tag, "train", w["X_train"], **ex)
     te = cached_last_token_features(tag, "test", w["X_test"], **ex)
+    va = cached_last_token_features(tag, "val", w["X_val"], **ex) if has_val else None
     shapes = {LAYER_NAMES[L]: tuple(np.shape(te["feats"][L])) for L in layers}
     print(f"  feature shapes: {LAYER_NAMES[layers[0]]} .. {LAYER_NAMES[layers[-1]]} each "
           f"{shapes[LAYER_NAMES[layers[-1]]]}   (test split; train is "
@@ -110,6 +296,15 @@ def run_dataset(tag, args, geom, paths, model, device):
                                                   meta["sigma_eps"])], axis=1)
     ptr = build_last_token_targets(Ztr, tr["mu"], tr["sd"], geom, detrend=not args.no_detrend)
     pte = build_last_token_targets(Zte, te["mu"], te["sd"], geom, detrend=not args.no_detrend)
+    pva = None
+    if has_val:
+        Zva = np.concatenate([w["X_val"],
+                              raw_future_from_arcsinh(w["X_val"], w["Y_val_traj"],
+                                                      meta["sigma_eps"])], axis=1)
+        pva = build_last_token_targets(Zva, va["mu"], va["sd"], geom,
+                                       detrend=not args.no_detrend)
+        assert_target_roundtrip(Zva, pva["targets"], pva["trend"], va["mu"], va["sd"], geom,
+                                pva["valid"], rtol=args.roundtrip_rtol)
     rt_tr = assert_target_roundtrip(Ztr, ptr["targets"], ptr["trend"], tr["mu"], tr["sd"],
                                     geom, ptr["valid"], rtol=args.roundtrip_rtol)
     rt_te = assert_target_roundtrip(Zte, pte["targets"], pte["trend"], te["mu"], te["sd"],
@@ -149,9 +344,12 @@ def run_dataset(tag, args, geom, paths, model, device):
     # ---- probes ----
     scores, diag = last_token_layerwise(
         tr["feats"], ptr["targets"], ptr["valid"], te["feats"], pte["targets"], pte["valid"],
+        val_feats=(va["feats"] if has_val else None),
+        val_targets=(pva["targets"] if has_val else None),
+        val_valid=(pva["valid"] if has_val else None),
         H=geom.H, epochs=args.probe_epochs, lr=args.probe_lr,
         wd_grid=None if args.no_wd_grid else tuple(args.wd_grid), device=device,
-        batch_size=args.probe_batch_size, layers=layers,
+        null_wd=args.null_wd, batch_size=args.probe_batch_size, layers=layers,
         collect_history=args.collect_history)
     rows = diag["test_rows"]
 
@@ -205,7 +403,9 @@ def run_dataset(tag, args, geom, paths, model, device):
     ti = layers.index(tun["layer"])
 
     entry = {
-        "tag": tag, "layers": layers, "layer_names": [LAYER_NAMES[i] for i in layers],
+        "tag": tag, "short": short, "kind": kind, "suite": args.suite,
+        "window_identity": ident, "val_source": diag["val_source"],
+        "layers": layers, "layer_names": [LAYER_NAMES[i] for i in layers],
         "partial_layer_set": partial, "geometry": geom.as_dict(), "window_meta": meta,
         "quantiles": diag["quantiles"], "num_quantiles": diag["num_quantiles"],
         "objective": "mean pinball loss over H*Q terms (1/(H*Q) sum_t sum_q rho_tau)",
@@ -217,6 +417,18 @@ def run_dataset(tag, args, geom, paths, model, device):
         "test_per_quantile_loss": {str(i): diag["test_per_quantile"][i] for i in layers},
         "weight_decay": [diag["wd"][i] for i in layers],
         "wd_at_grid_edge": [diag["wd_at_grid_edge"][i] for i in layers],
+        "wd_grid": [float(x) for x in (args.wd_grid if not args.no_wd_grid else [])],
+        "nonfinite_wd_candidates": [diag["nonfinite_wd_candidates"].get(i, 0) for i in layers],
+        "null_baseline": {"wd": float(args.null_wd),
+                          "val_loss": [(diag["null_baseline"].get(i) or {}).get("val_loss")
+                                       for i in layers],
+                          "test_q9_loss": [(diag["null_baseline"].get(i) or {}).get("test_q9")
+                                           for i in layers],
+                          "test_median_loss": [(diag["null_baseline"].get(i) or {}
+                                                ).get("test_median_loss") for i in layers],
+                          "max_abs_weight": [(diag["null_baseline"].get(i) or {}
+                                              ).get("max_abs_weight") for i in layers],
+                          "selected": False} if args.null_wd else None,
         "wd_selection": {str(i): diag["selection"][i] for i in layers},
         "n_train_rows": [diag["n_train_rows"][i] for i in layers],
         "n_val_windows": diag["n_val_rows"], "n_test_windows_scored": diag["n_test_rows"],
@@ -277,8 +489,8 @@ def run_dataset(tag, args, geom, paths, model, device):
           f"native {nat_mase_pw.mean():.4f}   [{entry['seconds']}s]")
     if any(entry["wd_at_grid_edge"]):
         edge = [LAYER_NAMES[i] for i, e in zip(layers, entry["wd_at_grid_edge"]) if e]
-        print(f"  [warn] weight decay selected the GRID MAXIMUM at {edge} -- validation may "
-              "still be improving past the grid; widen --wd-grid to check")
+        print(f"  [warn] weight decay selected the GRID MAXIMUM ({max(args.wd_grid):g}) at "
+              f"{edge} -- validation may still be improving past the grid; widen --wd-grid")
     return entry
 
 
@@ -299,7 +511,9 @@ def save_bootstrap_inputs(tag, entry, sid, q9_pw, med_pw, mase_pw, nat, nat_mase
         if not np.isfinite(a).all():
             raise RuntimeError(f"{tag}: non-finite values in {k}")
     meta = {"model": "timesfm-3.0", "experiment": "last_token_q9", "last_token_only": True,
-            "prefix_extraction": False, "tag": tag,
+            "prefix_extraction": False, "tag": tag, "short": entry["short"],
+            "kind": entry["kind"], "suite": entry["suite"],
+            "val_source": entry["val_source"], "window_identity": entry["window_identity"],
             "C": entry["geometry"]["C"], "H": entry["geometry"]["H"],
             "selected_token_index": entry["geometry"]["selected_token_index"],
             "num_real_context_patches": entry["geometry"]["num_real_context_patches"],
@@ -330,20 +544,29 @@ def save_bootstrap_inputs(tag, entry, sid, q9_pw, med_pw, mase_pw, nat, nat_mase
 # --------------------------------------------------------------------------- #
 
 def _panels(ds, ylab, title, paths, name, draw):
+    """One panel per dataset, PT-ID row(s) first then PT-OOD, at most 4 panels per row."""
+    import math
+
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
     n = len(ds)
-    fig, ax = plt.subplots(1, n, figsize=(4.3 * n, 3.9), squeeze=False)
-    for a, e in zip(ax[0], ds):
+    ncol = min(4, n)
+    nrow = math.ceil(n / ncol)
+    fig, ax = plt.subplots(nrow, ncol, figsize=(4.3 * ncol, 3.9 * nrow), squeeze=False)
+    axes = [a for row in ax for a in row]
+    for a, e in zip(axes, ds):
         draw(a, e)
-        a.set_title(e["tag"], fontsize=10)
+        a.set_title(f"{e.get('short', e['tag'])}  ({e.get('kind', '?')})", fontsize=10)
         a.set_xlabel("representation point")
         a.set_xticks(e["layers"][::2])
         a.set_xticklabels(e["layer_names"][::2], rotation=45, fontsize=7)
         a.grid(alpha=0.3)
-    ax[0][0].set_ylabel(ylab)
-    ax[0][0].legend(fontsize=7)
+    for a in axes[n:]:
+        a.set_visible(False)
+    for r in range(nrow):
+        ax[r][0].set_ylabel(ylab)
+    axes[0].legend(fontsize=7)
     fig.suptitle(title, fontsize=11)
     fig.tight_layout()
     p = paths["fig"] / name
@@ -353,7 +576,11 @@ def _panels(ds, ylab, title, paths, name, draw):
 
 
 def make_figures(summary, paths):
-    ds = list(summary["datasets"].values())
+    # PT-ID panels first, then PT-OOD -- the Chronos-2 paper's ordering
+    order = {"PT-ID": 0, "PT-OOD": 1}
+    ds = sorted(summary["datasets"].values(),
+                key=lambda e: (order.get(e.get("kind"), 2), list(PAPER7).index(e["tag"])
+                               if e["tag"] in PAPER7 else 99))
     if not ds:
         return
 
@@ -374,6 +601,10 @@ def make_figures(summary, paths):
                label="validation (selects the entrance)")
         a.axhline(e["native"]["q9_loss"], ls="--", c="crimson", lw=1.2,
                   label="native TimesFM-3 (Q=9)")
+        nb = e.get("null_baseline")
+        if nb and any(v is not None for v in nb["test_q9_loss"]):
+            a.plot(e["layers"], nb["test_q9_loss"], "-", lw=1, color="0.55", alpha=0.9,
+                   label=f"null (wd={nb['wd']:g}, ~bias-only)")
         tun_line(a, e)
     _panels(ds, "mean pinball loss over the 9 native quantiles",
             "TimesFM-3 last-context token (index 15), C=512 -> H=64, native Q=9 objective",
@@ -455,8 +686,22 @@ def parse_args(argv=None):
                    help="cuda | mps | cpu [default: auto]")
 
     g = p.add_argument_group("data")
-    g.add_argument("--dataset-set", default=os.environ.get("ID_DATASET_SET", "extended_v1"))
-    g.add_argument("--datasets", nargs="+", default=None)
+    g.add_argument("--suite", "--dataset-set", dest="suite",
+                   default=os.environ.get("TFM3_SUITE", "paper7"),
+                   help="'paper7' = the Chronos-2 headline seven (PT-ID: m4_hourly, "
+                        "monash_electricity_hourly, uber_tlc_hourly, wind_farms_hourly; PT-OOD: "
+                        "sg_carpark, coastal_ts, boom_hourly), windowed exactly as the Chronos-2 "
+                        "run. Any id_data.ID_DATASET_SPECS key also works (e.g. extended_v1, "
+                        "which is the KDD/pedestrian implementation-validation set)")
+    g.add_argument("--datasets", nargs="+", default=None,
+                   help="subset of the suite's roster (default: all of it)")
+    g.add_argument("--allow-window-mismatch", action="store_true",
+                   help="report, instead of aborting on, a disagreement with the committed "
+                        "Chronos-2 windows (NOT recommended: the two models would be scored on "
+                        "different data)")
+    g.add_argument("--audit-only", action="store_true",
+                   help="build the windows, print the per-dataset audit + Chronos-2 parity, and "
+                        "exit WITHOUT loading the model or fitting anything")
     g.add_argument("--context-len", type=int, default=512)
     g.add_argument("--horizon", type=int, default=64)
     g.add_argument("--stride", type=int, default=64)
@@ -491,8 +736,16 @@ def parse_args(argv=None):
     g.add_argument("--probe-batch-size", type=int, default=0,
                    help="0 = full batch (the Chronos-2 protocol)")
     g.add_argument("--wd-grid", type=float, nargs="+",
-                   default=[1e-5, 1e-4, 1e-3, 1e-2, 1e-1, 3e-1, 1.0, 3.0],
-                   help="probes.WD_GRID_V2")
+                   default=list(WD_GRID_LAST_TOKEN),
+                   help="hyperparameter-SELECTION grid: probes.WD_GRID_V2 extended by 10/30. It "
+                        "stops there on purpose -- at lr=1e-2, wd=100 (lr*wd=1) zeroes the "
+                        "weight every step and wd=300 (lr*wd=3) makes the decoupled decay "
+                        "unstable, so selecting either would report an optimizer artifact")
+    g.add_argument("--null-wd", type=float, default=WD_NULL_BASELINE,
+                   help="extreme-decay NULL BASELINE fitted per layer and reported alongside the "
+                        "probe, never a selection candidate: the weight is zeroed each step, so "
+                        "it is ~a bias-only (marginal-quantile) fit = the no-information floor. "
+                        "0 disables it")
     g.add_argument("--no-wd-grid", action="store_true")
     g.add_argument("--collect-history", action="store_true")
 
@@ -515,7 +768,6 @@ def main(argv=None):
 
     import torch
     from probing import config
-    from probing.id_data import ID_DATASET_SPECS
     from probing.timesfm3_last_token import (CACHE_VERSION, LAST_LAYER, NUM_LAYERS,
                                              NUM_QUANTILES, LastTokenGeometry,
                                              assert_backbone_frozen, assert_native_geometry,
@@ -524,14 +776,22 @@ def main(argv=None):
 
     np.random.seed(args.seed)
     torch.manual_seed(args.seed)
-    config.set_dataset_set(args.dataset_set)
-    tags = args.datasets or list(ID_DATASET_SPECS[args.dataset_set])
-    unknown = [t for t in tags if t not in ID_DATASET_SPECS[args.dataset_set]]
+    roster = suite_tags(args.suite)
+    if args.suite == "paper7":
+        # the PT-ID roster + rolling windows + budgets live in this dataset set; PT-OOD targets
+        # are outside ID_DATASET_SPECS and come from their own loaders (run_native_head_adapter
+        # sets the same set once, globally, for the same reason).
+        config.set_dataset_set(PTID_SET)
+    else:
+        config.set_dataset_set(args.suite)
+    tags = args.datasets or roster
+    unknown = [t for t in tags if t not in roster]
     if unknown:
-        raise SystemExit(f"unknown dataset tag(s) {unknown} for set {args.dataset_set}")
+        raise SystemExit(f"unknown dataset tag(s) {unknown} for suite {args.suite!r}; "
+                         f"roster = {roster}")
 
     out_root = Path(args.out_root).expanduser() if args.out_root else REPO_ROOT / "results"
-    name = f"timesfm3_last_token_{args.dataset_set}_q9" + (f"_{args.tag}" if args.tag else "")
+    name = f"timesfm3_last_token_{args.suite}_q9" + (f"_{args.tag}" if args.tag else "")
     out = out_root / name
     paths = {"out": out, "boot": out / "bootstrap", "fig": out / "figures",
              "cache": (Path(args.cache_dir).expanduser() if args.cache_dir
@@ -541,6 +801,23 @@ def main(argv=None):
     paths["cache"].mkdir(parents=True, exist_ok=True)
 
     geom = LastTokenGeometry(args.context_len, args.horizon)      # strict: asserts 512/64/16/15
+
+    # windows FIRST, so a roster/window problem costs no GPU time at all
+    print(f"TimesFM-3 last-token probing -- suite {args.suite!r}: {len(tags)} datasets")
+    windows, idents = {}, []
+    for tag in tags:
+        windows[tag] = windows_for(tag, args.suite, args)
+        idents.append(assert_window_parity(tag, windows[tag], chronos_reference(tag),
+                                           strict=not args.allow_window_mismatch))
+    print_roster_audit(idents)
+    if args.audit_only:
+        audit_path = out / "window_audit.json"
+        out.mkdir(parents=True, exist_ok=True)
+        audit_path.write_text(json.dumps({"suite": args.suite, "datasets": idents}, indent=2,
+                                         default=str))
+        print(f"\n[saved] {audit_path}\n[audit-only] no model was loaded, nothing was fitted.")
+        return {"config": {**vars(args)}, "window_audit": idents}
+
     model, device = get_model(args.checkpoint, args.device)
     n_par = assert_backbone_frozen(model)
     qinfo = assert_native_quantiles(model)
@@ -567,6 +844,21 @@ def main(argv=None):
           f"{row['target_end_1based']}] (1-based), shape {row['transformed_target_shape']}")
     print(f"  probe                     = {row['probe']} per point, "
           f"{NUM_LAYERS} points Emb..L{NUM_LAYERS - 1}")
+    hot = [w for w in args.wd_grid if args.probe_lr * w >= 1.0]
+    print(f"  wd grid    : {len(args.wd_grid)} candidates "
+          f"{min(args.wd_grid):g}..{max(args.wd_grid):g} (max lr*wd = "
+          f"{args.probe_lr * max(args.wd_grid):g}), selected per layer on VALIDATION")
+    if args.null_wd:
+        print(f"  null base  : wd={args.null_wd:g} (lr*wd="
+              f"{args.probe_lr * args.null_wd:g}) fitted per layer and REPORTED, never selected "
+              "-- weight zeroed each step, so ~a bias-only / marginal-quantile fit")
+    if hot:
+        raise SystemExit(
+            f"--wd-grid contains {[float(w) for w in hot]}, for which lr*wd >= 1 at "
+            f"lr={args.probe_lr:g}: AdamW's decoupled decay multiplies the weight by (1 - lr*wd) "
+            "each step, so these are optimizer artifacts (bias-only at lr*wd=1, unstable beyond) "
+            "rather than regularization strengths. Use --null-wd for the extreme-decay reference, "
+            "or lower --probe-lr if you really mean to search there.")
     print(f"  cache      : {paths['cache']}  ({CACHE_VERSION})")
     print(f"  out        : {out}")
 
@@ -576,10 +868,15 @@ def main(argv=None):
                           "device": device, "n_backbone_param_tensors": n_par,
                           "backbone_frozen": True, "geometry": geom.as_dict(),
                           "native_quantiles": qinfo, "native_geometry": ginfo,
-                          "audit_row": row},
+                          "audit_row": row, "suite": args.suite, "roster": tags,
+                          "pt_id_tags": list(PT_ID_TAGS), "pt_ood_tags": list(PT_OOD_TAGS),
+                          "ptid_dataset_set": PTID_SET,
+                          "chronos_reference_root": str(CHRONOS_REF_ROOT.relative_to(REPO_ROOT))},
+               "window_audit": idents,
                "datasets": {}}
-    for tag in tags:
-        summary["datasets"][tag] = run_dataset(tag, args, geom, paths, model, device)
+    for tag, ident in zip(tags, idents):
+        summary["datasets"][tag] = run_dataset(tag, args, geom, paths, model, device,
+                                               windows=windows.pop(tag), ident=ident)
 
     sp = out / "timesfm3_last_token_summary.json"
     sp.write_text(json.dumps(summary, indent=2, default=str))
@@ -589,17 +886,24 @@ def main(argv=None):
 
     print(f"\n{'=' * 100}\nSUMMARY - forecasting tunnel on the native Q=9 objective, and L20 vs "
           f"the native head\n{'=' * 100}")
-    print(f"{'dataset':<30}{'tun5%':>7}{'tun2%':>7}{'L(tun)':>9}{'L(L20)':>9}{'native':>9}"
-          f"{'gap':>8}{'rel':>7}{'MASE L20':>10}{'nat MASE':>10}")
+    print(f"{'dataset':<16}{'kind':<8}{'tun5%':>7}{'tun2%':>7}{'L(tun)':>9}{'L(L20)':>9}"
+          f"{'native':>9}{'gap':>8}{'rel':>7}{'MASE L20':>10}{'nat MASE':>10}")
+    last_kind = None
     for tag, e in summary["datasets"].items():
         c, t = e["l20_vs_native"], e["tunnel"]
-        print(f"{tag:<30}{t['layer_name']:>7}{e['tunnel_by_tolerance']['0.02']['layer_name']:>7}"
+        if last_kind is not None and e["kind"] != last_kind:
+            print("-" * 100)
+        last_kind = e["kind"]
+        print(f"{e['short']:<16}{e['kind']:<8}{t['layer_name']:>7}"
+              f"{e['tunnel_by_tolerance']['0.02']['layer_name']:>7}"
               f"{e['at_tunnel_entrance']['test_q9_loss']:>9.5f}{c['probe_q9_loss']:>9.5f}"
               f"{c['native_q9_loss']:>9.5f}{c['q9_absolute_gap']:>8.4f}"
               f"{c['q9_relative_gap']:>6.0%}{c['probe_median_mase']:>10.4f}"
               f"{c['native_median_mase']:>10.4f}")
     print("\n  tun5%/tun2% are VALIDATION-selected first crossings of (1+tol)*L_val(L20);\n"
-          "  L(tun)/L(L20)/native are TEST mean pinball losses over the 9 native quantiles.")
+          "  L(tun)/L(L20)/native are TEST mean pinball losses over the 9 native quantiles.\n"
+          "  PT-ID = in Chronos-2's pretraining corpus, PT-OOD = documented outside it "
+          "(probing/tunnel.py).")
     return summary
 
 

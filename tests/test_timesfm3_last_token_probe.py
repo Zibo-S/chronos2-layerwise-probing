@@ -18,6 +18,8 @@ Numbered to the spec's required-tests list:
      8 reshape has the native (H, Q) geometry     19 end-to-end probe smoke fit
      9 native quantile ORDER verified             20 5% tunnel entrance is correct
     10 Q=9 pinball vs a hand-computed example     21 the old shared-origin cache cannot load
+    22 the paper7 roster IS the Chronos-2 seven    23 window parity vs the committed Chronos-2 run
+    24 the dedicated-validation protocol           25 the wd grid + the null baseline
 
 NOTHING here is weakened to make a run pass: a failure means a geometry, layout, quantile,
 preprocessing or cache assumption is wrong and must be investigated.
@@ -46,11 +48,13 @@ from probing.timesfm3_last_token import (CACHE_VERSION, LAYER_NAMES, LAST_LAYER,
                                          context_detrend_params, context_trend, denormalize,
                                          raw_future_from_arcsinh, read_cache, safe_sigma,
                                          select_last_token)
-from probing.timesfm3_last_token_probes import (fit_last_token_probe,  # noqa: E402
-                                                last_token_layerwise, make_probe,
-                                                median_pinball_per_window, pinball_loss,
-                                                pinball_loss_per_window, reshape_prediction,
-                                                tunnel_entrance, tunnel_entrances)
+from probing.timesfm3_last_token_probes import (WD_GRID_LAST_TOKEN,  # noqa: E402
+                                                WD_NULL_BASELINE,
+                                                fit_last_token_probe, last_token_layerwise,
+                                                make_probe, median_pinball_per_window,
+                                                pinball_loss, pinball_loss_per_window,
+                                                reshape_prediction, tunnel_entrance,
+                                                tunnel_entrances)
 
 C, H, P, D, Q, NPATCH, TOK, NTOK = 512, 64, 32, MODEL_DIMS, NUM_QUANTILES, 16, 15, 18
 
@@ -371,8 +375,9 @@ def test_smoke_fit():
     assert diag["val_loss"][0] == min(diag["selection"][0]["val_loss_by_wd"].values())
     assert diag["quantiles"] == NATIVE_QUANTILES.tolist()
     # the carve splits WINDOWS and is disjoint
-    assert not set(diag["carve_train_windows"]) & set(diag["carve_val_windows"])
-    assert len(diag["carve_train_windows"]) + len(diag["carve_val_windows"]) == n_tr
+    assert diag["val_source"] == "carve_80_20"
+    assert not set(diag["selection_train_windows"]) & set(diag["validation_windows"])
+    assert len(diag["selection_train_windows"]) + len(diag["validation_windows"]) == n_tr
     # 13 (model-free half): the probe receives gradients from the Q=9 objective
     lin = make_probe(Hs, Q, "cpu")
     X = torch.as_tensor(Ftr[:16])
@@ -477,6 +482,215 @@ def test_cache_isolation():
         # nothing there yet -> None (the caller extracts), never a silent empty hit
         assert read_cache(td / "nope", meta_new, X, layers) is None
     print(" 21  the (N,16,1280) shared-origin cache can NEVER load under the new tag    OK")
+
+
+# ------------------------------------------------------------------ 22
+def test_paper7_roster():
+    """The headline roster is the Chronos-2 seven, taken from the Chronos-2 sources."""
+    import experiments.make_id_paper_figures as paper
+    from experiments.run_timesfm3_last_token_probing import (KIND, PAPER7, PTID_SET, SHORT,
+                                                             suite_tags)
+    from probing.tunnel import PT_ID_TAGS, PT_OOD_TAGS
+
+    seven = suite_tags("paper7")
+    assert seven == list(PT_ID_TAGS) + list(PT_OOD_TAGS) == list(PAPER7), seven
+    assert set(seven) == {"m4_hourly", "monash_electricity_hourly", "uber_tlc_hourly",
+                          "wind_farms_hourly", "sg_carpark", "coastal_ts", "boom_hourly"}
+    assert len(seven) == 7 and len(set(seven)) == 7
+    # KDD and pedestrian are OUT of the headline default, but still reachable
+    for t in ("monash_kdd_cup_2018", "monash_pedestrian_counts"):
+        assert t not in seven, f"{t} must not be in the headline suite"
+        assert t in suite_tags("extended_v1"), f"{t} must stay available via extended_v1"
+    # PT-ID windows come from the rolling set; naming matches the paper figures exactly
+    assert PTID_SET == "extended_v3_rolling"
+    assert all(SHORT[t] == paper.SHORT[t] for t in seven), \
+        "display names must equal make_id_paper_figures.SHORT"
+    assert [SHORT[t] for t in PT_ID_TAGS] == ["Electricity", "Uber TLC", "M4", "Wind Farms"]
+    assert [SHORT[t] for t in PT_OOD_TAGS] == ["SG Carpark", "Coastal T-S", "BOOM"]
+    assert {KIND[t] for t in PT_ID_TAGS} == {"PT-ID"}
+    assert {KIND[t] for t in PT_OOD_TAGS} == {"PT-OOD"}
+    print(" 22  paper7 roster == PT_ID_TAGS + PT_OOD_TAGS; names == paper figures     OK")
+
+
+# ------------------------------------------------------------------ 23
+def test_window_parity_against_chronos():
+    """The parity check really reads the committed Chronos-2 artifacts, and really fails."""
+    from experiments.run_timesfm3_last_token_probing import (PAPER7, assert_window_parity,
+                                                             chronos_reference, window_identity)
+    seen = 0
+    for tag in PAPER7:
+        ref = chronos_reference(tag)
+        if ref is None:                       # artifacts not in this checkout
+            continue
+        seen += 1
+        c, sid = ref["config"], ref["series_test"]
+        assert c["C"] == C and c["H"] == H and c["seasonal_m"] == 24
+        assert len(sid) == c["n_test"], (tag, len(sid), c["n_test"])
+        # a window dict that MATCHES the committed run
+        w = {"X_train": np.zeros((c["n_train"], C), np.float32),
+             "X_val": np.zeros((c["n_val"], C), np.float32),
+             "X_test": np.zeros((c["n_test"], C), np.float32),
+             "series_test": sid.copy(),
+             "meta": {"C": c["C"], "H": c["H"], "m_season": c["seasonal_m"],
+                      "split_mode": "rolling_origin_within_series"}}
+        ident = assert_window_parity(tag, w, ref)
+        assert ident["parity_ok"] and ident["chronos_parity"] == "match", ident
+        assert ident["n_test_windows"] == c["n_test"]
+        assert ident["n_test_series"] == len(np.unique(sid))
+        assert ident["kind"] in ("PT-ID", "PT-OOD")
+        assert len(ident["first_test_identifiers"]) == min(6, c["n_test"])
+        # ... and every way of being wrong must ABORT
+        for mutate, why in [
+                (lambda d: d.update(series_test=np.roll(d["series_test"], 1)), "shuffled series"),
+                (lambda d: d.update(series_test=d["series_test"][:-1],
+                                    X_test=d["X_test"][:-1]), "one window short"),
+                (lambda d: d.update(X_train=d["X_train"][:-3]), "fewer train windows"),
+                (lambda d: d["meta"].update(C=256), "wrong context length")]:
+            bad = {**w, "meta": dict(w["meta"]), "series_test": w["series_test"].copy()}
+            mutate(bad)
+            try:
+                assert_window_parity(tag, bad, ref)
+            except RuntimeError as e:
+                assert "WINDOW PARITY FAILED" in str(e)
+            else:
+                raise AssertionError(f"{tag}: {why} must fail parity")
+            # non-strict mode reports instead of raising
+            rep = assert_window_parity(tag, bad, ref, strict=False)
+            assert rep["parity_ok"] is False and rep["parity_failures"]
+        # no committed reference -> reported, never silently "ok"
+        none_id = window_identity(tag, w)
+        assert "parity_ok" not in none_id
+    if seen == 0:
+        raise AssertionError("no committed Chronos-2 reference found under "
+                             "results/ext_v5_native_head_adapter — cannot verify window parity")
+    print(f" 23  window parity vs the committed Chronos-2 run: {seen}/7 datasets have "
+          f"artifacts; mismatches abort  OK")
+
+
+# ------------------------------------------------------------------ 24
+def test_explicit_validation_protocol():
+    """A dedicated val split is used as-is; without one the 80/20 carve still runs."""
+    Hs, n_tr, n_va, n_te, k = 4, 120, 40, 40, 12
+    rng = np.random.default_rng(3)
+    W = rng.normal(0, 0.5, (k, Hs))
+
+    def mk(m, seed):
+        r = np.random.default_rng(seed)
+        F = np.zeros((m, D), np.float32)
+        F[:, :k] = r.normal(0, 1, (m, k))
+        return F, (F[:, :k] @ W).astype(np.float32), np.ones(m, bool)
+
+    Ftr, Ttr, Vtr = mk(n_tr, 1)
+    Fva, Tva, Vva = mk(n_va, 2)
+    Fte, Tte, Vte = mk(n_te, 3)
+    kw = dict(H=Hs, epochs=30, lr=5e-2, wd_grid=(1e-3, 1e-1), layers=[20], device="cpu",
+              verbose=False)
+    sc_x, dx = last_token_layerwise({20: Ftr}, Ttr, Vtr, {20: Fte}, Tte, Vte,
+                                    val_feats={20: Fva}, val_targets=Tva, val_valid=Vva, **kw)
+    assert dx["val_source"] == "explicit_temporal_split"
+    assert dx["n_val_rows"] == n_va, dx["n_val_rows"]
+    # selection fits on the FULL train split, and that model is kept (no refit)
+    assert dx["n_train_rows"][20] == n_tr, dx["n_train_rows"]
+    assert np.array_equal(dx["selection_train_windows"], np.arange(n_tr))
+    assert dx["val_loss"][20] == min(dx["selection"][20]["val_loss_by_wd"].values())
+
+    sc_c, dc = last_token_layerwise({20: Ftr}, Ttr, Vtr, {20: Fte}, Tte, Vte, **kw)
+    assert dc["val_source"] == "carve_80_20"
+    assert dc["n_val_rows"] == max(1, int(0.2 * n_tr)) == 24
+    assert dc["n_train_rows"][20] == n_tr                       # refit on ALL train windows
+    assert len(dc["selection_train_windows"]) == n_tr - dc["n_val_rows"]
+    assert not set(dc["selection_train_windows"]) & set(dc["validation_windows"])
+    # the val split is never mistaken for test: both protocols score the same test windows
+    assert dx["n_test_rows"] == dc["n_test_rows"] == n_te
+    for d in (dx, dc):
+        assert d["test_q9_window"][20].shape == (n_te,)
+    # a val split with the wrong horizon is refused
+    try:
+        last_token_layerwise({20: Ftr}, Ttr, Vtr, {20: Fte}, Tte, Vte,
+                             val_feats={20: Fva}, val_targets=Tva[:, :2], **kw)
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("a val target with the wrong horizon must be rejected")
+    print(" 24  explicit val: full-train fit + no refit; carve fallback intact         OK")
+
+
+# ------------------------------------------------------------------ 25
+def test_weight_decay_grid_and_null_baseline():
+    """Selection stops at 30; 100 is a reported-but-never-selected null; 300/1e9 stay fixtures."""
+    import sys as _sys
+
+    from probing.probes import WD_GRID_V2
+    want = [1e-5, 1e-4, 1e-3, 1e-2, 1e-1, 0.3, 1.0, 3.0, 10.0, 30.0]
+    assert list(WD_GRID_LAST_TOKEN) == want, list(WD_GRID_LAST_TOKEN)
+    assert len(WD_GRID_LAST_TOKEN) == 10
+    assert list(WD_GRID_LAST_TOKEN[:len(WD_GRID_V2)]) == list(WD_GRID_V2), \
+        "must EXTEND probes.WD_GRID_V2, not replace it"
+    assert list(WD_GRID_V2) == [1e-5, 1e-4, 1e-3, 1e-2, 1e-1, 0.3, 1.0, 3.0], \
+        "the shared Chronos-2 grid must stay untouched"
+    assert sorted(WD_GRID_LAST_TOKEN) == list(WD_GRID_LAST_TOKEN), "must be increasing"
+    # the degenerate regimes are OUT of hyperparameter selection
+    for bad in (100.0, 300.0):
+        assert bad not in WD_GRID_LAST_TOKEN, f"wd={bad} must not be a selection candidate"
+    assert max(WD_GRID_LAST_TOKEN) * 1e-2 <= 0.3, "max lr*wd must stay well below 1"
+    assert WD_NULL_BASELINE == 100.0 and WD_NULL_BASELINE not in WD_GRID_LAST_TOKEN
+
+    # the driver ships exactly this grid + the null, and REFUSES a degenerate grid
+    argv, _sys.argv = _sys.argv, ["x"]
+    try:
+        from experiments.run_timesfm3_last_token_probing import parse_args
+        a = parse_args([])
+        assert a.wd_grid == want and a.null_wd == WD_NULL_BASELINE
+        assert [w for w in a.wd_grid if a.probe_lr * w >= 1.0] == []
+    finally:
+        _sys.argv = argv
+
+    # measured behaviour at lr=1e-2 (the numbers the module docstring quotes)
+    Hs, q = 4, torch.as_tensor(NATIVE_QUANTILES)
+    rng = np.random.default_rng(0)
+    X = torch.as_tensor(rng.normal(0, 1, (60, D)).astype(np.float32))
+    y = torch.as_tensor(rng.normal(0, 1, (60, Hs)).astype(np.float32))
+    wmax = {}
+    for wd in (1e-5, 30.0, 100.0, 300.0):                 # 300 = failure-handling fixture only
+        m = fit_last_token_probe(X, y, q, Hs, wd, 30, 1e-2, "cpu")
+        wmax[wd] = float(m.weight.detach().abs().max())
+    assert wmax[100.0] < wmax[30.0] < wmax[1e-5], wmax    # decay shrinks the weight...
+    assert wmax[300.0] > 1e3 * wmax[1e-5], wmax           # ...until lr*wd > 2 blows it up
+    assert wmax[100.0] < 2e-2, wmax                       # ~one Adam step of weight = bias-only-ish
+
+    # the null baseline is fitted, reported, and NEVER selected
+    n, k = 120, 12
+    F = np.zeros((n, D), np.float32)
+    F[:, :k] = rng.normal(0, 1, (n, k))
+    T = (F[:, :k] @ rng.normal(0, 0.5, (k, Hs))).astype(np.float32)
+    V = np.ones(n, bool)
+    sc, dg = last_token_layerwise({20: F}, T, V, {20: F}, T, V, H=Hs, epochs=40, lr=1e-2,
+                                  wd_grid=(1e-3, 1e-1), layers=[20], device="cpu", verbose=False)
+    nb = dg["null_baseline"][20]
+    assert nb["wd"] == WD_NULL_BASELINE and nb["selected"] is False
+    assert dg["wd"][20] in (1e-3, 1e-1), dg["wd"][20]
+    assert nb["max_abs_weight"] < 2e-2, nb
+    assert nb["test_q9"] > sc[20], (nb["test_q9"], sc[20])   # the probe beats the no-info floor
+    assert "bias-only" in nb["note"]
+    # a null that is ALSO in the grid is refused outright
+    try:
+        last_token_layerwise({20: F}, T, V, {20: F}, T, V, H=Hs, epochs=5, lr=1e-2,
+                             wd_grid=(1e-3, 100.0), null_wd=100.0, layers=[20], device="cpu",
+                             verbose=False)
+    except ValueError as e:
+        assert "SELECTION candidate" in str(e)
+    else:
+        raise AssertionError("null_wd inside the selection grid must be refused")
+    # a grid on which EVERY candidate diverges must RAISE, not return a garbage probe
+    try:
+        last_token_layerwise({20: F}, T, V, {20: F}, T, V, H=Hs, epochs=30, lr=1e-2,
+                             wd_grid=(1e9,), null_wd=0, layers=[20], device="cpu", verbose=False)
+    except RuntimeError as e:
+        assert "non-finite validation loss" in str(e), str(e)
+    else:
+        raise AssertionError("an all-divergent weight-decay grid must raise")
+    print(" 25  selection grid 1e-5..30 (max lr*wd 0.3); wd=100 null reported not selected;")
+    print("     wd=300/1e9 only as failure fixtures; all-NaN grid raises                   OK")
 
 
 # ------------------------------------------------------------------ 11, 12 (helpers)
@@ -631,6 +845,8 @@ if __name__ == "__main__":
     for fn in (test_geometry, test_token_selection, test_probe_shape_and_layout,
                test_native_quantiles, test_pinball_hand_computed, test_preprocessing,
                test_tunnel_entrance, test_smoke_fit, test_cache_isolation,
+               test_paper7_roster, test_window_parity_against_chronos,
+               test_explicit_validation_protocol, test_weight_decay_grid_and_null_baseline,
                test_freeze_helpers):
         fn()
     if "--with-model" in sys.argv:

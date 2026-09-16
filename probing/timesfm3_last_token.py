@@ -639,8 +639,14 @@ def verify_native_head(model, last_states, official, revin_stats, X_batch,
 # --------------------------------------------------------------------------- #
 
 def cache_metadata(tag, split, geom: LastTokenGeometry, *, checkpoint, detrend, layers, seed,
-                   feature_dtype=np.float32) -> dict:
-    """Everything that could change a feature value. Any disagreement REJECTS the cache."""
+                   feature_dtype=np.float32, suite="unspecified", n_windows=None) -> dict:
+    """Everything that could change a feature value. Any disagreement REJECTS the cache.
+
+    ``suite`` is the WINDOW SUITE the split came from (e.g. "paper7" -> rolling-origin windows,
+    "extended_v1" -> the legacy auto-split ones). It is part of both the metadata and the cache
+    directory name because the SAME dataset tag yields DIFFERENT windows under different suites
+    (electricity and uber appear in both), so without it the two would collide on one path.
+    ``n_windows`` pins the row count as a second, cheap guard next to the context-tail check."""
     return {"cache_version": CACHE_VERSION, "model": "timesfm-3.0", "checkpoint": checkpoint,
             "timesfm_version": timesfm_version(),
             "context_len": geom.C, "horizon": geom.H, "patch_size": geom.P,
@@ -652,11 +658,14 @@ def cache_metadata(tag, split, geom: LastTokenGeometry, *, checkpoint, detrend, 
             "layers": list(layers), "layer_names": [LAYER_NAMES[i] for i in layers],
             "hidden_dim": MODEL_DIMS, "feature_shape_rank": 2,
             "feature_dtype": np.dtype(feature_dtype).name,
-            "detrending": bool(detrend), "dataset": tag, "split": split, "seed": int(seed)}
+            "detrending": bool(detrend), "suite": str(suite), "dataset": tag, "split": split,
+            "seed": int(seed),
+            "n_windows": (None if n_windows is None else int(n_windows))}
 
 
-def cache_root(cache_dir, tag, split, geom: LastTokenGeometry, detrend: bool) -> Path:
-    return Path(cache_dir) / (f"{CACHE_VERSION}__{tag}__{split}__C{geom.C}_H{geom.H}"
+def cache_root(cache_dir, tag, split, geom: LastTokenGeometry, detrend: bool,
+               suite="unspecified") -> Path:
+    return Path(cache_dir) / (f"{CACHE_VERSION}__{suite}__{tag}__{split}__C{geom.C}_H{geom.H}"
                               f"{'' if detrend else '__nodetrend'}")
 
 
@@ -708,13 +717,15 @@ def read_cache(root, meta_expected: dict, X, layers) -> dict | None:
 
 def cached_last_token_features(tag, split, X, *, geom: LastTokenGeometry, cache_dir,
                               checkpoint=None, seed=0, layers=None, detrend=True,
-                              feature_dtype=np.float32, force=False, **kw) -> dict:
+                              feature_dtype=np.float32, suite="unspecified", force=False,
+                              **kw) -> dict:
     """Disk cache, one .npy per representation point (so a probe fit holds ONE layer at a time)."""
     layers = list(range(NUM_LAYERS)) if layers is None else sorted(set(layers))
     checkpoint = checkpoint or DEFAULT_CHECKPOINT
     meta = cache_metadata(tag, split, geom, checkpoint=checkpoint, detrend=detrend,
-                          layers=layers, seed=seed, feature_dtype=feature_dtype)
-    root = cache_root(cache_dir, tag, split, geom, detrend)
+                          layers=layers, seed=seed, feature_dtype=feature_dtype, suite=suite,
+                          n_windows=len(X))
+    root = cache_root(cache_dir, tag, split, geom, detrend, suite)
     X = np.asarray(X, dtype=np.float32)
 
     if not force:

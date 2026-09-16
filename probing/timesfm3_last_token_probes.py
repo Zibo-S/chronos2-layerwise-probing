@@ -23,9 +23,10 @@ equals ``probes.mean_pinball_loss`` and ``probes.chronos2_quantile_loss_per_wind
 the two model lines' metrics are provably one metric up to that documented constant.
 
 Protocol reused from the Chronos-2 / shared-origin pipeline so the lines stay comparable:
-``WD_GRID_V2``, ``SEED``, the 80/20 carve of TRAIN WINDOWS, StandardScaler on the carve for
-selection then refit on full train, AdamW with weight decay on the WEIGHT only, full-batch
-300 epochs.
+``SEED``, the train/validation split protocol, StandardScaler fit on train only, AdamW with
+weight decay on the WEIGHT only, full-batch 300 epochs. The selection grid is
+``WD_GRID_LAST_TOKEN`` = ``probes.WD_GRID_V2`` extended by 10/30 (see the constant), plus a
+separate, never-selected ``WD_NULL_BASELINE`` reference fit.
 
 Why the SAME weight-decay grid transfers despite a different objective SCALE: this objective is
 Chronos-2's / (2Q), but AdamW's decay is DECOUPLED -- the update is
@@ -49,7 +50,43 @@ from probing.timesfm3_last_token import (LAYER_NAMES, MODEL_DIMS, NATIVE_MEDIAN_
                                          safe_sigma)
 from probing.tunnel import tunnel_start
 
-__all__ = ["NATIVE_QUANTILES", "NUM_QUANTILES", "make_probe", "reshape_prediction",
+# SELECTION GRID: the Chronos-2 shared grid extended upward by two stronger candidates. Defined
+# as a superset so the lineage is explicit and probes.WD_GRID_V2 (the Chronos-2 line's grid) stays
+# untouched:
+#     WD_GRID_V2          = 1e-5 1e-4 1e-3 1e-2 1e-1 0.3 1 3
+#     WD_GRID_LAST_TOKEN  = ... + 10 30
+# Why extend at all: this probe is Linear(1280, 576) = 737k parameters fit on 1394 train rows, so
+# the optimum can sit above the old ceiling of 3 -- and a run whose selected wd is the grid MAXIMUM
+# is a clipped grid, not a converged selection (the driver warns when that happens).
+#
+# Why the grid STOPS at 30, at the default lr=1e-2. AdamW's decay is DECOUPLED: each step
+# multiplies the weight by (1 - lr*wd), so beyond lr*wd ~ 1 the optimizer is no longer doing
+# regularized fitting. Measured on synthetic (60 x 1280) features, 30 epochs:
+#     wd=10  (lr*wd=0.1)  max|W| 3.1e-2   val 0.071      normal
+#     wd=30  (lr*wd=0.3)  max|W| 2.1e-2   val 0.049      normal   <- selection ceiling
+#     wd=100 (lr*wd=1)    max|W| 1.0e-2   val 0.072      weight zeroed EVERY step; the fit
+#                                                        collapses toward a bias-only predictor
+#                                                        (for a pinball loss: the marginal
+#                                                        quantile forecast)
+#     wd=300 (lr*wd=3)    max|W| 3.8e+7   val 5.5e+8     |1 - lr*wd| > 1 -> the decay term alone
+#                                                        amplifies the weight with alternating
+#                                                        sign; unstable by construction
+# 100 and 300 are therefore NOT hyperparameter candidates: selecting one would report an optimizer
+# artifact as a probe. 100 is kept -- separately and explicitly labeled -- as the NULL BASELINE
+# below; 300 and larger appear only in the tests, as failure-handling fixtures.
+WD_GRID_LAST_TOKEN = tuple(WD_GRID_V2) + (10.0, 30.0)
+
+# NULL BASELINE (diagnostic only, NEVER in the selection grid). At lr=1e-2 this zeroes the weight
+# matrix at every step, so the fit keeps only about one Adam step of weight (max|W| ~ lr) and
+# predicts essentially from the bias -- i.e. the marginal quantiles of the training targets, using
+# no layer information. Its per-layer loss is the "no linearly decodable information" floor every
+# probe curve should sit below; the fitted max|W| is recorded with it so the label stays a
+# measurement rather than an assumption.
+WD_NULL_BASELINE = 100.0
+
+__all__ = ["NATIVE_QUANTILES", "NUM_QUANTILES", "WD_GRID_LAST_TOKEN", "WD_NULL_BASELINE",
+           "make_probe",
+           "reshape_prediction",
            "pinball_loss", "pinball_loss_per_window", "median_pinball_per_window",
            "per_quantile_loss", "fit_last_token_probe", "last_token_layerwise",
            "native_reference", "tunnel_entrance", "tunnel_entrances"]
@@ -205,19 +242,33 @@ def _carve(n_train: int, seed: int = SEED):
 
 def last_token_layerwise(train_feats, train_targets, train_valid,
                          test_feats, test_targets, test_valid, *, H,
+                         val_feats=None, val_targets=None, val_valid=None,
                          quantiles=NATIVE_QUANTILES, epochs: int = 300, lr: float = 1e-2,
-                         wd_grid=WD_GRID_V2, weight_decay: float = 1e-3, device=None,
+                         wd_grid=WD_GRID_LAST_TOKEN, weight_decay: float = 1e-3,
+                         null_wd: float = WD_NULL_BASELINE, device=None,
                          batch_size: int = 0, layers=None, collect_history: bool = False,
                          verbose: bool = True, model_for_grad_check=None):
     """One independent probe per representation point. Returns ({layer: test Q9 loss}, diag).
 
-    Per layer:
-      1. SELECT weight decay on the 80/20 carve -- scaler AND probe fit on the 80% only, scored
-         on the held-out 20% with the Q=9 objective. ``diag["val_loss"]`` is that number; it is
-         the curve the 5% tunnel entrance is computed from, and it never saw the test split.
-      2. REFIT scaler + probe on ALL valid train windows with the selected weight decay.
-      3. SCORE on test: Q=9 loss (+ per-window for the bootstrap), median-only loss, the median
-         prediction (for MASE, un-transformed by the driver), per-quantile losses.
+    TWO validation protocols, chosen by whether the dataset HAS a dedicated validation split:
+
+    EXPLICIT (``val_feats`` given) -- the rolling-origin sets (id_data.ROLLING_SETS and the
+    PT-OOD rolling builder), where val is a dedicated LATER forecast origin per series. Per
+    layer, the StandardScaler AND the Linear are fit on the FULL train split (validation never
+    touches the scaler or the weights), each weight-decay candidate is scored on val, and the
+    chosen-wd full-train model is KEPT -- no refit, because it is already trained on all of
+    train. This is exactly ``probes.fit_quantile_probe_explicit_val``'s contract, so the
+    Chronos-2 and TimesFM-3 lines select weight decay and the tunnel layer the same way on the
+    same windows.
+
+    CARVE (``val_feats`` omitted) -- the legacy auto-split sets (e.g. extended_v1), where there
+    is no dedicated val split: select on the seed-based 80/20 carve of TRAIN WINDOWS (scaler and
+    probe fit on the 80% only), then REFIT scaler + probe on all valid train windows.
+
+    Either way ``diag["val_loss"]`` is the curve the 5% tunnel entrance is computed from and it
+    never sees test; ``diag["val_source"]`` records which protocol ran. Test scoring is
+    identical: Q=9 loss (+ per-window for the bootstrap), median-only loss, the median
+    prediction (for MASE, un-transformed by the driver), per-quantile losses.
     """
     device = device or ("cuda" if torch.cuda.is_available() else "cpu")
     q_np = validate_quantiles(quantiles)
@@ -233,52 +284,72 @@ def last_token_layerwise(train_feats, train_targets, train_valid,
     test_valid = np.asarray(test_valid, bool).reshape(-1)
     layers = list(range(NUM_LAYERS)) if layers is None else sorted(set(layers))
 
-    va_w, tr_w = _carve(len(train_targets))
-    sel_tr = tr_w[train_valid[tr_w]]
-    sel_va = va_w[train_valid[va_w]]
     all_tr = np.flatnonzero(train_valid)
     te_rows = np.flatnonzero(test_valid)
-    for name, rows in (("carve-train", sel_tr), ("carve-val", sel_va), ("test", te_rows)):
+    explicit = val_feats is not None
+    if explicit:
+        if val_targets is None:
+            raise ValueError("val_feats was given without val_targets")
+        val_targets = np.asarray(val_targets, np.float32)
+        if val_targets.ndim != 2 or val_targets.shape[1] != H:
+            raise ValueError(f"val targets must be (n, {H}), got {val_targets.shape}")
+        val_valid = (np.ones(len(val_targets), bool) if val_valid is None
+                     else np.asarray(val_valid, bool).reshape(-1))
+        sel_tr = all_tr                      # selection fits on the FULL train split
+        va_rows = np.flatnonzero(val_valid)
+        val_source = "explicit_temporal_split"
+    else:
+        va_w, tr_w = _carve(len(train_targets))
+        sel_tr = tr_w[train_valid[tr_w]]
+        va_rows = va_w[train_valid[va_w]]
+        val_feats, val_targets = train_feats, train_targets
+        val_source = "carve_80_20"
+    for name, rows in (("train(selection)", sel_tr), ("validation", va_rows),
+                       ("train(final)", all_tr), ("test", te_rows)):
         if rows.size == 0:
             raise RuntimeError(f"no valid window left in the {name} split")
 
     yte = torch.as_tensor(test_targets[te_rows], device=device)
     ytr_all = torch.as_tensor(train_targets[all_tr], device=device)
     ytr_sel = torch.as_tensor(train_targets[sel_tr], device=device)
-    yva_sel = torch.as_tensor(train_targets[sel_va], device=device)
+    yva_sel = torch.as_tensor(val_targets[va_rows], device=device)
 
     out: dict[int, float] = {}
     diag: dict = {"wd": {}, "selection": {}, "val_loss": {}, "wd_at_grid_edge": {},
+                  "nonfinite_wd_candidates": {}, "null_baseline": {},
                   "history": {}, "train_loss": {}, "test_q9": {}, "test_q9_window": {},
                   "test_median_loss": {}, "test_median_window": {}, "test_median_pred": {},
-                  "test_per_quantile": {}, "n_train_rows": {}, "n_val_rows": int(sel_va.size),
+                  "test_per_quantile": {}, "n_train_rows": {}, "n_val_rows": int(va_rows.size),
                   "n_test_rows": int(te_rows.size), "test_rows": te_rows,
-                  "carve_train_windows": sel_tr, "carve_val_windows": sel_va,
+                  "val_source": val_source, "val_rows": va_rows,
+                  "selection_train_windows": sel_tr, "validation_windows": va_rows,
                   "layers": layers, "layer_names": [LAYER_NAMES[i] for i in layers],
                   "quantiles": q_np.tolist(), "num_quantiles": Q}
 
     for i in layers:
-        F_tr, F_te = train_feats[i], test_feats[i]
-        for nm, F in (("train", F_tr), ("test", F_te)):
+        F_tr, F_te, F_va = train_feats[i], test_feats[i], val_feats[i]
+        for nm, F in (("train", F_tr), ("test", F_te), ("val", F_va)):
             F = np.asarray(F)
             if F.ndim != 2 or F.shape[1] != MODEL_DIMS:
                 raise RuntimeError(f"layer {i} {nm} features are {F.shape}; this experiment "
                                    f"needs (n, {MODEL_DIMS}) last-token states")
 
-        # ---- 1. weight decay on the carve (scaler fit on the 80% only) ----
+        # ---- 1. weight-decay selection (scaler fit on the SELECTION train rows only) ----
         Xs = np.asarray(F_tr[sel_tr], np.float32)
         sc_sel = StandardScaler().fit(Xs)
         Xtr_s = torch.as_tensor(sc_sel.transform(Xs), dtype=torch.float32, device=device)
-        Xva_s = torch.as_tensor(sc_sel.transform(np.asarray(F_tr[sel_va], np.float32)),
+        Xva_s = torch.as_tensor(sc_sel.transform(np.asarray(F_va[va_rows], np.float32)),
                                 dtype=torch.float32, device=device)
+        best_m = None
         if wd_grid is None:
             wd, sel = weight_decay, None
             m = fit_last_token_probe(Xtr_s, ytr_sel, q, H, wd, epochs, lr, device,
                                      batch_size=batch_size)
             with torch.no_grad():
                 val = float(pinball_loss(reshape_prediction(m(Xva_s), H, Q), yva_sel, q).item())
+            best_m = m
         else:
-            best, wd, sel = float("inf"), wd_grid[0], {}
+            best, wd, sel, n_bad = float("inf"), wd_grid[0], {}, 0
             for cand in wd_grid:
                 m = fit_last_token_probe(Xtr_s, ytr_sel, q, H, cand, epochs, lr, device,
                                          batch_size=batch_size)
@@ -286,8 +357,21 @@ def last_token_layerwise(train_feats, train_targets, train_valid,
                     v = float(pinball_loss(reshape_prediction(m(Xva_s), H, Q),
                                            yva_sel, q).item())
                 sel[float(cand)] = v
+                if not np.isfinite(v):
+                    # expected for lr*wd > 2 (see WD_GRID_LAST_TOKEN): decoupled decay alone
+                    # amplifies the weight each step. Recorded, never selected, never silently
+                    # turned into a finite number.
+                    n_bad += 1
+                    continue
                 if v < best:
-                    best, wd = v, cand
+                    best, wd, best_m = v, cand, m
+            if best_m is None:
+                raise RuntimeError(
+                    f"layer {LAYER_NAMES[i]}: EVERY weight-decay candidate gave a non-finite "
+                    f"validation loss {sel}. At lr={lr} a candidate with lr*wd > 2 makes AdamW's "
+                    "decoupled decay divergent -- shrink --wd-grid or --probe-lr; nothing here "
+                    "will invent a usable probe.")
+            diag["nonfinite_wd_candidates"][i] = n_bad
             val = best
         diag["wd"][i] = float(wd)
         diag["val_loss"][i] = float(val)
@@ -300,16 +384,44 @@ def last_token_layerwise(train_feats, train_targets, train_valid,
             fit_last_token_probe(Xtr_s, ytr_sel, q, H, wd, epochs, lr, device, Xval=Xva_s,
                                  yval=yva_sel, history=hist, batch_size=batch_size)
             diag["history"][i] = hist
-        del Xtr_s, Xva_s
 
-        # ---- 2. refit on ALL valid train windows ----
-        Xa = np.asarray(F_tr[all_tr], np.float32)
-        sc = StandardScaler().fit(Xa)
-        Xtr = torch.as_tensor(sc.transform(Xa), dtype=torch.float32, device=device)
+        # ---- 1b. NULL BASELINE: fitted, reported, and EXCLUDED from selection ----
+        null_m = None
+        if null_wd and null_wd > 0:
+            if float(null_wd) in {float(c) for c in (wd_grid or ())}:
+                raise ValueError(
+                    f"null_wd={null_wd} is also a SELECTION candidate -- the null baseline must "
+                    "stay outside the grid, otherwise an optimizer artifact can win the "
+                    "hyperparameter search")
+            null_m = fit_last_token_probe(Xtr_s, ytr_sel, q, H, null_wd, epochs, lr, device,
+                                          batch_size=batch_size)
+            with torch.no_grad():
+                nv = float(pinball_loss(reshape_prediction(null_m(Xva_s), H, Q), yva_sel,
+                                        q).item())
+            diag["null_baseline"][i] = {
+                "wd": float(null_wd), "val_loss": nv, "selected": False,
+                "max_abs_weight": float(null_m.weight.detach().abs().max()),
+                "note": "extreme decay: weight zeroed each step, so this is ~ a bias-only "
+                        "(marginal-quantile) fit -- the no-information floor, never a candidate"}
+        del Xva_s
+
+        # ---- 2. the final model ----
+        if explicit:
+            # the selection fit ALREADY used the full train split, so the chosen-wd model IS
+            # the final model (probes.fit_quantile_probe_explicit_val's "no refit" contract)
+            sc, lin, Xtr = sc_sel, best_m, Xtr_s
+            if model_for_grad_check is not None:
+                from probing.timesfm3_last_token import assert_no_backbone_grads
+                assert_no_backbone_grads(model_for_grad_check)
+        else:
+            del Xtr_s
+            Xa = np.asarray(F_tr[all_tr], np.float32)
+            sc = StandardScaler().fit(Xa)
+            Xtr = torch.as_tensor(sc.transform(Xa), dtype=torch.float32, device=device)
+            lin = fit_last_token_probe(Xtr, ytr_all, q, H, wd, epochs, lr, device,
+                                       batch_size=batch_size,
+                                       model_for_grad_check=model_for_grad_check)
         diag["n_train_rows"][i] = int(Xtr.shape[0])
-        lin = fit_last_token_probe(Xtr, ytr_all, q, H, wd, epochs, lr, device,
-                                   batch_size=batch_size,
-                                   model_for_grad_check=model_for_grad_check)
         with torch.no_grad():
             diag["train_loss"][i] = float(
                 pinball_loss(reshape_prediction(lin(Xtr), H, Q), ytr_all, q).item())
@@ -330,11 +442,26 @@ def last_token_layerwise(train_feats, train_targets, train_valid,
             diag["test_median_pred"][i] = pred[:, NATIVE_MEDIAN_IDX, :].cpu().numpy(
                 ).astype(np.float32)
             diag["test_per_quantile"][i] = per_quantile_loss(pred, yte, q)
+            if null_m is not None:
+                # same scaler the null was TRAINED with (sc_sel); in the explicit-val protocol
+                # that IS sc, so this is one transform, not two
+                Xte_n = (Xte if sc_sel is sc else
+                         torch.as_tensor(sc_sel.transform(np.asarray(F_te[te_rows], np.float32)),
+                                         dtype=torch.float32, device=device))
+                npred = reshape_prediction(null_m(Xte_n), H, Q)
+                npw = pinball_loss_per_window(npred, yte, q)
+                diag["null_baseline"][i].update(
+                    test_q9=float(npw.mean().item()),
+                    test_median_loss=float(median_pinball_per_window(
+                        npred, yte, NATIVE_MEDIAN_IDX).mean().item()))
+                del Xte_n, npred
             del Xte, pred
         if verbose:
+            nb = diag["null_baseline"].get(i)
             print(f"    [{LAYER_NAMES[i]:>3}] wd={wd:<6g} rows={diag['n_train_rows'][i]:>5}  "
                   f"train={diag['train_loss'][i]:.5f}  val={val:.5f}  "
-                  f"test(Q9)={out[i]:.5f}  test(median)={diag['test_median_loss'][i]:.5f}",
+                  f"test(Q9)={out[i]:.5f}  test(median)={diag['test_median_loss'][i]:.5f}"
+                  + (f"  null(wd={nb['wd']:g})={nb['test_q9']:.5f}" if nb else ""),
                   flush=True)
     return out, diag
 
