@@ -1,6 +1,5 @@
 #!/bin/bash
 #SBATCH --account=def-irina          # the only account we have on Narval
-#SBATCH --gres=gpu:0                 # NO GPU: both analyses read the cached features
 #SBATCH --cpus-per-task=4            # SVDs (effective rank) + the CKA matmuls
 #SBATCH --mem=32G                    # dominated by build_windows loading the raw series
 #SBATCH --time=2:00:00               # geometry maths is ~4x the single-estimator cost (2x2 grid)
