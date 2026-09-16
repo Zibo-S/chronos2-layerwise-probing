@@ -19,7 +19,9 @@ no cross-layer map. The ONLY variable is the depth l.
 
 THE ENDPOINT IDENTITY (aborts the run if it fails): at L20 this path IS the native forecasting
 pathway, so it must reproduce decode()'s own 9-quantile output. Two levels are checked --
-    raw forecast   max|d| / scale < --rtol (default 1e-4), all nine quantiles;
+    raw forecast   elementwise |recon - decode| <= recon_atol + recon_rtol*|decode| over the
+                   full (N,64,9) tensor (atol 1e-5, rtol 2e-6); aborts iff the worst SCALED
+                   error > 1. Per element, never vs the global mean -- fair to heavy tails;
     scalar loss    the L20 Q=9 pinball loss equals the committed native baseline,
                    because both are scored by the SAME probing.timesfm3_last_token_probes
                    .native_reference call.
@@ -216,7 +218,8 @@ def run_dataset(tag, args, geom, model, device, probe_entry) -> dict:
         raw = native_head_predict_raw(model, te["feats"][l], te["mu"], te["sd"], pte["trend"],
                                       geom, device=device, batch=args.head_batch_size)
         if l == LAST_LAYER:
-            l20_check = _endpoint_identity(raw, te["native"], NUM_QUANTILES, args.rtol)
+            l20_check = _endpoint_identity(raw, te["native"], NUM_QUANTILES,
+                                           args.recon_atol, args.recon_rtol)
         r = native_reference(raw, te["mu"], te["sd"], pte["trend"], pte["targets"], pte["valid"])
         if not np.array_equal(r["rows"], rows):
             raise RuntimeError("a layer was scored on different test windows than the reference")
@@ -237,9 +240,9 @@ def run_dataset(tag, args, geom, model, device, probe_entry) -> dict:
     d_scalar = abs(l20 - ref["q9_loss"])
     rel_scalar = d_scalar / max(abs(ref["q9_loss"]), 1e-12)
     # RELATIVE, not absolute: decode()'s forecast is stored float32 in the feature cache while
-    # this path reconstructs it in float64, so the two agree only to ~1e-7 of the forecast and
-    # ~1e-9 of the loss. 1e-6 relative still rejects any STRUCTURAL divergence (a wrong layer,
-    # the transposed layout, a missed inverse step) by many orders of magnitude.
+    # this path reconstructs it in float64, so the two agree to ~1e-9 of the loss on large-N
+    # datasets and ~2e-6 on small-N Coastal T-S. 1e-5 still rejects any STRUCTURAL divergence
+    # (a wrong layer, the transposed layout, a missed inverse step) by many orders of magnitude.
     if rel_scalar > args.loss_identity_rtol:
         raise RuntimeError(
             f"L20 SCALAR IDENTITY FAILED for {tag}: the transferred-head Q=9 loss {l20:.9f} "
@@ -247,9 +250,10 @@ def run_dataset(tag, args, geom, model, device, probe_entry) -> dict:
             f"(relative {rel_scalar:.3e} > {args.loss_identity_rtol}). At L20 the two are the "
             "same computation; a difference this large means the head input, the inverse "
             "transform or the scoring diverged.")
-    print(f"  L20 endpoint: raw all-quantile relative {l20_check['relative']:.3e} "
-          f"(< {args.rtol}) | Q9 loss identity relative {rel_scalar:.2e} "
-          f"(< {args.loss_identity_rtol}) vs the native baseline")
+    print(f"  L20 endpoint: max scaled recon error {l20_check['max_scaled_error']:.3f} (< 1) | "
+          f"max|d| {l20_check['max_abs_error']:.2e} at {l20_check['worst_index']} "
+          f"(decode {l20_check['worst_ref']:.4g}, recon {l20_check['worst_recon']:.4g}) | "
+          f"Q9 loss identity relative {rel_scalar:.2e} (< {args.loss_identity_rtol})")
 
     for p in per_layer:                       # relative / absolute vs the L20 native-head row
         p["native_head_relative_to_L20"] = p["native_head_q9_pinball"] / l20 if l20 else float("nan")
@@ -283,26 +287,39 @@ def run_dataset(tag, args, geom, model, device, probe_entry) -> dict:
             "seconds": round(time.time() - t0, 1)}
 
 
-def _endpoint_identity(raw, native, Q, rtol) -> dict:
-    """At L20 the transferred head must reproduce decode()'s own nine quantiles."""
+def _endpoint_identity(raw, native, Q, atol, rtol) -> dict:
+    """At L20 the frozen head must reproduce decode()'s own nine quantiles up to float32.
+
+    Elementwise mixed absolute/relative tolerance over the FULL (N, H, Q) forecast tensor:
+    each reconstruction error is compared to the magnitude of the element it belongs to,
+    |recon - decode| <= atol + rtol*|decode|, never to the global mean magnitude (which is
+    unfair to heavy-tailed forecasts). The gate fails iff the worst SCALED error exceeds 1.
+    The comparison is done in float64. No dataset is special-cased.
+    """
     ref = np.asarray(native, np.float64)
     got = np.asarray(raw, np.float64)
     if got.shape != ref.shape:
         raise RuntimeError(f"L20 reconstruction {got.shape} != decode() output {ref.shape}")
-    scale = float(np.abs(ref).mean()) + 1e-12
     d = np.abs(got - ref)
-    rel = float(d.max()) / scale
-    rep = {"max_abs": float(d.max()), "relative": rel, "rtol": float(rtol),
+    scaled = d / (atol + rtol * np.abs(ref))          # elementwise: error vs its OWN magnitude
+    w = tuple(int(i) for i in np.unravel_index(int(np.argmax(scaled)), scaled.shape))
+    rep = {"max_abs_error": float(d.max()),
+           "max_scaled_error": float(scaled.max()),
+           "atol": float(atol), "rtol": float(rtol),
+           "worst_index": list(w),
+           "worst_ref": float(ref[w]), "worst_recon": float(got[w]),
+           "worst_abs_error": float(d[w]),
            "per_quantile_max_abs": d.max(axis=(0, 1)).tolist(),
-           "reference_scale_mean_abs": scale, "n_windows": int(len(ref)),
-           "n_quantiles": int(Q)}
-    if rel > rtol:
+           "n_windows": int(ref.shape[0]), "n_quantiles": int(Q)}
+    if rep["max_scaled_error"] > 1.0:
         raise RuntimeError(
-            f"L20 NATIVE RECONSTRUCTION FAILED: relative {rel:.3e} > {rtol} over all {Q} "
-            f"quantiles (max|d| {d.max():.3e}, per-quantile {rep['per_quantile_max_abs']}).\n"
-            "  At L20 the frozen-head transfer IS the native forecasting pathway; if it does "
-            "not reproduce decode(), the head input, the inverse RevIN/clamp/stitch or the "
-            "trend add-back is wrong and NO layer's number can be trusted.")
+            f"L20 NATIVE RECONSTRUCTION FAILED: max scaled error {rep['max_scaled_error']:.3f} "
+            f"> 1 under |d| <= atol({atol:g}) + rtol({rtol:g})*|ref|. Worst element {w}: "
+            f"decode()={ref[w]:.6g}, reconstructed={got[w]:.6g}, |d|={d[w]:.3e} "
+            f"(max|d| over the tensor {d.max():.3e}).\n"
+            "  At L20 the frozen-head transfer IS the native forecasting pathway; a scaled error "
+            "above 1 means the head input, the inverse RevIN/clamp/stitch or the trend add-back "
+            "is wrong and NO layer's number can be trusted.")
     return rep
 
 
@@ -518,14 +535,21 @@ def parse_args(argv=None):
     g.add_argument("--no-sorting-bypass", action="store_true")
 
     g = p.add_argument_group("checks")
-    g.add_argument("--rtol", type=float, default=1e-4,
-                   help="abort threshold for the L20 all-quantile native reconstruction")
-    g.add_argument("--loss-identity-rtol", type=float, default=1e-6,
+    g.add_argument("--recon-rtol", type=float, default=2e-6,
+                   help="elementwise RELATIVE tolerance for the L20 all-quantile native "
+                        "reconstruction: |recon - decode| <= recon_atol + recon_rtol*|decode|, "
+                        "PER ELEMENT (never vs the global mean). ~16 float32 ULP; the observed "
+                        "worst-element error is 2-7 ULP across all seven datasets. Fails iff the "
+                        "worst SCALED error exceeds 1")
+    g.add_argument("--recon-atol", type=float, default=1e-5,
+                   help="elementwise ABSOLUTE tolerance floor for the same check, covering "
+                        "near-zero forecast elements where the relative term vanishes")
+    g.add_argument("--loss-identity-rtol", type=float, default=1e-5,
                    help="abort threshold for the RELATIVE difference between the L20 "
                         "transferred-head Q=9 loss and decode()'s own native baseline. Relative "
                         "because the cache stores decode()'s forecast in float32 while this path "
-                        "reconstructs it in float64, so they agree to ~1e-9 of the loss, not "
-                        "exactly; 1e-6 still rejects any structural divergence")
+                        "reconstructs it in float64: large-N datasets agree to ~1e-9 of the loss, "
+                        "small-N Coastal T-S to ~2e-6, so 1e-5 rejects any structural divergence")
     g.add_argument("--roundtrip-rtol", type=float, default=1e-4)
     g.add_argument("--boot-b", type=int, default=5000)
     g.add_argument("--seed", type=int, default=0)
@@ -646,7 +670,7 @@ def main(argv=None):
               f"{fmt(head[r['layers'][0]])}{fmt(at.get('native_head_q9_loss'))}"
               f"{fmt(head[max(head)])}{fmt(at.get('probe_q9_loss'))}"
               f"{fmt(at.get('alignment_gap'), 10)}"
-              f"{r['l20_identity']['relative']:>9.1e}")
+              f"{r['l20_identity']['max_scaled_error']:>9.3f}")
 
     print(f"\nNumerical/intermediate outputs:\n  {out_root}")
     print(f"\nFinal paper outputs:\n  {paper_out}")

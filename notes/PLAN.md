@@ -116,7 +116,14 @@ an all-non-finite grid raises. `wd=300` / `wd=1e9` survive only as test fixtures
 
 ## Open / to check on the first GPU run
 
-- The L20 all-quantile reconstruction error (must be < 1e-4 relative) and whether the installed
+- The L20 all-quantile reconstruction is gated **elementwise**: `|recon − decode| ≤ atol +
+  rtol·|decode|` per element over the full (N,64,9) tensor (atol 1e-5, rtol 2e-6), failing only if
+  the worst *scaled* error > 1. This replaces the old `max|d|/mean|ref|` ratio, which was unfair to
+  heavy-tailed forecasts — BOOM's worst element (162.8, only 5e-7 relative, i.e. ~5 float32 ULP)
+  inflated to ~1e-4 once divided by the 0.73 global mean. The worst-element error is a uniform
+  2–7 float32 ULP across all seven datasets (mean|ref| spans 0.73→4706), so rtol 2e-6 (~16 ULP)
+  clears them with 3–20× headroom; the run prints `max_scaled_error`, `max_abs_error` and the
+  worst element (decode/recon/index) per dataset. Also whether the installed
   `timesfm3` sorts quantiles inside `decode()` (the run prints the discovered knobs). If it sorts
   with no bypass, re-run with `--allow-sorted-reference` — never silently.
 - Whether any layer selects the weight-decay grid maximum (the driver warns); widen `--wd-grid`
@@ -218,12 +225,17 @@ point, then decode()'s own inverse path: `revin(reverse, token-15 stats) -> clam
 decode(), so the curves are directly comparable with the probe's, and `A_l = L_l^{head} −
 L_l^{probe}` is well defined.
 
-Gates (all abort): L20 must reproduce decode()'s nine quantiles to **<1e-4 relative**; the L20
-Q=9 loss must equal the native baseline to **<1e-6 relative** (relative, not absolute — the
-cache stores decode()'s forecast in float32 while this path is float64, so they agree to ~7e-9
-of the loss, measured); the head's parameter sha256 must be identical before and after; window
-parity with the committed Chronos-2 artifacts must hold. A feature-cache MISS aborts by default
-(`--allow-extraction` to override) because this job requests no GPU.
+Gates (all abort): L20 must reproduce decode()'s nine quantiles **elementwise** — `|recon −
+decode| ≤ atol + rtol·|decode|` per element over the full (N,64,9) tensor (atol 1e-5, rtol 2e-6),
+failing iff the worst *scaled* error exceeds 1; this replaces the old `max|d|/mean|ref|` ratio,
+which was unfair to heavy-tailed forecasts (BOOM's 162.8-magnitude element, 5e-7 relative, read
+as ~1e-4 against the 0.73 mean). The worst-element error is a uniform 2–7 float32 ULP across all
+seven datasets. The L20 Q=9 loss must equal the native baseline to **<1e-5 relative** (relative,
+not absolute — the cache stores decode()'s forecast in float32 while this path is float64, so
+they agree to ~1e-9 of the loss for the large-N datasets; the small-N Coastal T-S measures ~2e-6,
+which is exactly why the bar is 1e-5 and not 1e-6). The head's parameter sha256 must be identical
+before and after; window parity with the committed Chronos-2 artifacts must hold. A feature-cache
+MISS aborts by default (`--allow-extraction` to override) because this job requests no GPU.
 
 ## Outputs — heavy on $SCRATCH, paper-ready in the repo
 

@@ -481,8 +481,9 @@ def test_all_points_and_datasets_are_covered():
         assert a.seed == 0 and a.context_len == 512 and a.horizon == 64
     assert "added L" in inspect.getsource(nh.run_dataset), \
         "L20 must be re-added when --layers omits it (the endpoint identity)"
-    assert nh.parse_args([]).rtol == 1e-4
-    assert nh.parse_args([]).loss_identity_rtol == 1e-6
+    assert nh.parse_args([]).recon_rtol == 2e-6
+    assert nh.parse_args([]).recon_atol == 1e-5
+    assert nh.parse_args([]).loss_identity_rtol == 1e-5
     assert nh.parse_args([]).allow_extraction is False, \
         "a cache MISS must abort by default: this analysis runs GPU-less on the warm cache"
     g = geo.parse_args([])
@@ -492,6 +493,41 @@ def test_all_points_and_datasets_are_covered():
     assert geo.parse_args(["--split", "test"]).split == "test"
     print("  28,34,35  21 points x 7 datasets by default; L20 always kept; CKA headline "
           "test / erank train                                                          OK")
+
+
+# ------------------------------------------------------------------ 36
+def test_endpoint_identity_is_elementwise():
+    """L20 gate is |d| <= atol + rtol*|ref| PER ELEMENT, not max|d|/mean|ref|.
+
+    Reproduces the BOOM pathology: one ~162.8 element among ~0.7 values. Float32 rounding on
+    the big element must PASS, the old global-mean ratio would have false-flagged it, and a
+    genuine structural error on ANY element must FAIL -- no dataset special-cased.
+    """
+    from experiments.run_timesfm3_native_head_transfer import _endpoint_identity, parse_args
+    a = parse_args([]); atol, rtol = a.recon_atol, a.recon_rtol
+    rng = np.random.default_rng(0)
+    ref = np.abs(rng.normal(0.0, 0.7, size=(354, 64, 9)))     # BOOM-like small values
+    ref[10, 20, 8] = 162.8                                    # one heavy-tail element
+    recon = ref + rng.uniform(-1, 1, ref.shape) * np.abs(ref) * 3e-7   # ~float32 rounding
+    recon[10, 20, 8] = ref[10, 20, 8] + 7.63e-5               # BOOM's real worst |d| (5 ULP)
+
+    chk = _endpoint_identity(recon, ref, 9, atol, rtol)
+    assert chk["max_scaled_error"] <= 1.0, chk                # heavy tail passes on merit
+    assert set(chk) >= {"max_abs_error", "max_scaled_error", "worst_index",
+                        "worst_ref", "worst_recon", "atol", "rtol"}
+    old = np.abs(recon - ref).max() / (np.abs(ref).mean() + 1e-12)   # the retired metric
+    assert old > 1e-4, f"fixture must reproduce the BOOM false-flag; old metric {old:.2e}"
+
+    bad = recon.copy()
+    bad[0, 0, 0] = ref[0, 0, 0] + 0.01 + 0.5 * abs(ref[0, 0, 0])     # 50% element error
+    try:
+        _endpoint_identity(bad, ref, 9, atol, rtol)
+        raise AssertionError("a 50% element error must trip the elementwise gate")
+    except RuntimeError as e:
+        assert "RECONSTRUCTION FAILED" in str(e)
+    print(f"  36        elementwise |d|<=atol+rtol|ref|: heavy tail passes "
+          f"(scaled {chk['max_scaled_error']:.3f}); old max/mean {old:.1e} would false-flag; "
+          f"50% error fails                                   OK")
 
 
 # ------------------------------------------------------------------ 38: the estimator grid
@@ -606,11 +642,13 @@ def model_tests():
     rec = native_head_predict_raw(model, ex["feats"][NUM_LAYERS - 1], ex["mu"], ex["sd"],
                                   trend, g, device=device)
     ref = np.asarray(ex["native"], np.float64)
-    rel = float(np.abs(rec - ref).max()) / (float(np.abs(ref).mean()) + 1e-12)
-    assert rel < 1e-4, f"L20 native reconstruction relative error {rel:.3e} >= 1e-4"
-    per_q = np.abs(rec - ref).max(axis=(0, 1))
-    print(f"     30        L20 -> frozen head -> all 9 quantiles vs decode(): "
-          f"relative {rel:.3e} < 1e-4 (worst quantile {per_q.max():.2e})       OK")
+    from experiments.run_timesfm3_native_head_transfer import _endpoint_identity, parse_args
+    a = parse_args([])
+    chk = _endpoint_identity(rec, ref, 9, a.recon_atol, a.recon_rtol)
+    assert chk["max_scaled_error"] <= 1.0, chk
+    print(f"     30        L20 -> frozen head vs decode(): max scaled error "
+          f"{chk['max_scaled_error']:.3f} <= 1 (max|d| {chk['max_abs_error']:.2e} at "
+          f"{chk['worst_index']}, decode {chk['worst_ref']:.4g})       OK")
 
     # 21: the head is byte-identical after all of that
     assert head_checksum(model)["sha256"] == ck["sha256"], "the head CHANGED during evaluation"
@@ -624,8 +662,8 @@ if __name__ == "__main__":
                test_biased_linear_cka, test_effective_rank_definition,
                test_paper7_roster_and_labels, test_window_identity_and_split_isolation,
                test_probe_independence, test_native_head_transfer_contracts,
-               test_all_points_and_datasets_are_covered, test_cka_estimator_grid,
-               test_output_locations):
+               test_all_points_and_datasets_are_covered, test_endpoint_identity_is_elementwise,
+               test_cka_estimator_grid, test_output_locations):
         fn()
     if "--with-model" in sys.argv:
         model_tests()
