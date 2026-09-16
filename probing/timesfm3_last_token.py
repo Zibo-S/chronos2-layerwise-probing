@@ -64,7 +64,8 @@ __all__ = ["CACHE_VERSION", "NUM_QUANTILES", "LastTokenGeometry", "assert_native
            "raw_future_from_arcsinh", "LAYER_NAMES", "NUM_LAYERS", "LAST_LAYER", "MODEL_DIMS",
            "NATIVE_QUANTILES", "NATIVE_MEDIAN_IDX", "SIGMA_EPS"]
 
-CACHE_VERSION = "tfm3-last-token-q9-v1"    # MUST differ from the prefix ablation's tfm3-prefix-v1
+CACHE_VERSION = "tfm3-last-token-q9-fp32-v1"  # fp32 cache; MUST differ from the prefix ablation's
+                                              # tfm3-prefix-v1 AND from any old fp16 cache
 NUM_QUANTILES = len(NATIVE_QUANTILES)      # 9 -- TimesFM-3's full native quantile vector
 LAST_TOKEN_ONLY = True
 
@@ -425,7 +426,7 @@ def feature_dtype_report(caps, layers, geom: LastTokenGeometry, feature_dtype) -
 
 def extract_last_token_features(X, *, geom: LastTokenGeometry, model=None, checkpoint=None,
                                 device=None, batch_size: int = 64, layers=None,
-                                feature_dtype=np.float16, detrend: bool = True,
+                                feature_dtype=np.float32, detrend: bool = True,
                                 verify: bool = True, progress: bool = True,
                                 allow_sorted_reference: bool = False,
                                 bypass_sorting: bool = True) -> dict:
@@ -638,7 +639,7 @@ def verify_native_head(model, last_states, official, revin_stats, X_batch,
 # --------------------------------------------------------------------------- #
 
 def cache_metadata(tag, split, geom: LastTokenGeometry, *, checkpoint, detrend, layers, seed,
-                   feature_dtype=np.float16) -> dict:
+                   feature_dtype=np.float32) -> dict:
     """Everything that could change a feature value. Any disagreement REJECTS the cache."""
     return {"cache_version": CACHE_VERSION, "model": "timesfm-3.0", "checkpoint": checkpoint,
             "timesfm_version": timesfm_version(),
@@ -707,7 +708,7 @@ def read_cache(root, meta_expected: dict, X, layers) -> dict | None:
 
 def cached_last_token_features(tag, split, X, *, geom: LastTokenGeometry, cache_dir,
                               checkpoint=None, seed=0, layers=None, detrend=True,
-                              feature_dtype=np.float16, force=False, **kw) -> dict:
+                              feature_dtype=np.float32, force=False, **kw) -> dict:
     """Disk cache, one .npy per representation point (so a probe fit holds ONE layer at a time)."""
     layers = list(range(NUM_LAYERS)) if layers is None else sorted(set(layers))
     checkpoint = checkpoint or DEFAULT_CHECKPOINT

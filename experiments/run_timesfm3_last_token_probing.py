@@ -463,7 +463,10 @@ def parse_args(argv=None):
 
     g = p.add_argument_group("extraction (ONE full-context pass per batch)")
     g.add_argument("--extract-batch-size", type=int, default=64)
-    g.add_argument("--feature-dtype", default="float16", choices=["float16", "float32"])
+    g.add_argument("--feature-dtype", default="float32", choices=["float32", "float16"],
+                   help="feature-cache storage dtype. float32 (default) is lossless (~2 GB for "
+                        "the four datasets). float16 halves it but is a measurably lossy cast "
+                        "(~1.2e-2 of the layer std) -- opt in explicitly")
     g.add_argument("--force-extract", action="store_true")
     g.add_argument("--layers", type=int, nargs="+", default=None,
                    help="representation points to probe; default 0..20 (0 = Emb, 20 = L20)")

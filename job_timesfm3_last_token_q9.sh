@@ -32,13 +32,13 @@ export PYTHONHASHSEED=0               # deterministic alongside --seed
 #
 # NOT this job: the 16-prefix / shared-origin ABLATION (job_timesfm3_probing.sh,
 # experiments/run_timesfm3_probing.py, cache tag tfm3-prefix-v1). Separate entry point,
-# separate cache tag (tfm3-last-token-q9-v1) and separate results dir -- they cannot collide,
+# separate cache tag (tfm3-last-token-q9-fp32-v1) and separate results dir -- they cannot collide,
 # and the loader REFUSES the other line's cache instead of reusing it. No Chronos-2 file is
 # touched by either.
 #
 # Cost, from the implementation (4 datasets x 21 points x Q=9, C=512, H=64):
-#   feature cache ~250 MB per dataset (21 layers x ~4500 windows x 1280 x float16)
-#                 ~1.0-1.1 GB for all four   ->  $SCRATCH, NEVER $HOME (~50 GB quota)
+#   feature cache ~500 MB per dataset (21 layers x ~4500 windows x 1280 x float32, lossless)
+#                 ~2 GB for all four         ->  $SCRATCH, NEVER $HOME (~50 GB quota)
 #   GPU  < 4 GB   (1.3 GB frozen model + a 2400x1280 feature block + a 1280x576 probe)
 #   CPU  ~32 GB requested for raw-series loading; the probe stage itself needs < 2 GB
 #   time  extraction is ONE pass per batch (16x cheaper than the prefix ablation): a few
@@ -105,9 +105,9 @@ echo "=== DONE ==="
 #   sbatch job_timesfm3_last_token_q9.sh --no-detrend
 #       ablation: TimesFM-3's linear detrending off in the BACKBONE and in the targets.
 #
-#   sbatch job_timesfm3_last_token_q9.sh --feature-dtype float32
-#       2x the cache (~2 GB) with no storage cast at all; the float16 cast error is measured
-#       and reported either way (feature_dtype_check in the summary).
+#   sbatch job_timesfm3_last_token_q9.sh --feature-dtype float16
+#       HALVES the cache (~1 GB) via a lossy float16 storage cast (~1.2e-2 of the layer std,
+#       measured and reported in feature_dtype_check). float32 (lossless) is the default.
 #
 #   sbatch job_timesfm3_last_token_q9.sh --allow-sorted-reference
 #       ONLY if the L20 check reports that the installed timesfm3 sorts quantiles inside

@@ -17,7 +17,7 @@ its ONE last real context token (index 15 for C=512, H=64). No artificial shared
 | readout | token 15 of ONE full-context pass | 16 independent causal prefixes, token j−1 |
 | probe | independent `Linear(1280, 64*9)` per layer | one shared `Linear(1280, 64)` across origins |
 | quantiles | all 9 native (Q=9) | median only (Q=1) |
-| cache tag | `tfm3-last-token-q9-v1`, `(N,1280)` | `tfm3-prefix-v1`, `(N,16,1280)` |
+| cache tag | `tfm3-last-token-q9-fp32-v1`, `(N,1280)` **float32** | `tfm3-prefix-v1`, `(N,16,1280)` |
 | job | `job_timesfm3_last_token_q9.sh` | `job_timesfm3_probing.sh` |
 | cost | 1 forward pass per batch | 16 forward passes per batch |
 
@@ -52,6 +52,11 @@ The two caches/results namespaces are disjoint and the loader **refuses** the ot
   5%/2% tunnel rule, end-to-end fit, cache isolation.
 - Full driver dry run with the backbone mocked: targets → 21 probes → MASE → native baseline →
   cluster bootstrap → tunnel → summary JSON → bootstrap npz → 5 figures, all green.
+- Cache dtype is now **float32 by default** (tag `tfm3-last-token-q9-fp32-v1`, ~2 GB across the
+  four datasets); float16 is opt-in via `--feature-dtype float16`. The bumped tag means an old
+  float16 cache can never be silently reused. The 1e-2 dtype bar is UNCHANGED: float32 clears it
+  bit-exactly (cache identity 0.0 of the layer std), and float16's measured ~1.2e-2 cost is
+  exactly why it is no longer the default.
 
 ## Open / to check on the first GPU run
 
