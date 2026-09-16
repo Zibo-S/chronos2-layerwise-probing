@@ -105,15 +105,33 @@ def estimator_provenance() -> dict:
     """
     return {
         "cka": {
-            "estimator": CKA_ESTIMATOR,
-            "name": "biased linear CKA (Kornblith et al. 2019, biased HSIC)",
-            "formula": "||Xc^T Yc||_F^2 / (||Xc^T Xc||_F * ||Yc^T Yc||_F)",
+            "headline_estimator": CKA_ESTIMATOR,
+            "companion_estimator": "unbiased",
             "centering": "feature-centred across the N observations (axis=0), per representation",
             "dtype": "float64 (probing.cka._as_2d_f64 casts the float32 cache before centering)",
             "degenerate_denominator": "non-finite or <= 0 -> NaN (never silently 0)",
             "implementation": "probing.cka.cka_matrix / linear_cka  [shared with Chronos-2, "
                               "UNCHANGED]",
-            "not_used": ["unbiased/debiased HSIC", "RBF CKA", "cosine similarity",
+            "biased": {
+                "name": "biased linear CKA (Kornblith et al. 2019, biased HSIC)",
+                "formula": "||Xc^T Yc||_F^2 / (||Xc^T Xc||_F * ||Yc^T Yc||_F)",
+                "role": "HEADLINE / PARITY -- byte-for-byte the estimator the committed "
+                        "Chronos-2 CKA uses, so the two models' analyses are identical",
+                "bounded": "[0, 1]",
+                "caveat": "carries an O(1/n) UPWARD bias; at TimesFM-3's N and d=1280 its value "
+                          "for INDEPENDENT representations is ~0.78-0.96, so absolute values are "
+                          "not readable as similarity and are NOT comparable to Chronos-2's",
+            },
+            "unbiased": {
+                "name": "unbiased HSIC linear CKA (Song et al. 2012)",
+                "role": "REQUIRED COMPANION -- the finite-sample-bias-corrected analysis; the "
+                        "informative estimator for ABSOLUTE similarity at this N and d",
+                "bounded": "NOT bounded; unrelated representations scatter around 0, including "
+                           "slightly negative values -- that is what makes it unbiased, and it "
+                           "is never clipped or repaired",
+                "requires": "n >= 4 rows",
+            },
+            "not_used": ["RBF CKA", "cosine similarity",
                          "Gram-space variants with other finite-sample corrections"],
         },
         "effective_rank": {

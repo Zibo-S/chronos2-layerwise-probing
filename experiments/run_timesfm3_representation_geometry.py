@@ -740,21 +740,21 @@ def main(argv=None):
             figs.append(figure_effective_rank(recs, figdir, tunnels, group=grp, name=nm))
         figs = [f for f in figs if f]
 
-    print(f"\n{'=' * 118}\nSUMMARY — representation geometry ({NUM_LAYERS} points, token "
-          f"{SELECTED_TOKEN_INDEX}).  CKA cells are CKA(Emb, L20).\n{'=' * 118}")
+    print(f"\n{'=' * 126}\nSUMMARY — representation geometry ({NUM_LAYERS} points, token "
+          f"{SELECTED_TOKEN_INDEX}).  CKA cells are CKA(Emb, L20).\n{'=' * 126}")
     hdr = (f"{'dataset':<14}{'kind':<8}{'rkN':>6}{'tun5%':>7}{'r_eff Emb':>11}{'r_eff tun':>11}"
            f"{'r_eff L20':>11}")
     combos = [(e, s) for e in args.cka_estimators for s in args.cka_splits]
     for e, s in combos:
-        hdr += f"{e[:6] + '/' + s[:4]:>13}"
+        hdr += f"{e + '/' + s:>15}"
     print(hdr)
     print(f"{'':<14}{'':<8}{'':>6}{'':>7}{'':>11}{'':>11}{'':>11}"
-          + "".join(f"{'(floor)':>13}" for _ in combos))
+          + "".join(f"{'(null floor)':>15}" for _ in combos))
     last = None
     for r in recs:
         c = r["combined_summary"]
         if last is not None and r["domain_status"] != last:
-            print("-" * 118)
+            print("-" * 126)
         last = r["domain_status"]
         f = lambda v, w=11, p=2: (f"{v:>{w}.{p}f}" if isinstance(v, float) else f"{'-':>{w}}")
         line = (f"{r['short']:<14}{r['domain_status']:<8}{r['effective_rank']['N']:>6}"
@@ -764,9 +764,9 @@ def main(argv=None):
         floor_line = f"{'':<14}{'':<8}{'':>6}{'':>7}{'':>11}{'':>11}{'':>11}"
         for e, s in combos:
             g = c["cka"][f"{e}/{s}"]
-            line += f"{g['Emb_L20']:>+13.4f}"
-            floor_line += (f"{'(' + format(g['null_floor'], '.3f') + ')':>13}"
-                           if g["null_floor"] is not None else f"{'':>13}")
+            line += f"{g['Emb_L20']:>+15.4f}"
+            floor_line += (f"{'(' + format(g['null_floor'], '.3f') + ')':>15}"
+                           if g["null_floor"] is not None else f"{'':>15}")
         print(line)
         print(floor_line)
 
