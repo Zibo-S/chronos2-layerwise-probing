@@ -124,3 +124,138 @@ an all-non-finite grid raises. `wd=300` / `wd=1e9` survive only as test fixtures
 - Caveats to carry into the writeup: all four datasets are in-distribution for the backbone;
   targets are rebuilt through `arcsinh`/`sinh` (float32, ~1e-5 relative); the native head's
   `clamp(±value_clip)` and any quantile sorting are postprocessing outside the linear class.
+
+---
+
+# Representation geometry + frozen native-head transfer (added 2026-09-16)
+
+Three analyses now sit side by side on the SAME paper7 windows, each answering a different
+question about the same representation `h_{l,15}`:
+
+| | question | entry point | fits anything? |
+|---|---|---|---|
+| learned probe | is the forecast linearly DECODABLE from `h_l`? | `run_timesfm3_last_token_probing.py` | yes (Linear(1280,576) per layer) |
+| frozen native head | is `h_l` already in the pretrained readout's COORDINATE SYSTEM? | `run_timesfm3_native_head_transfer.py` | **no** |
+| CKA / effective rank | how does the representation GEOMETRY evolve? | `run_timesfm3_representation_geometry.py` | **no** |
+
+The forecasting tunnel stays defined by the trained probe's validation criterion. The other two
+read the 5% entrance only as a figure overlay / table index; neither redefines it.
+
+## Estimators — the Chronos-2 ones, imported, never reimplemented
+
+- **CKA**: `probing.cka.cka_matrix(estimator="biased")` (the module default).
+  `||Xc^T Yc||_F^2 / (||Xc^T Xc||_F ||Yc^T Yc||_F)`, centred across the N observations, float64.
+  Verified against a hand-computed reference to 1 ULP.
+- **Effective rank**: `probing.spectral_metrics.spectral_metrics`. **Squared** singular values:
+  `s = svdvals(X - mean_0(X)); p = s**2/sum(s**2); exp(-sum p log p)`, natural log, eps 1e-12,
+  float64. (Measured, not assumed: raw-σ would give 24.15 where the repo gives 18.41.)
+  `normalized_effective_rank = r_eff/1280` and `r_eff/min(N-1,d)` are ADDED diagnostics; the raw
+  metric is untouched and stays comparable to the committed Chronos-2 records.
+
+Only the representation matrix is model-specific: Chronos-2 stacks `(n,K,768) -> (n*K,768)`;
+TimesFM-3 has **K=1** at H=64, so its CKA input is `(N, 1280)` directly, no reshape.
+
+## Splits — the two committed Chronos-2 analyses disagree, so parity is per-analysis
+
+| | Chronos-2 default | TimesFM-3 default |
+|---|---|---|
+| CKA | `run_cka_analysis.py --fslot-split` = **test** | **test** headline + **train** robustness (`--cka-splits`) |
+| effective rank | `run_spectral.py --split` = **train** | **train** (`--erank-split`), unchanged |
+
+`--split {train,test}` forces everything onto one split for a single-split pass.
+
+## CKA: biased for PARITY, unbiased for INTERPRETATION (decided 2026-09-16)
+
+Both estimators run, on both splits, for all seven datasets — identical layer ordering and
+plotting style throughout:
+
+| namespace | role |
+|---|---|
+| `biased/test` | **HEADLINE.** Exact parity with the committed Chronos-2 CKA (`run_cka_analysis.py`: biased estimator, test split). |
+| `unbiased/test` | **REQUIRED COMPANION.** The finite-sample-bias-corrected analysis; the informative estimator for *absolute* similarity. |
+| `biased/train` | robustness, N=1394. |
+| `unbiased/train` | robustness — the only reading with real power for **Coastal T-S** (48 test windows). |
+
+**Why the companion is required.** The biased estimator carries an O(1/n) *upward* bias, and one
+native readout token per window means n = the window count. On INDEPENDENT Gaussian
+representations at d=1280, where the true CKA is 0:
+
+| setting | biased | unbiased |
+|---|---|---|
+| TimesFM test N=262 | **0.83** | 0.001 |
+| TimesFM PT-OOD N=354 | **0.78** | −0.001 |
+| TimesFM Coastal T-S N=48 | **0.96** | 0.024 |
+| TimesFM train N=1394 | 0.48 | −0.001 |
+| Chronos-2 fslot n=1048, d=768 | 0.42 | −0.001 |
+
+Chronos-2's committed CKA sat at ~0.42 because K=4 slot stacking gave it 1048 rows at d=768;
+TimesFM gets 4× fewer rows at 1.7× the width. **A TimesFM test-split biased CKA of ~0.83 is the
+floor, not a finding**, and Coastal T-S test (N=48, floor 0.96) is uninterpretable on it.
+
+> **NEVER compare absolute biased CKA across Chronos-2 and TimesFM-3 as though they were on one
+> scale** — the finite-sample baselines differ (~0.42 vs ~0.83). Compare patterns within a model,
+> or compare the unbiased numbers. This caveat is stored in `summary.json.cross_model_caveat`.
+
+The driver measures each estimator's own null floor per dataset (`--cka-null-floor-reps`, on by
+default, memoized on (N, d, estimator)), annotates it on every heatmap, records it in the summary
+alongside `*_above_null_floor` margins, and draws `figures/cka/cka_vs_null_floor.png`. Dropping
+`biased` from `--cka-estimators` is REFUSED (it is the parity analysis).
+
+`summary.json` carries this note verbatim:
+
+> Biased CKA is retained for direct parity with Chronos-2, but its finite-sample baseline is
+> elevated for TimesFM-3 because the representation dimension is large relative to the number of
+> test observations. Unbiased CKA is therefore used as a robustness analysis for absolute
+> interpretability.
+
+Effective rank stays on **train** only, the committed Chronos-2 spectral protocol, unchanged.
+
+## Frozen native-head transfer
+
+`model.output_head` (the checkpoint's own `Linear(1280, 576)`) applied to `h_{l,15}` at every
+point, then decode()'s own inverse path: `revin(reverse, token-15 stats) -> clamp(±value_clip)
+-> stitch_patches -> + context trend`. Scored by the SAME `native_reference` that scores
+decode(), so the curves are directly comparable with the probe's, and `A_l = L_l^{head} −
+L_l^{probe}` is well defined.
+
+Gates (all abort): L20 must reproduce decode()'s nine quantiles to **<1e-4 relative**; the L20
+Q=9 loss must equal the native baseline to **<1e-6 relative** (relative, not absolute — the
+cache stores decode()'s forecast in float32 while this path is float64, so they agree to ~7e-9
+of the loss, measured); the head's parameter sha256 must be identical before and after; window
+parity with the committed Chronos-2 artifacts must hold. A feature-cache MISS aborts by default
+(`--allow-extraction` to override) because this job requests no GPU.
+
+## Outputs — heavy on $SCRATCH, paper-ready in the repo
+
+```text
+$SCRATCH/timesfm3_geometry/
+    matrices/<estimator>/<split>/cka__<tag>.{npy,csv}     # 2 x 2 x 7
+    numerical_results/, temporary/
+<repo>/results/timesfm3_representation_geometry/
+    summary.json, geometry_summary_table.csv
+    native_head_transfer_summary.json, native_head_transfer_table.csv
+    figures/cka/<estimator>/<split>/{cka_<slug>.png, cka_all_datasets.png}
+    figures/cka/cka_vs_null_floor.png
+    figures/{effective_rank,native_head}/                  .png + .pdf throughout
+```
+
+## Run order (Narval)
+
+1. login node: `python -m tests.test_timesfm3_representation_geometry` (~6 s, 2 threads).
+2. `sbatch job_timesfm3_geometry.sh` — **no GPU**, both analyses, ~1.5 h wall (window building
+   dominates; the maths is ~2 min). `--geometry-only` / `--head-only` to split them.
+3. inside an `salloc` with a GPU: `python -m tests.test_timesfm3_representation_geometry
+   --with-model` for contracts 20–25 and 30.
+
+## Verified so far (no GPU, no model)
+
+- All 10 model-free contract groups pass (~6 s): 21×(N,1280) points at token 15; rank-3
+  shared-origin features rejected in memory AND on disk; biased CKA hand-checked, symmetric,
+  unit-diagonal, scale/rotation invariant, observation-centred, float64; effective rank matches
+  `spectral_metrics` exactly with rank-1 → 1.000 and isotropic-40d → 39.8; the null floor
+  ordering N=1394 < N=262 < N=48; paper7 roster + PT-ID/PT-OOD labels; window identity and
+  split/suite/checkpoint cross-load refusal; probe independence; the frozen-head contracts.
+- Full driver dry runs with synthetic caches and the **real** Chronos-2 parity checker against
+  the committed artifacts: geometry produced 7×21×21 CKA + rank curves and 20 figures
+  (3.3 MB repo-local); native-head produced 7×21 points with both L20 identities holding
+  (raw 1.3e-7, scalar 6.9e-9) and the head checksum unchanged.
