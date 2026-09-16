@@ -20,6 +20,7 @@ REPRESENTATION GEOMETRY (CKA + effective rank)
      8 CKA is isotropic-rescale invariant       18 result matrices/vectors are correctly shaped
      9 centering is across OBSERVATIONS         19 a split cannot silently reuse another's cache
     38 the CKA estimator grid: biased = required parity headline, unbiased = required companion
+    40 the frozen-head transfer is cache-free and in-memory, and runs as its own GPU job
     10 CKA accumulates in float64
 
 FROZEN NATIVE-HEAD TRANSFER
@@ -381,8 +382,11 @@ def test_native_head_transfer_contracts():
     import experiments.run_timesfm3_native_head_transfer as nh
     src = inspect.getsource(nh)
 
-    # 20: the head is the checkpoint's own module, addressed directly
-    assert "model.output_head(x)" in src, "the head must be model.output_head itself"
+    # 20: the head is the checkpoint's own module, addressed directly, and applied to the FULL
+    # (b, 1, n_tokens, d) state with the readout token sliced AFTERWARDS -- the order decode()
+    # uses. Slicing first changes the matmul shape, which is not bit-identical under TF32.
+    assert "model.output_head(states)[:, :, [tok], :]" in src, \
+        "the head must be applied to the full token sequence, then sliced (decode()'s order)"
     assert src.count("model.output_head") >= 2
     # 21/22/29: frozen, no optimizer, no fitting, no gradients
     for banned in ("torch.optim", "AdamW", ".backward(", "requires_grad_(True)",
@@ -484,8 +488,10 @@ def test_all_points_and_datasets_are_covered():
     assert nh.parse_args([]).recon_rtol == 2e-6
     assert nh.parse_args([]).recon_atol == 1e-5
     assert nh.parse_args([]).loss_identity_rtol == 1e-5
-    assert nh.parse_args([]).allow_extraction is False, \
-        "a cache MISS must abort by default: this analysis runs GPU-less on the warm cache"
+    for gone in ("allow_extraction", "cache_dir", "cache_checkpoint", "feature_dtype"):
+        assert not hasattr(nh.parse_args([]), gone), \
+            f"--{gone.replace('_', '-')} must be GONE: the native-head transfer no longer uses "
+    assert nh.parse_args([]).extract_batch_size == 64
     g = geo.parse_args([])
     assert g.erank_split == "train", \
         "effective rank keeps the committed Chronos-2 spectral protocol (train)"
@@ -580,6 +586,54 @@ def test_cka_estimator_grid():
           f"mean {U[off].mean():+.4f}) grid                    OK")
 
 
+# ------------------------------------------------------------------ 40: no cache, in memory
+def test_native_head_is_cache_free_and_in_memory():
+    """The frozen-head transfer reads NO feature cache; it runs the backbone itself.
+
+    Its validity rests on reproducing decode() exactly at L20, which only holds when the head is
+    applied to the states decode() just produced. A cached round-trip re-applies the head under a
+    different matmul shape (and possibly a different device); on TF32 hardware that is not
+    bit-identical, which is why the cached implementation could not reproduce decode(). The fix
+    was to remove the cache, NOT to loosen the tolerance.
+    """
+    import experiments.run_timesfm3_native_head_transfer as nh
+    src = inspect.getsource(nh)
+
+    for banned in ("cached_last_token_features", "read_cache", "cache_root", "cache_metadata",
+                   "--cache-dir", "allow_extraction"):
+        assert banned not in src, f"the native-head driver must not reference {banned}"
+    assert "native_head_transfer_pass" in src and "model.decode(" in src
+    assert "register_layer_hooks" in src, "it must hook the layers itself"
+    assert "verify_native_head" in src, "the validated check must run verbatim on the same pass"
+
+    # tolerances were NOT relaxed when the cache was removed
+    a = nh.parse_args([])
+    assert (a.recon_atol, a.recon_rtol) == (1e-5, 2e-6), (a.recon_atol, a.recon_rtol)
+    assert a.loss_identity_rtol == 1e-5
+
+    # three named stages, and the slice-order control that measures the retired approach's error
+    st = inspect.getsource(nh._staged_l20_identity)
+    for stage in ("raw_output_head", "pre_trend", "final_inverse_transformed"):
+        assert stage in st, stage
+    assert "slice_before_head_max_abs_delta" in st
+    assert "states[:, :, [tok], :]" in st, "the slice-order control must apply the head to the "\
+                                           "pre-sliced token, as the retired cache path did"
+
+    # test split only -- no train/val representations are built
+    rd = inspect.getsource(nh.run_dataset)
+    assert 'w["X_test"]' in rd and 'w["X_train"]' not in rd and 'w["X_val"]' not in rd
+
+    # and the GPU job exists, requesting a GPU
+    job = (repo_root() / "job_timesfm3_native_head.sh").read_text()
+    assert "--gres=gpu:1" in job, "the native-head job must request a GPU: it runs the backbone"
+    assert "run_timesfm3_native_head_transfer" in job
+    geo_job = (repo_root() / "job_timesfm3_geometry.sh").read_text()
+    assert "job_timesfm3_native_head.sh" in geo_job, \
+        "the CPU geometry job must point --head-only at the GPU job instead of running it"
+    print("  40        frozen-head transfer is cache-free and in-memory; GPU job present; "
+          "tolerances unchanged                                                         OK")
+
+
 # ------------------------------------------------------------------ output locations
 def test_output_locations():
     """Final paper outputs resolve INSIDE the repo; heavy artifacts default beside them."""
@@ -603,7 +657,8 @@ def model_tests():
     from probing.timesfm3_last_token import (assert_backbone_frozen, assert_native_geometry,
                                              assert_native_quantiles, get_model)
     from experiments.run_timesfm3_native_head_transfer import (head_checksum,
-                                                               native_head_predict_raw)
+                                                               native_head_transfer_pass,
+                                                               parse_args)
     print("\n  [model] loading TimesFM-3 ...")
     model, device = get_model(None, None)
     assert_backbone_frozen(model)
@@ -630,25 +685,29 @@ def model_tests():
     assert tuple(raw.reshape(n, 64, 9).shape) == (n, 64, 9)
     print("     23,25     (N,1280) -> (N,576) -> (N,64,9), no grad_fn                OK")
 
-    # 30: the endpoint identity, on real states from a real decode() pass
-    from probing.timesfm3_last_token import (context_detrend_params, context_trend,
-                                             extract_last_token_features)
+    # 30: the endpoint identity, IN MEMORY on real states from a real decode() pass.
+    # This is the contract the whole experiment rests on, and it must be EXACT here: the head
+    # is applied to the states decode() just produced, with no cache round-trip in between.
+    a = parse_args([])
     X = np.cumsum(np.random.default_rng(1).normal(size=(4, g.C)).astype(np.float32),
                   axis=1) + 50.0
-    ex = extract_last_token_features(X, geom=g, model=model, device=device, batch_size=4,
-                                     layers=[NUM_LAYERS - 1], progress=False, verify=True)
-    a, b, act = context_detrend_params(X.astype(np.float64))
-    trend = context_trend(a, b, act, g.C, np.arange(g.target_start, g.target_end))
-    rec = native_head_predict_raw(model, ex["feats"][NUM_LAYERS - 1], ex["mu"], ex["sd"],
-                                  trend, g, device=device)
-    ref = np.asarray(ex["native"], np.float64)
-    from experiments.run_timesfm3_native_head_transfer import _endpoint_identity, parse_args
-    a = parse_args([])
-    chk = _endpoint_identity(rec, ref, 9, a.recon_atol, a.recon_rtol)
-    assert chk["max_scaled_error"] <= 1.0, chk
-    print(f"     30        L20 -> frozen head vs decode(): max scaled error "
-          f"{chk['max_scaled_error']:.3f} <= 1 (max|d| {chk['max_abs_error']:.2e} at "
-          f"{chk['worst_index']}, decode {chk['worst_ref']:.4g})       OK")
+    out = native_head_transfer_pass(model, X, geom=g, device=device,
+                                    layers=list(range(NUM_LAYERS)), batch_size=4, detrend=True,
+                                    recon_atol=a.recon_atol, recon_rtol=a.recon_rtol,
+                                    progress=False)
+    idn = out["identity"]
+    st = {x["stage"]: x for x in idn["stages"]}
+    assert idn["max_scaled_error"] <= 1.0, idn
+    assert st["pre_trend"]["max_scaled_error"] <= 1.0, st["pre_trend"]
+    assert out["native_check"]["max_abs"] == 0.0, out["native_check"]
+    assert set(out["forecast"]) == set(range(NUM_LAYERS))
+    assert out["forecast"][NUM_LAYERS - 1].shape == (4, g.H, 9)
+    print(f"     30        L20 in-memory vs decode(): stage3 max|d| "
+          f"{st['final_inverse_transformed']['max_abs_error']:.2e} (scaled "
+          f"{idn['max_scaled_error']:.3g}), stage2 {st['pre_trend']['max_abs_error']:.2e}"
+          f"{'  EXACT' if idn['exact'] else ''}      OK")
+    print(f"     30b       slice-order control (the retired cache path's error): "
+          f"{st['raw_output_head']['slice_before_head_max_abs_delta']:.2e}          OK")
 
     # 21: the head is byte-identical after all of that
     assert head_checksum(model)["sha256"] == ck["sha256"], "the head CHANGED during evaluation"
@@ -663,7 +722,8 @@ if __name__ == "__main__":
                test_paper7_roster_and_labels, test_window_identity_and_split_isolation,
                test_probe_independence, test_native_head_transfer_contracts,
                test_all_points_and_datasets_are_covered, test_endpoint_identity_is_elementwise,
-               test_cka_estimator_grid, test_output_locations):
+               test_cka_estimator_grid, test_native_head_is_cache_free_and_in_memory,
+               test_output_locations):
         fn()
     if "--with-model" in sys.argv:
         model_tests()

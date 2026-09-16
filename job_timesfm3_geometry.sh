@@ -38,7 +38,8 @@ export PYTHONHASHSEED=0
 #                       p = s^2 / sum(s^2) on the example-centred matrix. Split: TRAIN,
 #                       mirroring run_spectral.py's committed protocol. UNCHANGED.
 #
-#   B. frozen native-head transfer  run_timesfm3_native_head_transfer.py   loads the checkpoint
+#   B. (MOVED OUT -- see job_timesfm3_native_head.sh, which needs a GPU)
+#      frozen native-head transfer  run_timesfm3_native_head_transfer.py   loads the checkpoint
 #        for its output_head ONLY -- with a warm cache there is NO backbone forward pass. The
 #        pretrained Linear(1280, 576) is applied to h_{l,15} at every point Emb..L20 and scored
 #        on the paper7 TEST windows. No probe, no optimizer, no weight decay, no adapter.
@@ -74,7 +75,7 @@ export PYTHONHASHSEED=0
 # Usage:
 #   sbatch job_timesfm3_geometry.sh                  # both analyses
 #   sbatch job_timesfm3_geometry.sh --geometry-only
-#   sbatch job_timesfm3_geometry.sh --head-only
+#   sbatch job_timesfm3_native_head.sh               # part B, GPU, no cache
 #   extra args after those are forwarded to BOTH drivers.
 # =======================================================================================
 
@@ -108,15 +109,23 @@ if [ "$RUN_GEOM" = 1 ]; then
       "${EXTRA[@]}"
 fi
 
+if [ "$RUN_HEAD" = 1 ] && [ "$RUN_GEOM" = 0 ]; then
+  echo
+  echo "=== B. frozen native-head transfer: MOVED TO ITS OWN GPU JOB ==="
+  echo "The native-head transfer no longer reads the feature cache. Its validity rests on"
+  echo "reproducing decode() EXACTLY at L20, which only holds when the frozen head is applied"
+  echo "to the states decode() just produced -- in memory, same device. So it runs the backbone"
+  echo "and needs a GPU, which this CPU-only job does not request."
+  echo
+  echo "    sbatch job_timesfm3_native_head.sh"
+  echo
+  exit 1
+fi
 if [ "$RUN_HEAD" = 1 ]; then
-  echo; echo "=== B. frozen native-head transfer (test split, no fitting) ==="
-  python -m experiments.run_timesfm3_native_head_transfer \
-      --checkpoint "$CKPT" \
-      --cache-dir "$CACHE_DIR" \
-      --probe-results "$PROBE_SUMMARY" \
-      --out-root "$WORK" \
-      --device cpu \
-      "${EXTRA[@]}"
+  echo
+  echo "[note] part B (frozen native-head transfer) is now a separate GPU job:"
+  echo "           sbatch job_timesfm3_native_head.sh"
+  echo "       This job ran the CPU-only representation geometry above and is done."
 fi
 
 echo; echo "done. Final paper outputs are inside the repo:"

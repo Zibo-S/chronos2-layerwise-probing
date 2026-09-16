@@ -26,6 +26,10 @@ pathway, so it must reproduce decode()'s own 9-quantile output. Two levels are c
                    because both are scored by the SAME probing.timesfm3_last_token_probes
                    .native_reference call.
 
+The L20 identity is checked at THREE stages (raw head output, pre-trend forecast, final
+inverse-transformed forecast) against decode()'s own output from the SAME forward pass, and the
+validated ``verify_native_head`` is additionally run verbatim on those same tensors.
+
 Scoring reuses the probe run's helpers unchanged, so the two curves are directly comparable:
 ``native_reference`` for the Q=9 / median pinball losses on the probe's normalized target axis,
 ``per_window_mase`` + ``mase_denominator`` for MASE in raw units, ``cluster_ci`` for the
@@ -35,10 +39,20 @@ This experiment does NOT define a tunnel entrance. The forecasting tunnel stays 
 trained probe's validation criterion; what is measured here is native-head compatibility
 through depth, reported next to it.
 
-Run (compute node -- this loads the checkpoint for its output head; no backbone forward pass is
-needed when the feature cache is warm):
+NO FEATURE CACHE. The hidden states go straight from decode()'s forward pass into
+``model.output_head`` on the same device, in the same dtype, inside the same ``torch.no_grad()``
+region -- which is the only way the L20 identity can be EXACT. A cached round-trip re-applies the
+head under a different matmul shape (and possibly a different device), and on TF32 hardware that
+is not bit-identical; the cached implementation this replaces could not reproduce decode() for
+exactly that reason. The learned Q=9 probes, CKA and effective rank remain cache-based and are
+untouched.
+
+This therefore needs a GPU (it runs the backbone), and only the SEVEN TEST splits.
+
+Run:
+    sbatch job_timesfm3_native_head.sh
+    # or interactively, inside an salloc with --gres=gpu:1:
     python -m experiments.run_timesfm3_native_head_transfer \
-        --cache-dir $SCRATCH/timesfm3_last_token/features_cache \
         --probe-results $SCRATCH/timesfm3_last_token/results/timesfm3_last_token_paper7_q9/timesfm3_last_token_summary.json \
         --out-root $SCRATCH/timesfm3_geometry
 """
@@ -101,43 +115,191 @@ def head_checksum(model) -> dict:
             "requires_grad": False}
 
 
-def native_head_predict_raw(model, h, mu, sd, trend, geom, *, device="cpu", batch=512):
-    """h_{l,15} -> the pretrained head -> RAW-units (n, H, Q) forecast.
+def _head_stages(model, states, run_mu, run_sd, geom, *, tfm_util):
+    """Frozen head + decode()'s EXACT inverse path, with every intermediate stage exposed.
 
-    Byte-for-byte the inverse path of ``timesfm3_last_token.verify_native_head``: reverse RevIN
-    with the SAME token-15 statistics of that window, the native value clamp, decode()'s patch
-    stitching, then the context-fit linear trend added back. Nothing is refitted per layer --
-    the preprocessing belongs to the WINDOW, not to the representation point.
+    Byte-for-byte the sequence inside ``probing.timesfm3_last_token.verify_native_head`` -- the
+    one that reproduced decode() with ``max_abs == 0.0`` at extraction time. Two details are
+    load-bearing and are the reason this is not re-derived here:
+
+      * the head is applied to the FULL (b, 1, n_tokens, d) hidden state and the readout token
+        is sliced AFTERWARDS, exactly as decode() does. Slicing first changes the matmul shape
+        and therefore its accumulation order, which on a TF32-enabled GPU is NOT bit-identical;
+      * the RevIN statistics are the model's own tensors for this batch, never a round-tripped
+        copy.
+
+    Returns the raw head output, the denormalized+clamped tensor, and the stitched (b, H, Q)
+    forecast BEFORE the trend add-back (all on-device except ``rec``, which is float64 numpy).
     """
     import torch
-    from timesfm3.torch import util as tfm_util
-    P, Q = model.input_patch_len, model.num_quantiles
-    opl = model.output_patch_len
-    n = len(h)
-    out = np.empty((n, geom.H, Q), np.float64)
+    Q = model.num_quantiles
+    P, opl = model.input_patch_len, model.output_patch_len
+    tok = geom.selected_token_index
+    b = states.shape[0]
     with torch.no_grad():
-        for s in range(0, n, batch):
-            e = min(s + batch, n)
-            b = e - s
-            x = torch.as_tensor(np.asarray(h[s:e], dtype=np.float32), device=device)
-            if x.shape != (b, model.output_head.in_features):
-                raise RuntimeError(f"native-head input is {tuple(x.shape)}, expected "
-                                   f"({b}, {model.output_head.in_features})")
-            raw = model.output_head(x)                                  # (b, opl*Q)
-            if raw.shape != (b, opl * Q):
-                raise RuntimeError(f"native head emitted {tuple(raw.shape)}, expected "
-                                   f"({b}, {opl}*{Q}={opl * Q})")
-            raw = raw.reshape(b, 1, 1, opl * Q)                          # decode()'s own layout
-            m = torch.as_tensor(np.asarray(mu[s:e], np.float32), device=device).reshape(b, 1, 1)
-            v = torch.as_tensor(np.asarray(sd[s:e], np.float32), device=device).reshape(b, 1, 1)
-            den = tfm_util.revin(raw, m, v, reverse=True)
-            den = torch.clamp(den, -model.value_clip, model.value_clip)
-            # horizon-major (output_patch_len, Q): flat index t*Q + q -- the layout proven by
-            # verify_native_head (which also shows the transposed one does NOT reproduce decode())
-            view5 = den.reshape(b, 1, 1, opl, Q)[:, :, :, :geom.extract_len, :]
-            rec = tfm_util.stitch_patches(view5, P)[:, :, :geom.H, :][:, 0]
-            out[s:e] = rec.float().cpu().numpy().astype(np.float64)
-    return out + np.asarray(trend, np.float64)[:, :, None]
+        raw = model.output_head(states)[:, :, [tok], :]            # (b, 1, 1, opl*Q)
+        if raw.shape[-1] != opl * Q:
+            raise RuntimeError(f"native head emitted {raw.shape[-1]} values, expected "
+                               f"{opl}*{Q}={opl * Q}")
+        den = tfm_util.revin(raw, run_mu[:, :, [tok]], run_sd[:, :, [tok]], reverse=True)
+        clipped = torch.clamp(den, -model.value_clip, model.value_clip)
+        view5 = clipped.reshape(b, 1, 1, opl, Q)[:, :, :, :geom.extract_len, :]
+        rec = tfm_util.stitch_patches(view5, P)[:, :, :geom.H, :][:, 0]
+    return {"raw": raw, "denormalized": den, "clipped": clipped,
+            "rec": rec.float().cpu().numpy().astype(np.float64)}
+
+
+def _staged_l20_identity(model, states, official, run_mu, run_sd, trend, geom, stages, *,
+                         tfm_util, atol, rtol) -> dict:
+    """The L20 identity, checked at THREE stages of the native inverse path.
+
+    stage 3 (final)     g_native(h_L20,15) fully inverse-transformed  vs  decode()'s output
+    stage 2 (pre-trend) the same, before the context trend is added back  vs  decode() - trend
+    stage 1 (raw head)  the head output itself -- no external reference exists, so what is
+                        recorded is its magnitude plus the SLICE-ORDER control below.
+
+    Stages 2 and 3 differ only by the trend, so a stage-3 failure with a clean stage 2 localizes
+    the fault to the trend add-back rather than the head/RevIN/clamp/stitch chain.
+
+    SLICE-ORDER CONTROL: the same head applied to the pre-sliced (b, 1, 1, d) token instead of
+    the full token sequence. Mathematically identical, numerically not on TF32 hardware. This is
+    exactly what the retired cache-based implementation did, and the recorded delta is the
+    measurement of why it could not reproduce decode().
+    """
+    import torch
+    tok = geom.selected_token_index
+    ref_final = official[:, 0].float().cpu().numpy().astype(np.float64)       # (b, H, Q)
+    got_final = stages["rec"] + np.asarray(trend, np.float64)[:, :, None]
+    got_pre = stages["rec"]
+    ref_pre = ref_final - np.asarray(trend, np.float64)[:, :, None]
+
+    # ONE comparator for every stage: the same elementwise gate the endpoint check uses, with
+    # raising deferred so all three stages are measured before any of them aborts the run.
+    Q = int(official.shape[-1])
+    cmp = lambda got, ref, name: _endpoint_identity(got, ref, Q, atol, rtol, stage=name,
+                                                    raise_on_fail=False)
+    st3 = cmp(got_final, ref_final, "final_inverse_transformed")
+    st2 = cmp(got_pre, ref_pre, "pre_trend")
+    with torch.no_grad():
+        sliced = model.output_head(states[:, :, [tok], :])
+        slice_delta = float((sliced - stages["raw"]).abs().max().item())
+    st1 = {"stage": "raw_output_head", "shape": list(stages["raw"].shape),
+           "dtype": str(stages["raw"].dtype),
+           "max_abs": float(stages["raw"].abs().max().item()),
+           "slice_before_head_max_abs_delta": slice_delta,
+           "note": "no external reference exists for the raw head output; the slice-order delta "
+                   "is the control -- it is the numerical difference the retired cache-based "
+                   "implementation introduced by applying the head to a pre-sliced token"}
+    rep = {"stages": [st1, st2, st3], "atol": float(atol), "rtol": float(rtol),
+           "max_scaled_error": st3["max_scaled_error"],
+           "max_abs_error": st3["max_abs_error"], "worst_index": st3["worst_index"],
+           "worst_ref": st3["worst_ref"], "worst_recon": st3["worst_recon"],
+           "exact": st3["exact"], "n_windows": int(ref_final.shape[0]),
+           "n_quantiles": Q}
+    if st3["max_scaled_error"] > 1.0:
+        raise RuntimeError(
+            f"L20 NATIVE RECONSTRUCTION FAILED (in-memory, same forward pass as decode()): "
+            f"stage-3 max scaled error {st3['max_scaled_error']:.3f} > 1 under |d| <= "
+            f"atol({atol:g}) + rtol({rtol:g})*|ref|.\n"
+            f"    stage 2 (pre-trend) max scaled error {st2['max_scaled_error']:.3f} "
+            f"(max|d| {st2['max_abs_error']:.3e})\n"
+            f"    stage 3 (final)     worst element {st3['worst_index']}: decode()="
+            f"{st3['worst_ref']:.6g}, reconstructed={st3['worst_recon']:.6g}\n"
+            f"    raw-head slice-order control delta {slice_delta:.3e}\n"
+            "  These states came straight from decode()'s own forward pass with no cache in "
+            "between, so this is NOT a serialization or device artifact: the head input, the "
+            "inverse RevIN/clamp/stitch or the trend add-back is genuinely wrong, and NO layer's "
+            "number can be trusted. If stage 2 is clean and stage 3 is not, the trend add-back "
+            "is the fault.")
+    return rep
+
+
+def native_head_transfer_pass(model, X, *, geom, device, layers, batch_size, detrend,
+                              allow_sorted_reference=False, bypass_sorting=True,
+                              recon_atol=1e-5, recon_rtol=2e-6, progress=True) -> dict:
+    """ONE decode() pass per batch; the frozen head applied to token 15 of EVERY layer IN MEMORY.
+
+    NO FEATURE CACHE is read or written. The hidden states go straight from decode()'s forward
+    pass into ``model.output_head`` on the same device, in the same dtype, within the same
+    ``torch.no_grad()`` region. That is the only way the L20 identity can be exact -- a cached
+    round-trip re-runs the head under a different kernel shape (and possibly a different device),
+    which is precisely why the cached implementation could not reproduce decode().
+
+    The learned-probe, CKA and effective-rank analyses are unaffected: they remain cache-based.
+    """
+    import torch
+
+    from probing.timesfm3_last_token import (LAST_LAYER, context_detrend_params, context_trend,
+                                             detrending, no_quantile_sorting,
+                                             register_layer_hooks, verify_native_head)
+    from timesfm3.torch import util as tfm_util
+
+    X = np.asarray(X, dtype=np.float32)
+    if X.ndim != 2 or X.shape[1] != geom.C:
+        raise ValueError(f"X must be (n, {geom.C}) raw CONTEXTS (no future values), got {X.shape}")
+    n, H, Q = len(X), geom.H, model.num_quantiles
+    tok = geom.selected_token_index
+    fc = {l: np.zeros((n, H, Q), np.float64) for l in layers}
+    mu = np.full(n, np.nan, np.float64)
+    sd = np.full(n, np.nan, np.float64)
+    native = np.zeros((n, H, Q), np.float32)
+    checks: dict = {}
+    caps: dict = {}
+    hs = register_layer_hooks(model, caps)
+    try:
+        with detrending(model, detrend), no_quantile_sorting(model, bypass_sorting) as srt:
+            for s in range(0, n, batch_size):
+                e = min(s + batch_size, n)
+                tgt = torch.from_numpy(X[s:e]).to(device).unsqueeze(1)          # (b, 1, C)
+                caps.clear()
+                with torch.no_grad():
+                    official, aux = model.decode(target=tgt, horizon=H,
+                                                 return_aux_outputs=True, **srt.decode_kwargs)
+                if official.shape[1:] != (1, H, Q):
+                    raise RuntimeError(f"decode() returned {tuple(official.shape)}, expected "
+                                       f"(b, 1, {H}, {Q})")
+                run_mu, run_sd = aux["revin_stats"]
+                mu[s:e] = run_mu[:, 0, tok].float().cpu().numpy()
+                sd[s:e] = run_sd[:, 0, tok].float().cpu().numpy()
+                native[s:e] = official[:, 0].float().cpu().numpy()
+                a, b_, act = context_detrend_params(np.asarray(X[s:e], np.float64),
+                                                    enabled=detrend)
+                trend = context_trend(a, b_, act, geom.C,
+                                      np.arange(geom.target_start, geom.target_end))   # (b, H)
+                st_last = None
+                for l in layers:
+                    st = _head_stages(model, caps[f"L{l}"], run_mu, run_sd, geom,
+                                      tfm_util=tfm_util)
+                    fc[l][s:e] = st["rec"] + trend[:, :, None]
+                    if l == LAST_LAYER:
+                        st_last = st
+                if "identity" not in checks:
+                    if st_last is None:
+                        raise RuntimeError(f"L{LAST_LAYER} must be among the evaluated layers "
+                                           "-- it is the endpoint identity")
+                    checks["sorting"] = srt.as_dict()
+                    # the VALIDATED check, run verbatim on the same states/forward pass
+                    checks["native_check"] = verify_native_head(
+                        model, caps[f"L{LAST_LAYER}"], official, aux["revin_stats"], X[s:e],
+                        geom, detrend=detrend,
+                        allow_sorted_reference=allow_sorted_reference,
+                        sorting=checks["sorting"])
+                    # plus the staged localization, on the same tensors
+                    checks["identity"] = _staged_l20_identity(
+                        model, caps[f"L{LAST_LAYER}"], official, run_mu, run_sd, trend, geom,
+                        st_last, tfm_util=tfm_util, atol=recon_atol, rtol=recon_rtol)
+                if progress and (s // max(batch_size, 1)) % 5 == 0:
+                    print(f"    [pass] {e}/{n} windows x {len(layers)} points "
+                          f"(1 decode() + {len(layers)} frozen-head applications per batch)",
+                          flush=True)
+    finally:
+        for h in hs:
+            h.remove()
+    if np.isnan(mu).any() or np.isnan(sd).any():
+        raise RuntimeError("the forward pass left NaN RevIN statistics -- incomplete pass")
+    return {"forecast": fc, "mu": mu, "sd": sd, "native": native,
+            "native_check": checks.get("native_check"), "identity": checks.get("identity"),
+            "sorting": checks.get("sorting"), "layers": list(layers)}
 
 
 # --------------------------------------------------------------------------- #
@@ -147,7 +309,7 @@ def run_dataset(tag, args, geom, model, device, probe_entry) -> dict:
     import torch  # noqa: F401  (device tensors are created inside the helpers)
     from probing.timesfm3_last_token import (LAST_LAYER, LAYER_NAMES, NUM_LAYERS, NUM_QUANTILES,
                                              assert_target_roundtrip, build_last_token_targets,
-                                             cached_last_token_features, raw_future_from_arcsinh)
+                                             raw_future_from_arcsinh)
     from probing.timesfm3_last_token_probes import native_reference
 
     t0 = time.time()
@@ -166,34 +328,16 @@ def run_dataset(tag, args, geom, model, device, probe_entry) -> dict:
         layers = sorted(layers + [LAST_LAYER])
         print(f"  [note] added L{LAST_LAYER} (the mandatory native endpoint identity)")
 
-    # test split ONLY: the head is already pretrained, so no training data is required.
-    # Pre-flight the cache first: this job normally runs on a GPU-less node, where a MISS would
-    # silently start a full CPU backbone pass over every window. Abort instead, unless asked.
-    if not args.allow_extraction:
-        from probing.timesfm3_last_token import cache_metadata, cache_root, read_cache
-        _m = cache_metadata(tag, "test", geom, checkpoint=args.checkpoint,
-                            detrend=not args.no_detrend, layers=layers, seed=args.seed,
-                            feature_dtype=np.dtype(args.feature_dtype), suite=args.suite,
-                            n_windows=len(w["X_test"]))
-        _r = cache_root(args.cache_dir, tag, "test", geom, not args.no_detrend, args.suite)
-        if read_cache(_r, _m, np.asarray(w["X_test"], np.float32), layers) is None:
-            raise SystemExit(
-                f"no cached test features for {tag} at {_r}.\n"
-                "  This analysis is meant to run on the WARM cache the paper7 Q=9 probe run "
-                "wrote, with no backbone forward pass (the job requests no GPU). Extracting here "
-                "would run the full backbone on CPU over every window.\n"
-                "  Point --cache-dir at that cache, or pass --allow-extraction to accept the "
-                "cost deliberately (then request a GPU).")
-    te = cached_last_token_features(
-        tag, "test", w["X_test"], geom=geom, model=model, device=device,
-        batch_size=args.extract_batch_size, layers=layers,
-        feature_dtype=np.dtype(args.feature_dtype), detrend=not args.no_detrend,
-        cache_dir=args.cache_dir, suite=args.suite, checkpoint=args.checkpoint, seed=args.seed,
-        force=False, allow_sorted_reference=args.allow_sorted_reference,
-        bypass_sorting=not args.no_sorting_bypass)
-    print(f"  features: {len(layers)} points, each "
-          f"{tuple(np.shape(te['feats'][layers[-1]]))} at token {geom.selected_token_index}"
-          f"   [cache {'HIT -- no backbone pass' if te.get('cache_hit') else 'MISS -- extracted'}]")
+    # TEST SPLIT ONLY: the head is already pretrained, so no train/val representations are
+    # needed. ONE in-memory pass -- decode() + the frozen head on every layer, no cache.
+    print(f"  forward pass: {len(w['X_test'])} windows x {len(layers)} points, in memory "
+          f"(no feature cache)", flush=True)
+    te = native_head_transfer_pass(
+        model, w["X_test"], geom=geom, device=device, layers=layers,
+        batch_size=args.extract_batch_size, detrend=not args.no_detrend,
+        allow_sorted_reference=args.allow_sorted_reference,
+        bypass_sorting=not args.no_sorting_bypass,
+        recon_atol=args.recon_atol, recon_rtol=args.recon_rtol)
 
     Zte = np.concatenate([w["X_test"],
                           raw_future_from_arcsinh(w["X_test"], w["Y_test_traj"],
@@ -213,14 +357,28 @@ def run_dataset(tag, args, geom, model, device, probe_entry) -> dict:
     den = np.maximum(den, MASE_DEN_FLOOR)
     ref_mase_pw = per_window_mase(y_raw, ref["median_raw"], den)
 
-    per_layer, q9_pw, med_pw, mase_pw, l20_check = [], [], [], [], None
+    l20_check = te["identity"]
+    idn = l20_check["stages"]
+    print(f"  L20 identity (same forward pass, no cache):")
+    print(f"      stage 1 raw head      {idn[0]['shape']} {idn[0]['dtype']}  "
+          f"max|h| {idn[0]['max_abs']:.4g}   slice-order control delta "
+          f"{idn[0]['slice_before_head_max_abs_delta']:.3e}")
+    print(f"      stage 2 pre-trend     max scaled {idn[1]['max_scaled_error']:.3g}  "
+          f"max|d| {idn[1]['max_abs_error']:.3e}"
+          f"{'   EXACT' if idn[1]['exact'] else ''}")
+    print(f"      stage 3 final vs decode()  max scaled {idn[2]['max_scaled_error']:.3g}  "
+          f"max|d| {idn[2]['max_abs_error']:.3e}"
+          f"{'   EXACT' if idn[2]['exact'] else ''}")
+    nc = te["native_check"]
+    if nc is not None:
+        print(f"      validated verify_native_head: relative {nc['relative']:.3e}, "
+              f"max_abs {nc['max_abs']:.3e}, wrong-layout control "
+              f"{nc['transposed_layout_relative']:.2e}")
+
+    per_layer, q9_pw, med_pw, mase_pw = [], [], [], []
     for l in layers:
-        raw = native_head_predict_raw(model, te["feats"][l], te["mu"], te["sd"], pte["trend"],
-                                      geom, device=device, batch=args.head_batch_size)
-        if l == LAST_LAYER:
-            l20_check = _endpoint_identity(raw, te["native"], NUM_QUANTILES,
-                                           args.recon_atol, args.recon_rtol)
-        r = native_reference(raw, te["mu"], te["sd"], pte["trend"], pte["targets"], pte["valid"])
+        r = native_reference(te["forecast"][l], te["mu"], te["sd"], pte["trend"],
+                             pte["targets"], pte["valid"])
         if not np.array_equal(r["rows"], rows):
             raise RuntimeError("a layer was scored on different test windows than the reference")
         m_pw = per_window_mase(y_raw, r["median_raw"], den)
@@ -250,10 +408,8 @@ def run_dataset(tag, args, geom, model, device, probe_entry) -> dict:
             f"(relative {rel_scalar:.3e} > {args.loss_identity_rtol}). At L20 the two are the "
             "same computation; a difference this large means the head input, the inverse "
             "transform or the scoring diverged.")
-    print(f"  L20 endpoint: max scaled recon error {l20_check['max_scaled_error']:.3f} (< 1) | "
-          f"max|d| {l20_check['max_abs_error']:.2e} at {l20_check['worst_index']} "
-          f"(decode {l20_check['worst_ref']:.4g}, recon {l20_check['worst_recon']:.4g}) | "
-          f"Q9 loss identity relative {rel_scalar:.2e} (< {args.loss_identity_rtol})")
+    print(f"  L20 scalar identity: Q9 loss relative {rel_scalar:.2e} "
+          f"(< {args.loss_identity_rtol}) vs decode()'s own baseline")
 
     for p in per_layer:                       # relative / absolute vs the L20 native-head row
         p["native_head_relative_to_L20"] = p["native_head_q9_pinball"] / l20 if l20 else float("nan")
@@ -275,7 +431,7 @@ def run_dataset(tag, args, geom, model, device, probe_entry) -> dict:
                                        "median_loss": ref["median_loss"],
                                        "mase_context": float(ref_mase_pw.mean()),
                                        "per_quantile_loss": ref["per_quantile"]},
-            "l20_identity": {**l20_check, "q9_loss_abs_diff_vs_native_baseline": d_scalar,
+            "l20_identity": {**{k: v for k, v in l20_check.items()}, "q9_loss_abs_diff_vs_native_baseline": d_scalar,
                              "q9_loss_relative_diff_vs_native_baseline": rel_scalar,
                              "q9_loss_rtol": args.loss_identity_rtol,
                              "native_reference_storage_dtype": "float32 (the feature cache "
@@ -283,11 +439,17 @@ def run_dataset(tag, args, geom, model, device, probe_entry) -> dict:
                                                                "float32; this path is float64)"},
             "combined_with_probe": combined,
             "target_roundtrip_relative_err": rt, "n_denominator_clamped": n_clamped,
-            "m_season": M_SEASON, "cache_hit": bool(te.get("cache_hit")),
+            "m_season": M_SEASON,
+            "feature_cache_used": False,
+            "provenance": "representations taken in memory from decode()'s own forward pass; "
+                          "no feature cache is read or written by this experiment",
+            "quantile_sorting": te["sorting"],
+            "validated_native_head_check": te["native_check"],
             "seconds": round(time.time() - t0, 1)}
 
 
-def _endpoint_identity(raw, native, Q, atol, rtol) -> dict:
+def _endpoint_identity(raw, native, Q, atol, rtol, *, stage="final",
+                       raise_on_fail=True) -> dict:
     """At L20 the frozen head must reproduce decode()'s own nine quantiles up to float32.
 
     Elementwise mixed absolute/relative tolerance over the FULL (N, H, Q) forecast tensor:
@@ -310,8 +472,9 @@ def _endpoint_identity(raw, native, Q, atol, rtol) -> dict:
            "worst_ref": float(ref[w]), "worst_recon": float(got[w]),
            "worst_abs_error": float(d[w]),
            "per_quantile_max_abs": d.max(axis=(0, 1)).tolist(),
-           "n_windows": int(ref.shape[0]), "n_quantiles": int(Q)}
-    if rep["max_scaled_error"] > 1.0:
+           "n_windows": int(ref.shape[0]), "n_quantiles": int(Q),
+           "stage": stage, "exact": bool(d.max() == 0.0)}
+    if rep["max_scaled_error"] > 1.0 and raise_on_fail:
         raise RuntimeError(
             f"L20 NATIVE RECONSTRUCTION FAILED: max scaled error {rep['max_scaled_error']:.3f} "
             f"> 1 under |d| <= atol({atol:g}) + rtol({rtol:g})*|ref|. Worst element {w}: "
@@ -508,9 +671,6 @@ def parse_args(argv=None):
                                                           "google/timesfm-3.0-pytorch"))
     g.add_argument("--hf-home", default=None)
     g.add_argument("--device", default=os.environ.get("TFM3_DEVICE", None))
-    g.add_argument("--cache-dir", default=os.environ.get("TFM3_LT_CACHE_DIR", None),
-                   help="last-token feature cache [default: <repo>/features_cache]. A warm cache "
-                        "means NO backbone forward pass")
     g.add_argument("--probe-results", default=None,
                    help="the paper7 Q=9 probe summary. REQUIRED for the alignment gap and the "
                         "comparison figures; omit to save the frozen-head curve alone")
@@ -523,14 +683,10 @@ def parse_args(argv=None):
     g.add_argument("--context-len", type=int, default=512)
     g.add_argument("--horizon", type=int, default=64)
     g.add_argument("--stride", type=int, default=64)
-    g.add_argument("--feature-dtype", default="float32", choices=["float32", "float16"])
     g.add_argument("--no-detrend", action="store_true")
-    g.add_argument("--extract-batch-size", type=int, default=64)
-    g.add_argument("--allow-extraction", action="store_true",
-                   help="permit a feature-cache MISS to trigger a backbone forward pass. Off by "
-                        "default: this analysis is designed to run GPU-less on the warm cache, "
-                        "where extracting would silently cost a full CPU backbone pass")
-    g.add_argument("--head-batch-size", type=int, default=512)
+    g.add_argument("--extract-batch-size", type=int, default=64,
+                   help="windows per decode() forward pass; each batch also runs the frozen head "
+                        "once per representation point, in memory")
     g.add_argument("--allow-sorted-reference", action="store_true")
     g.add_argument("--no-sorting-bypass", action="store_true")
 
@@ -579,8 +735,6 @@ def main(argv=None):
     unknown = [t for t in tags if t not in roster]
     if unknown:
         raise SystemExit(f"unknown dataset tag(s) {unknown}; roster = {roster}")
-    args.cache_dir = (Path(args.cache_dir).expanduser() if args.cache_dir
-                      else REPO_ROOT / "features_cache")
     paper_out = Path(args.paper_out).expanduser() if args.paper_out else paper_out_default()
     out_root = Path(args.out_root).expanduser() if args.out_root else paper_out / "_work"
     figdir = paper_out / "figures"
@@ -610,8 +764,9 @@ def main(argv=None):
           f"{LAYER_NAMES[0]}..{LAYER_NAMES[-1]}   (decode()'s own index "
           f"{ginfo['native_forecast_indices']})")
     print("  NO fitting: no probe, no optimizer, no validation search, no adapter")
-    print(f"  split      : test only (the head is pretrained; no training data is needed)")
-    print(f"  cache      : {args.cache_dir}")
+    print("  split      : TEST only (the head is pretrained; no train/val representations)")
+    print("  NO feature cache: representations go straight from decode()'s forward pass "
+          "into the frozen head, in memory")
 
     meta = {"analysis": "timesfm3_native_head_transfer", "model": "timesfm-3.0",
             "checkpoint": args.checkpoint, "timesfm_version": timesfm_version(),

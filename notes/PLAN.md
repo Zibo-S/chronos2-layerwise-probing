@@ -217,25 +217,52 @@ alongside `*_above_null_floor` margins, and draws `figures/cka/cka_vs_null_floor
 
 Effective rank stays on **train** only, the committed Chronos-2 spectral protocol, unchanged.
 
-## Frozen native-head transfer
+## Frozen native-head transfer — IN MEMORY, no cache (revised 2026-09-16)
 
 `model.output_head` (the checkpoint's own `Linear(1280, 576)`) applied to `h_{l,15}` at every
 point, then decode()'s own inverse path: `revin(reverse, token-15 stats) -> clamp(±value_clip)
 -> stitch_patches -> + context trend`. Scored by the SAME `native_reference` that scores
-decode(), so the curves are directly comparable with the probe's, and `A_l = L_l^{head} −
+decode(), so the curves are directly comparable with the probe's and `A_l = L_l^{head} −
 L_l^{probe}` is well defined.
 
-Gates (all abort): L20 must reproduce decode()'s nine quantiles **elementwise** — `|recon −
-decode| ≤ atol + rtol·|decode|` per element over the full (N,64,9) tensor (atol 1e-5, rtol 2e-6),
-failing iff the worst *scaled* error exceeds 1; this replaces the old `max|d|/mean|ref|` ratio,
-which was unfair to heavy-tailed forecasts (BOOM's 162.8-magnitude element, 5e-7 relative, read
-as ~1e-4 against the 0.73 mean). The worst-element error is a uniform 2–7 float32 ULP across all
-seven datasets. The L20 Q=9 loss must equal the native baseline to **<1e-5 relative** (relative,
-not absolute — the cache stores decode()'s forecast in float32 while this path is float64, so
-they agree to ~1e-9 of the loss for the large-N datasets; the small-N Coastal T-S measures ~2e-6,
-which is exactly why the bar is 1e-5 and not 1e-6). The head's parameter sha256 must be identical
-before and after; window parity with the committed Chronos-2 artifacts must hold. A feature-cache
-MISS aborts by default (`--allow-extraction` to override) because this job requests no GPU.
+**This experiment no longer uses the feature cache.** Its validity rests on one identity — at
+L20 the path IS the native forecasting pathway — and that identity is only exact when the head
+is applied to the states decode() just produced.
+
+*Why the cached version failed (measured, Electricity, 2026-09-16):* reloading the token-15
+state and re-applying the head gave `max|d| = 9.4e-2`, worst element `−5.18678` vs `−5.18622`
+(~1,200 float32 ULP — far too large to be rounding). The cache itself is fine: extraction's own
+`verify_native_head` recorded `max_abs = 0.0`, `per_quantile_max_abs = [0.0]×9`, and
+`official_monotone_in_quantile_fraction = 0.9995` ruled out quantile sorting. The difference is
+that the cached path applies the head to a **pre-sliced** `(b, 1280)` token while decode()
+applies it to the full `(b, 1, 18, 1280)` sequence and slices afterwards — a different matmul
+shape, hence a different accumulation order, which is not bit-identical under TF32 on an A100.
+The old extraction-time check missed it only because it scaled by `mean|ref|` (597 for
+Electricity), the same global-mean flaw `54fcb84` had already fixed elsewhere.
+
+**Tolerances were NOT loosened. The cache was removed.** The driver now runs ONE `decode()` pass
+per batch with layer hooks, applies the frozen head to all 21 points in memory, and never
+serializes a representation. It therefore needs a **GPU** and runs on the **seven test splits
+only** (no train/val representations are built).
+
+The L20 identity is checked at **three stages** against decode()'s output from that same pass:
+
+| stage | reference | isolates |
+|---|---|---|
+| 1 raw head output | none (records magnitude) + **slice-order control** | the TF32/shape effect above, measured directly |
+| 2 pre-trend forecast | `decode() − trend` | head / RevIN / clamp / stitch |
+| 3 final inverse-transformed | `decode()` | the trend add-back (stages 2+3 differ only by it) |
+
+All three use one comparator (`_endpoint_identity`, elementwise `|d| ≤ atol + rtol·|ref|`,
+atol 1e-5 / rtol 2e-6), with raising deferred so every stage is measured before any aborts. The
+validated `verify_native_head` additionally runs verbatim on the same tensors. The scalar gate
+(L20 Q=9 loss == the native baseline, <1e-5 relative), the head-checksum gate and window parity
+are unchanged.
+
+Entry points: `experiments/run_timesfm3_native_head_transfer.py`, `job_timesfm3_native_head.sh`
+(**GPU**). `job_timesfm3_geometry.sh` stays CPU-only and now refuses `--head-only` with a pointer
+to the GPU job rather than silently running the backbone on CPU. CKA, effective rank and the
+learned Q=9 probes remain cache-based and untouched.
 
 ## Outputs — heavy on $SCRATCH, paper-ready in the repo
 
