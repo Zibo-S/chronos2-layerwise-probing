@@ -246,28 +246,35 @@ def run_dataset(tag, args, geom, model, device, ref_entry, adapter_dir) -> dict:
     fit_layers = [l for l in layers if l != LAST_LAYER]
 
     # ---- representations: cache only, and through the loader that DISCARDS mu/sd/native ----
-    lo = dict(cache_dir=args.cache_dir, geom=geom, layers=layers, checkpoint=args.checkpoint,
-              suite=args.suite, seed=args.seed, detrend=not args.no_detrend,
-              feature_dtype=np.dtype(args.feature_dtype),
+    # The cache's metadata records the EXACT layer list it was written with, and ``read_cache``
+    # diffs EVERY metadata field -- so asking for a subset of a 21-point cache is rejected as
+    # incompatible. Always read the full cache (the per-layer arrays are memmapped, so unused
+    # points cost nothing) and select the requested points by position afterwards. ``--layers``
+    # then means "fit and report these", never "read a different cache".
+    cache_layers = list(range(NUM_LAYERS))
+    lo = dict(cache_dir=args.cache_dir, geom=geom, layers=cache_layers,
+              checkpoint=args.checkpoint, suite=args.suite, seed=args.seed,
+              detrend=not args.no_detrend, feature_dtype=np.dtype(args.feature_dtype),
               ignore_timesfm_version=args.ignore_timesfm_version)
     R = {s: load_last_token_reps(tag, s, w[f"X_{s}"], series_ids=w.get(f"series_{s}"), **lo)
          for s in ("train", "val", "test")}
     for s, r in R.items():
         print(f"  [cache] {s:<5} {r['n']:>5} x {tuple(np.shape(r['reps'][0]))}  "
-              f"{len(r['layers'])} points   id {r['window_identity_hash']}")
+              f"{len(r['layers'])} points cached, {len(layers)} in use   "
+              f"id {r['window_identity_hash']}")
     hashes = {s: r["window_identity_hash"] for s, r in R.items()}
     if len(set(hashes.values())) != 3:
         raise RuntimeError(f"two splits of {tag} have the same window identity hash {hashes} -- "
                            "train/val/test are not distinct window sets")
 
-    pos = {l: i for i, l in enumerate(layers)}
+    pos = {l: cache_layers.index(l) for l in layers}
     Y = {s: np.asarray(R[s]["reps"][pos[LAST_LAYER]], SOLVE_DTYPE) for s in R}   # h_L20
 
     # ---- the scoring side of the SAME verified cache read (test split only) ----
     ctx = load_native_context(tag, "test", w["X_test"], cache_dir=args.cache_dir, geom=geom,
                               checkpoint=args.checkpoint, suite=args.suite, seed=args.seed,
                               detrend=not args.no_detrend,
-                              feature_dtype=np.dtype(args.feature_dtype), layers=layers,
+                              feature_dtype=np.dtype(args.feature_dtype), layers=cache_layers,
                               ignore_timesfm_version=args.ignore_timesfm_version)
 
     # ---- targets, built ONLY for scoring; never handed to an adapter fit ----
