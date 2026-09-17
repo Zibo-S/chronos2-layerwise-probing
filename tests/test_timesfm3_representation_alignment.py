@@ -273,18 +273,29 @@ def test_lambda_selection_is_validation_representation_only():
     # the chosen lambda must be the argmin of the RECORDED val curve -- nothing else
     best = min(sel["candidates"], key=lambda x: x["val_representation_mse"])
     assert sel["lambda"] == best["lambda"], (sel["lambda"], best["lambda"])
-    # TRAIN error would pick the grid minimum (it decreases monotonically as lambda -> 0 on the
-    # data the fit saw); VAL error, with this much train noise, must not.
+    # TRAIN error is non-decreasing in lambda on the data the fit saw, so TRAIN selection lands
+    # at the bottom of the grid. Checked with a tolerance, never as an exact argmin: the
+    # smallest lambdas here are numerically indistinguishable (they differ in the 16th digit),
+    # so which one is formally the minimum is float64 rounding, not a fact about the estimator.
+    grid = sorted(RIDGE_GRID)
     tr_curve = {g: representation_metrics(solver.predict(Xtr, g), Ytr,
-                                          per_dimension=False)["mse"] for g in RIDGE_GRID}
-    assert tr_curve[min(RIDGE_GRID)] == min(tr_curve.values()), (
-        f"this fixture no longer discriminates: train error is not minimized at the smallest "
-        f"lambda ({tr_curve})")
-    assert sel["lambda"] > min(RIDGE_GRID), (
-        f"val selection returned the grid minimum {sel['lambda']}, which is exactly what TRAIN "
-        f"error would choose; the selection is not discriminating (train MSE {tr_curve})")
-    print(f"     7         lambda selected on VAL representation MSE = {sel['lambda']:g} "
-          f"(> grid min)   OK")
+                                          per_dimension=False)["mse"] for g in grid}
+    vals = [tr_curve[g] for g in grid]
+    eps = 1e-12 * max(abs(v) for v in vals)
+    assert all(b >= a - eps for a, b in zip(vals, vals[1:])), (
+        f"train MSE is not non-decreasing in lambda, so this fixture no longer separates "
+        f"train-selection from val-selection: {tr_curve}")
+    # THE discriminating fact: validation chose a lambda that TRAIN error measurably rejects.
+    # This is what "selected on validation" means operationally, and unlike a comparison against
+    # the grid minimum it cannot be satisfied by a lambda one notch up in the rounding noise.
+    assert tr_curve[sel["lambda"]] > vals[0] * (1.0 + 1e-6), (
+        f"val selected lambda={sel['lambda']:g}, whose train MSE {tr_curve[sel['lambda']]:.12f} "
+        f"is indistinguishable from the grid minimum's {vals[0]:.12f}. Train and val would agree "
+        f"here, so this fixture proves nothing about WHICH split drove the selection "
+        f"(train MSE curve {tr_curve})")
+    assert sel["lambda"] > min(grid), sel["lambda"]
+    print(f"     7         lambda selected on VAL representation MSE = {sel['lambda']:g}; its "
+          f"train MSE {tr_curve[sel['lambda']]:.4f} > grid-min {vals[0]:.4f}   OK")
 
     # 7b: a forecast-based criterion is refused by name
     try:
