@@ -298,3 +298,108 @@ $SCRATCH/timesfm3_geometry/
   the committed artifacts: geometry produced 7×21×21 CKA + rank curves and 20 figures
   (3.3 MB repo-local); native-head produced 7×21 points with both L20 identities holding
   (raw 1.3e-7, scalar 6.9e-9) and the head checksum unchanged.
+
+---
+
+# Linear representation alignment  h_l -> h_L20 -> frozen native head (added 2026-09-16)
+
+The FOURTH analysis on the same paper7 windows. It separates "the information is there" from
+"the information is in the right coordinate system".
+
+| | question | entry point | fits anything? |
+|---|---|---|---|
+| learned probe | is the forecast linearly DECODABLE from `h_l`? | `run_timesfm3_last_token_probing.py` | yes, on FORECAST targets |
+| frozen native head | is `h_l` already in the readout's COORDINATE SYSTEM? | `run_timesfm3_native_head_transfer.py` | **no** |
+| CKA / effective rank | how does the GEOMETRY evolve? | `run_timesfm3_representation_geometry.py` | **no** |
+| **alignment (new)** | can a LINEAR map put `h_l` into that coordinate system? | `run_timesfm3_representation_alignment.py` | yes, on the **REPRESENTATION** only |
+
+## The objective is target-free, and that is the whole point
+
+`W_native` is itself **linear** (`Linear(1280, 576)`). An adapter trained on forecast loss would
+collapse to another linear forecasting map `W_native A_l` — the learned probe in disguise. So:
+
+    min_{A,b} ||X_l A + 1 b^T - H_20||_F^2 + lambda ||A||_F^2      (bias NOT regularized)
+
+lambda chosen on **validation representation MSE**, never on any forecast quantity. Enforced
+structurally, not by convention: the fitting path loads through
+`timesfm3_geometry.load_last_token_reps`, which verifies the cache's `mu`/`sd`/`native` and then
+**discards** them, and `assert_no_forecast_targets` refuses any `(n,64)` trajectory or
+`(n,64,9)` forecast reaching a fit. Targets are built only AFTER fitting, for scoring.
+
+**NOT the Chronos-2 adapter.** `probing/native_head_adapter.py` trains `Linear(768,768)` on
+FORECAST loss into a NONLINEAR ResidualBlock head; its own docstring parks
+`min_A ||RMS(A h_l) - h_L12||^2` as "a PARKED future direction, not built here". This is that
+parked direction, for TimesFM-3, where the head happens to be linear. Never conflated.
+
+## Solver
+
+N=1394 train rows against d=1280 (1.64M coefficients), so ridge is mandatory and conditioning
+must be watched. ONE economy SVD per layer, float64:
+
+    Xc = U S V^T     A_lambda = V diag(s/(s^2+lambda)) U^T Yc     b = muY - muX A
+
+Every lambda is a re-weighting of that one decomposition — no refit, no iterative solver, no SGD.
+Grid `1e-8 .. 1e6` (15 points): the spec's log grid extended upward because UNSTANDARDIZED
+1280-d states can put `s_max^2` near ~1e6. Deliberately NOT `WD_GRID_LAST_TOKEN` (decoupled AdamW
+decay, a different parameterization) and NOT `ridge_regression_probe`'s alphas (standardized
+features, 1-D target). Per layer the run records the spectrum, the condition number and
+`df(lambda) = sum s^2/(s^2+lambda)`, and WARNS on a grid edge.
+
+## Two endpoints, both reported, NOT required to be bit-identical
+
+| | what | role |
+|---|---|---|
+| `cached_L20_native_head` | frozen head on the CACHED L20 rep, the same `(N,1280)` path every aligned curve takes | the INTERNAL alignment endpoint; `A_20 = I, b_20 = 0` produces it by construction, and the run ABORTS unless the two agree EXACTLY |
+| `official_native_decode` | decode()'s own forecast, cached at extraction | the TRUE model baseline |
+
+Their difference (~1e-6 relative) is the `(N,1280)`-vs-`(b,1,18,1280)` accumulation effect the
+native-head run measured with its own slice-order control (3.34e-6 on a raw head output of
+max|h| 3.71). A synthesized `A h + b` has no token sequence to sit in, so the cached path is the
+only possible one — and the endpoint is defined to travel it too. Numerical provenance, not an
+adapter result. `--endpoint-report-rtol` only FLAGS a large difference; it never gates.
+
+## Controls
+
+L20 identity (exact, aborts), mean baseline (train mean of `h_L20`), permuted correspondence
+(same X, same SVD, same grid — only the row pairing destroyed), the no-forecast-target shape
+guard, the head checksum before/after, and train-fits / val-selects / test-once discipline.
+
+## Files (all new; nothing existing modified)
+
+- `probing/timesfm3_alignment.py` — ridge/Procrustes/identity solvers, representation metrics,
+  controls, the frozen-head application, the leakage guard, the scoring-side cache reader.
+- `experiments/run_timesfm3_representation_alignment.py` — driver (4 curves, bootstrap, figures).
+- `tests/test_timesfm3_representation_alignment.py` — 26 numbered contracts.
+- `job_timesfm3_alignment.sh` — SLURM, **CPU only, no GPU**.
+
+## Run order (Narval)
+
+1. login node: `python -m tests.test_timesfm3_representation_alignment` (~5 s, 2 threads).
+2. `sbatch job_timesfm3_alignment.sh` — **no GPU**, ~2 h wall (window building dominates; the
+   linear algebra is ~15 min). `--alignment ridge procrustes` adds the orthogonal control.
+3. inside an `salloc` with a GPU:
+   `python -m tests.test_timesfm3_representation_alignment --with-model` for contracts 13/14.
+
+## Outputs
+
+```text
+$SCRATCH/timesfm3_alignment/
+    adapters/<dataset>/<alignment>/L{00..19}.npz     # float32 A + b, ~6.6 MB each
+    numerical_results/representation_alignment__<tag>.json
+<repo>/results/timesfm3_representation_alignment/
+    representation_alignment_summary.json, representation_alignment_table.csv
+    figures/forecast/aligned_vs_direct_vs_probe_all_datasets.{png,pdf}
+    figures/representation/representation_r2_by_layer.{png,pdf}
+    figures/recovery/alignment_recovery_by_layer.{png,pdf}
+```
+
+## Open / to check on the first run
+
+- Whether any layer selects the ridge grid maximum or minimum (the driver warns); widen
+  `--ridge-grid` if so. `s_max^2` is printed per dataset so the grid can be judged, not guessed.
+- Whether the aligned curve tracks the 5% tunnel entrance, the CKA change or the effective-rank
+  collapse — the hypothesis is NOT hard-coded anywhere; the full Emb..L19 depth curve is fit so
+  the answer can come out either way.
+- Caveat to carry into the writeup: a high representation R^2 at layer l says a LINEAR map into
+  the L20 basis EXISTS and was found from 1394 windows. It does not say the model performs that
+  map, nor that the adapter generalizes off these windows.
