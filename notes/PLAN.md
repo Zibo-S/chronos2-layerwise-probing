@@ -403,3 +403,267 @@ $SCRATCH/timesfm3_alignment/
 - Caveat to carry into the writeup: a high representation R^2 at layer l says a LINEAR map into
   the L20 basis EXISTS and was found from 1394 windows. It does not say the model performs that
   map, nor that the adapter generalizes off these windows.
+
+---
+
+# TiRex: Q=1 layer-wise probing + representation geometry (added 2026-09-20)
+
+The THIRD model. Same paper7 windows, same tunnel rule, same CKA / effective-rank estimators.
+No Chronos-2 or TimesFM-3 file is modified; the roster, window builders, MASE and tunnel are
+imported from the modules that already own them.
+
+## Geometry — DERIVED FROM THE CHECKPOINT, and three paper assumptions were wrong
+
+Discovered via `tirex-ts==1.4.2` on `NX-AI/TiRex` (`--discover-only` prints and saves all of it):
+
+| | value | matches the paper? |
+|---|---|---|
+| input / output patch | 32 / 32 | yes |
+| embedding dim / blocks / heads | 512 / 12 / 4 | yes |
+| input_ff_dim | 2048 | yes |
+| quantiles | 0.1 … 0.9 (Q=9, median idx 4) | yes |
+| final norm | `RMSNorm(512)` after block 12 | yes |
+| output head | `ResidualBlock(512 → 2048 → 288)`, 288 = 9×32 | yes |
+| **train_ctx_len** | **2048** | yes — but its CONSEQUENCE was missed |
+| **readout tokens** | **63 and 64**, not 15 and 16 | **NO** |
+| **native multi-patch path** | **two passes by default**, not one | **NO** |
+
+**1. The readout tokens are 63 and 64.** `_forecast_single_step` calls
+`_adjust_context_length(ctx, train_ctx_len, train_ctx_len)`, forcing EVERY context to exactly
+2048 by NaN LEFT-padding. C=512 becomes `[1536 NaN = 48 masked patches][512 real = 16 patches]`
+= 64 context tokens. "16 real context patches" is true; "token 15" is not — the real patches sit
+at 48..63. Nothing in the code hardcodes 63/64: `TiRexGeometry` derives them and asserts
+`readout_indices[0] == n_context_tokens - 1`.
+
+**2. The package default is NOT the paper's path.** `max_accelerated_rollout_steps` defaults to
+**1**, which runs TWO forward passes (second one on a context shifted by 32, with its own
+loc/scale). Only `=2` gives the single pass with 65 tokens and two adjacent readouts — the
+paper's "future patches as missing inputs", and the only mode where both states share one
+recurrent scan and one normalization. **We use =2**; the gap to the default is measured per
+dataset (`rollout_mode_gap`: first 32 steps identical, last 32 differ by ~7e-3 relative).
+
+**3. `sLSTMCellTorch` runs the recurrence in bfloat16** (pointwise math promoted to fp32 each
+step). The `cuda` backend is xLSTM's own kernel and will NOT agree bit-for-bit. Backend is
+recorded in every cache (cross-backend reuse is REFUSED) and `--compare-backends` quantifies it.
+
+## THE GATE — answered YES, bit-exactly
+
+States at tokens [63, 64] → frozen `output_patch_embedding` → `unflatten(-1, (Q, P))`
+(**quantile-major**, the opposite of TimesFM-3's horizon-major) → `transpose` →
+`tokenizer.output_transform` → `swapaxes` **== decode()'s own H=64 forecast**, `max|d| = 0.0`,
+`torch.equal` True, on synthetic AND on real Electricity windows. Three wrong-index controls
+(one token early / both = first / reversed) each differ by 6.1–1.1e3. Re-proved every dataset.
+
+## Normalization — read off `PatchedTokenizer`, not guessed
+
+`loc = mean(x[T-C:T])`, `scale = population std(x[T-C:T])` (nanmean excludes the pad), with
+TiRex's own degenerate guard `scale ← |loc| + 1e-5`. Verified numerically to 1e-4/1e-5. The
+future is a separate argument to `build_targets` and reaches neither the model nor the scaler.
+
+## Probe — ONE SHARED `Linear(512, 32)`, Q=1, tau=0.5
+
+Applied to both readout states, concatenated to H=64. 16,416 params. Sharing is structural (one
+`nn.Linear` on a `(B, K, 512)` tensor). ONE `StandardScaler` on the STACKED (2N, 512) TRAIN rows
+— a per-position scaler would silently un-share the head.
+
+**The wd grid had to be extended, and my first reasoning was wrong.** I argued `WD_GRID_V2`
+would suffice because the row/param ratio is 6× better than TimesFM-3's. Measured on full
+Electricity: **12 of 14 depths selected wd = 3, the grid maximum**, train ≪ val everywhere. The
+ratio argument ignored that the states' effective rank is ~7–37, not 512. `WD_GRID_TIREX` =
+`WD_GRID_V2 + (10, 30)`; after the change the max selected is 10 and no depth clips.
+`assert_wd_grid` REFUSES any lr·wd ≥ 1 (wd=100 zeroes the weight every step). The
+no-information reference is `constant_forecast_floor` — closed form, no fit.
+
+## One real degeneracy, detected not hidden
+
+**(Emb, position 1) is bit-identical across ALL windows.** The masked-future token reaches the
+patch embedding as (values=0, mask=0) before any recurrence, so `input_patch_embedding` of it is
+a pure bias. Every deeper depth varies at both positions. Consequences: Emb's second-patch
+forecast is a constant, and Emb's headline (2N, d) geometry matrix is n varying rows plus n
+copies of one point — which depresses its spectrum (test r_eff 4.1 headline vs 7.9 pos0). The
+headline construction is kept as specified; a **`pos0` companion** (position 0 only) is computed
+alongside it and is the like-for-like comparison. `degenerate_readouts` asserts the affected set
+equals exactly `[{Emb, 1}]` and WARNS otherwise.
+
+## Depth convention (needed for cross-model plots)
+
+`relative_depth = block_index / 12` — Emb 0.0, Lk k/12, **L12+RMS 1.0 (ties with L12; the norm
+adds no block, `kind` distinguishes them)**. `relative_position = position_index / 13` is
+strictly monotone for plotting but NOT cross-model. Both are in every record.
+
+## CKA / effective rank
+
+Both estimators, both splits, on the SAME (2N, 512) matrix the probe's rows come from, RAW (a
+z-scored matrix is refused). Measured null floors at the real sizes make the point:
+
+| split | rows | biased floor | unbiased floor |
+|---|---|---|---|
+| train | 2788 | **+0.156** | +0.001 |
+| test | 524 | **+0.492** | −0.004 |
+
+So **absolute biased CKA on the test split is uninterpretable** and is never compared across
+models (Chronos-2 ~0.42 at 1048×768, TimesFM-3 ~0.83 at 262×1280). Headline = **unbiased**.
+
+## First real result (Electricity, full 1394/262/262)
+
+Tunnel entrance **L11** (relative_depth 0.92) — decodability keeps improving nearly to the end.
+Final-depth MASE 1.000 vs TiRex native 0.818 (no linear probe matches the native head, as on the
+other two lines). Effective rank rises 7 → ~38 (L7–L10) then **collapses to 7.8 at L12+RMS**.
+Second patch is consistently ~1.6× harder than the first at every depth — smoothly, not
+catastrophically.
+
+## Files (all new; nothing existing modified)
+
+- `probing/tirex_model.py` — geometry dataclass, discovery, freezing, hooks, native path,
+  `verify_native_head`, targets, cache, `compare_backends`.
+- `probing/tirex_probes.py` — the Q=1 shared patch probe, wd grid + guard, tunnel, floors.
+- `probing/tirex_geometry.py` — rep matrix, degeneracy, CKA/erank (imported, not reimplemented).
+- `experiments/run_tirex_probing.py` — driver. `tests/test_tirex_probing.py` — 27 contracts.
+- `job_tirex_probing.sh` — SLURM.
+
+## Run order (Narval) — see the job script header for the full commands
+
+1. login node: `pip install "tirex-ts==1.4.2"`, pre-cache the checkpoint, then
+   `python -m tests.test_tirex_probing` (~5 s, 2 threads).
+2. salloc: `--discover-only`, then `python -m tests.test_tirex_probing --with-model`.
+3. `sbatch ... --limit 64` smoke, then one full dataset, then `sbatch job_tirex_probing.sh`.
+
+## Rollout mode: BOTH native paths implemented and compared (2026-09-20)
+
+`--rollout-mode {single_pass, two_pass}`; the mode is part of the CACHE PATH so the two can
+never be mixed. The seven-dataset run is ON HOLD until the primary definition is chosen.
+
+### What pass 1 consumes — derived from the package, not inferred
+
+`_forecast_tensor`:
+
+    context = torch.cat([context, torch.full_like(prediction[:, 0, :], fill_value=torch.nan)], -1)
+
+`torch.full_like(X, fill_value=nan)` takes X's SHAPE/dtype/device and fills it with NaN, so
+`prediction[:, 0, :]` (the tau=0.1 row) is a **shape template only**. **Pass 1 consumes MISSING
+VALUES — never predicted ones, and never a reconstructed context.** TiRex's rollout is not
+autoregressive; it re-asks the model with the horizon marked missing. `assert_rollout_appends_
+missing` proves it against the running model every run: appended block all-NaN True, any finite
+False, equals a forecast quantile row False, real prefix unchanged True (with the discarded
+forecast's median magnitude printed, so "present and ignored" is visible).
+
+Consequence: every pass's context — and hence its (loc, scale) — is constructible WITHOUT a
+forward pass, which is what `rollout_contexts` / `build_targets` do.
+
+### Per-pass layout (derived, asserted every run)
+
+| pass | context | pad | real tokens | readout 63 is | -> horizon |
+|---|---|---|---|---|---|
+| 0 | x[T-512:T] | 1536 (48 patches) | 48..63 | the LAST REAL patch | y[T:T+32] |
+| 1 | x[T-512:T] ++ 32 NaN | 1504 (47 patches) | 47..62 | an APPENDED MISSING patch | y[T+32:T+64] |
+
+Both passes are 64 tokens and both read their own token 63. Geometry refuses any config with
+C + (K-1)*P > train_ctx_len, which would left-truncate real values and silently change the
+target space.
+
+### Normalization: per-pass, carried faithfully
+
+Each patch is normalized AND de-normalized with its own pass's (loc, scale); `build_targets`
+returns `(n, K)` statistics in both modes and `denormalize` REFUSES flat `(n,)` stats. The two
+passes' stats are the SAME mathematical quantity (mean/pop-std of the 512 real values) but not
+bit-identical: **6e-8 relative**, pure float32 reduction order (the NaN slots sit differently).
+My earlier claim that they were identical was wrong.
+
+### THE GATE holds in both modes
+
+| mode | readout | max scaled err | max abs | bitwise | controls |
+|---|---|---|---|---|---|
+| single_pass | tokens [63, 64] of one pass | 0.000 | **0.0** | **True** | 1.06e3 |
+| two_pass | token 63 of each pass | 0.249 | 2.4e-4 | False | 1.05e3 |
+
+two_pass is not bit-exact because the native path applies `output_patch_embedding` to the full
+(n, 64, 512) sequence and slices after, while we apply it to the pre-sliced (n, 1, 512) readout —
+a different matmul shape. A **slice-order control (1.9e-6)** attributes the residual to exactly
+that, so it is measured, not excused. `assert_two_pass_matches_package` separately proves our
+replicated loop equals the package's own default output BITWISE.
+
+### RESULT — Electricity, full 1394/262/262, all 14 depths
+
+**Causality first:** readout position 0 is **BIT-IDENTICAL across the two modes at all 14
+depths** (an appended token cannot influence token 63 in a causal sLSTM). Only position 1
+differs (L12 max|d| 1.05 vs layer std 15.8; Emb 0.0 — the shared constant).
+
+| quantity | single_pass | two_pass | verdict |
+|---|---|---|---|
+| tunnel entrance @5% | **L11** (0.92) | **L11** (0.92) | identical |
+| tunnel @1%/2%/10% | L12+RMS / L12+RMS / L11 | same | identical |
+| test-loss argmin | L12+RMS | L12+RMS | identical |
+| Spearman rho over depths (test / val) | — | **0.991 / 1.000** | ordering preserved |
+| max d test loss | — | 0.0038 (**2.6%** of curve range) | small |
+| max d MASE | — | 0.0261 (**3.1%** of range) | small |
+| headline unbiased CKA (pos0) | — | **max d = 0.0, BIT-IDENTICAL** | identical |
+| all_positions unbiased CKA | — | max d 0.004 (train) / 0.005 (test) | negligible |
+| effective rank (mixed) | argmax L7 | argmax L7, max rel d 0.7%/1.4% | NOT material |
+| final-depth MASE | 1.0004 | 1.0029 | — |
+| native MASE | 0.8176 | 0.8126 | two_pass marginally better |
+| native forecast gap between modes | — | max d 9.21 (3.9% rel), first patch identical | the real difference |
+
+**Conclusion: the choice of rollout mode does NOT change any conclusion.** The tunnel entrance,
+the depth ordering, the argmin and the headline CKA are identical; the curves shift by ~3% of
+their own range. The headline CKA is bit-identical *because* it is built from position 0, which
+causality makes mode-invariant. The modes differ where you would expect: the second readout
+state and the native forecast's last 32 steps. Cost: two_pass extraction is 2x (472 s vs 279 s
+per dataset on CPU).
+
+**DECIDED 2026-09-20: `two_pass` is the paper's PRIMARY definition**, because it is the released
+`tirex-ts` package's own default inference pathway. It is now the default of `--rollout-mode`,
+and `single_pass` is retained as the documented robustness check (the comparison above is the
+evidence that the choice costs no conclusion). Cost: K=2 forward passes per window, 472 s vs
+279 s per dataset on CPU.
+
+## Geometry row construction (FINAL, 2026-09-20)
+
+Because (Emb, position 1) is constant before recurrence, and because an observation count that
+changes with depth is not a comparable curve, **CKA and effective rank now use the SAME
+construction, and it is constant-N**:
+
+| variant | rows | depths | role |
+|---|---|---|---|
+| **`pos0`** | **N** (readout position 0 only) | **all 14, Emb..L12+RMS** | **HEADLINE, both estimators** |
+| `all_positions_from_L1` | 2N (both forecast states) | 13, **L1..L12+RMS** | companion |
+
+Why constant N is the headline, not a convenience: both `min(N-1, d)` (the attainable rank
+ceiling) and the O(1/N) biased-CKA floor move with N, so an N that jumps from N at Emb to 2N at
+L1 would be **indistinguishable from a representational change** at exactly the depth of
+interest. The earlier `mixed` curve (Emb at N, L1+ at 2N) is therefore **not produced at all** —
+`variant_spec` refuses the name, and test 28 asserts no such curve exists in the output.
+
+It is also the only construction CKA admits: CKA is pairwise and requires MATCHED ROWS
+(`probing.cka.require_matched_rows` refuses otherwise), so an N-row Emb could never be compared
+with a 2N-row L1. Bonus: `pos0` is one row per window at d=512, matching TimesFM-3's
+one-readout-row-per-window construction.
+
+The companion starts at L1 precisely because Emb's second state is degenerate; it is
+self-consistent (constant 2N across the depths it covers) and is where the second forecast
+state's geometry is read. Measured on Electricity (train): a 2N-row Emb would read r_eff 6.9 vs
+the headline's 6.9 — but on test, 4.1 vs 7.9, which is the distortion being avoided.
+
+**The forecasting probe is UNCHANGED**: the same `Linear(512, 32)` shared across the two native
+forecast-producing states of the two default inference passes. The geometry policy touches only
+CKA and effective rank.
+
+## First result under the FINAL configuration (two_pass, pos0 headline)
+
+Electricity, full 1394/262/262, 14 depths: tunnel entrance **L11** (relative_depth 0.92), final-
+depth MASE 1.0029 vs native 0.8126. Headline effective rank (pos0, train) 6.9 (Emb) -> 39.5 (L7)
+-> 7.5 (L12+RMS); companion (2N, L1+) 9.6 (L1) -> 7.8. Biased CKA null floor +0.269 (train,
+N=1394) / **+0.661** (test, N=262) vs unbiased +0.001 — the test-split biased estimator is
+uninterpretable in absolute terms, so the headline estimator stays **unbiased**.
+
+## Open / to check on the first Narval run
+
+- Whether the `cuda` backend changes anything: run `--compare-backends` ONCE on the GPU and
+  record it. Pick one backend for the whole paper.
+- Whether any depth still selects the wd grid maximum (30) on the PT-OOD datasets.
+- Whether the effective-rank collapse at L12/L12+RMS reproduces on the other six datasets — it
+  is the most striking Electricity result and the one most worth being skeptical about.
+- Whether the mode-equivalence result holds on the PT-OOD datasets, where the horizon is harder
+  and the second readout state may matter more (run `--compare-rollout-modes` on one of them).
+- Whether the headline and companion effective-rank curves diverge on any dataset — they track
+  each other closely on Electricity train but separate on test (7.9 vs 5.8 at L1).
+- NOT DONE, deliberately: TiRex truncation / representation alignment.
