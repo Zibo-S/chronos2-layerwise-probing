@@ -147,6 +147,7 @@ __all__ = [
     "MODEL_DIMS", "NUM_BLOCKS", "SCALE_EPS", "TiRexGeometry", "RepPoint", "REP_POINTS",
     "REP_NAMES", "REP_SLUGS", "NUM_POINTS", "rep_depth_table", "get_model", "tirex_version",
     "assert_frozen", "assert_no_grads", "discover_geometry", "assert_native_geometry",
+    "model_device", "to_model_device",
     "register_rep_hooks", "native_forward", "apply_native_head", "verify_native_head",
     "rollout_mode_gap", "compare_backends", "build_targets", "assert_target_roundtrip",
     "denormalize", "normalize_raw", "rollout_contexts", "assert_two_pass_matches_package",
@@ -404,6 +405,31 @@ def tirex_version() -> str:
         return "unknown"
 
 
+def model_device(model) -> torch.device:
+    """The device the frozen backbone actually lives on, read off a parameter.
+
+    Every entry point that RUNS the backbone normalizes its context to this device first.
+    ``_forecast_quantiles`` already does exactly that for itself
+    (``context = context.to(device)``), but ``_forecast_single_step`` and
+    ``_forward_model_tokenized`` -- which the two_pass path calls directly -- do NOT, so the
+    normalization has to happen here or a CPU context silently meets a CUDA model. It also pins
+    ``output_device``, which the package otherwise defaults to "cpu", so the official forecast
+    and the hook-captured states never end up on different devices.
+
+    Falls back to CPU for a parameter-free preprocessing stand-in (the tests' tokenizer stub):
+    those paths only use ``_adjust_context_length`` and ``PatchedTokenizer``, which carry no
+    parameters and simply follow their input tensor.
+    """
+    p = next(model.parameters(), None) if hasattr(model, "parameters") else None
+    return p.device if p is not None else torch.device("cpu")
+
+
+def to_model_device(model, x) -> torch.Tensor:
+    """A context as float32 on the model's device. Accepts numpy or a tensor on any device."""
+    return torch.as_tensor(np.asarray(x) if not torch.is_tensor(x) else x).to(
+        device=model_device(model), dtype=torch.float32)
+
+
 def resolve_device(device: str | None) -> str:
     if device:
         return device
@@ -592,6 +618,7 @@ def scaler_state(model, ctx: torch.Tensor, geom: TiRexGeometry):
     """TiRex's own (loc, scale) for a batch of C-length contexts, obtained by replaying the exact
     preprocessing ``_forecast_single_step`` performs: pad to train_ctx_len, then
     ``PatchedTokenizer.input_transform``. The FUTURE IS NOT AN ARGUMENT -- it cannot leak."""
+    ctx = torch.as_tensor(ctx)
     adj, pad_len = model._adjust_context_length(ctx, geom.train_ctx_len, geom.train_ctx_len)
     if pad_len != geom.pad_len:
         raise RuntimeError(f"pad_len {pad_len} != geometry {geom.pad_len}: context length is not "
@@ -613,10 +640,15 @@ def native_forward(model, ctx: torch.Tensor, geom: TiRexGeometry, *,
     reproduces the package default (two passes) and is used only by ``rollout_mode_gap``.
     """
     steps = geom.rollout_steps if rollout_steps is None else int(rollout_steps)
+    dev = model_device(model)
+    ctx = to_model_device(model, ctx)
     store: dict = {}
     handles = register_rep_hooks(model, store) if capture else []
     try:
+        # output_device defaults to "cpu" in the package; pin it to the model's device so the
+        # official forecast and the hook-captured states are on ONE device.
         q, _ = model._forecast_quantiles(ctx, prediction_length=geom.H,
+                                         output_device=str(dev),
                                          max_accelerated_rollout_steps=steps)
     finally:
         for h in handles:
@@ -663,7 +695,7 @@ def scaler_states_for_mode(model, ctx: torch.Tensor, geom: TiRexGeometry, mode: 
     check_rollout_mode(mode)
     K = geom.n_forecast_patches
     if mode == ROLLOUT_SINGLE:
-        st = scaler_state(model, torch.as_tensor(ctx), geom)
+        st = scaler_state(model, ctx, geom)
         lo = st.loc.flatten().cpu().numpy().astype(np.float32)
         sc = st.scale.flatten().cpu().numpy().astype(np.float32)
         return np.repeat(lo[:, None], K, axis=1), np.repeat(sc[:, None], K, axis=1)
@@ -688,7 +720,7 @@ def assert_rollout_appends_missing(model, ctx: torch.Tensor, geom: TiRexGeometry
       * the real prefix is untouched                             -> not a reconstructed context
     Returns the measurements; raises if the appended block is anything other than all-missing.
     """
-    c = torch.as_tensor(ctx).to(dtype=torch.float32)
+    c = to_model_device(model, ctx)     # _forecast_single_step does NOT move it for us
     pred = model._forecast_single_step(c, 1)                   # (n, Q, P), raw units
     nxt = torch.cat([c, torch.full_like(pred[:, 0, :], fill_value=torch.nan)], dim=-1)
     app = nxt[:, c.shape[-1]:]
@@ -746,7 +778,9 @@ def native_forward_two_pass(model, ctx: torch.Tensor, geom: TiRexGeometry, *, ca
     Returns (official (n, H, Q), reps: list of K {point: (n, n_tokens, d)}, states: list of K
     scaler states, layouts: list of K dicts).
     """
-    context = torch.as_tensor(ctx).to(dtype=torch.float32)
+    # _forward_model_tokenized does NOT move its input (only _forecast_quantiles does), so the
+    # context is normalized to the model's device here, exactly as the package does for itself.
+    context = to_model_device(model, ctx)
     preds, states, per_pass, layouts = [], [], [], []
     for k in range(geom.n_forecast_patches):
         store: dict = {}
@@ -783,7 +817,8 @@ def native_forward_two_pass(model, ctx: torch.Tensor, geom: TiRexGeometry, *, ca
 def assert_two_pass_matches_package(model, ctx: torch.Tensor, geom: TiRexGeometry) -> dict:
     """Our replicated two-pass loop must equal the package's own default-path output exactly."""
     ours, _, _, _ = native_forward_two_pass(model, ctx, geom, capture=False)
-    theirs, _ = model._forecast_quantiles(ctx, prediction_length=geom.H,
+    theirs, _ = model._forecast_quantiles(to_model_device(model, ctx), prediction_length=geom.H,
+                                          output_device=str(model_device(model)),
                                           max_accelerated_rollout_steps=1)
     d = (ours - theirs).abs()
     rec = {"max_abs_error": float(d.max()), "bitwise_identical": bool(torch.equal(ours, theirs)),
@@ -1137,7 +1172,7 @@ def extract_window_features(X, model, geom: TiRexGeometry, *, batch_size: int = 
     unknown = [n for n in names if n not in REP_NAMES]
     if unknown:
         raise ValueError(f"unknown representation points {unknown}; known: {list(REP_NAMES)}")
-    dev = resolve_device(device)
+    dev = model_device(model) if device is None else torch.device(device)
     out = {n: np.empty((Xa.shape[0], geom.n_forecast_patches, MODEL_DIMS), dtype=np.float32)
            for n in names}
     native = np.empty((Xa.shape[0], geom.H, geom.num_quantiles), dtype=np.float32)
@@ -1168,10 +1203,17 @@ def window_identity_hash(X) -> str:
 
 
 def cache_metadata(tag, split, geom: TiRexGeometry, *, checkpoint, backend, points, seed, X,
-                   mode: str = ROLLOUT_SINGLE, feature_dtype="float32") -> dict:
+                   mode: str = ROLLOUT_SINGLE, batch_size: int = 64,
+                   feature_dtype="float32") -> dict:
+    """Cache identity. ``batch_size`` is PART OF IT, not a performance knob: TiRex's sLSTM
+    recurrence runs in bfloat16, and on accelerator backends a small-batch GEMM kernel switch
+    perturbs the first block by ~1e-3 of its std, which the 64-step x 12-block recurrence then
+    amplifies to ~6e-2 by L6/L7. Measured on MPS: batch 4 and batch 8 agree BITWISE, batch 2
+    does not. Reusing features across batch sizes would therefore mix two slightly different
+    representations, so a differing batch size REJECTS the cache instead of hitting it."""
     return {"cache_version": CACHE_VERSION, "dataset": tag, "split": split,
             "checkpoint": checkpoint, "backend": backend,
-            "rollout_mode": check_rollout_mode(mode),
+            "rollout_mode": check_rollout_mode(mode), "batch_size": int(batch_size),
             "tirex_version": tirex_version(), "torch_version": torch.__version__,
             "points": list(points), "seed": int(seed), "feature_dtype": str(feature_dtype),
             "n_windows": int(np.asarray(X).shape[0]),
@@ -1193,7 +1235,7 @@ def read_cache(root: Path, meta_expected: dict, points):
         return None
     meta = json.loads(mpath.read_text())
     keys = ("cache_version", "dataset", "split", "checkpoint", "backend", "tirex_version",
-            "rollout_mode", "seed", "n_windows", "window_hash", "feature_dtype")
+            "rollout_mode", "batch_size", "seed", "n_windows", "window_hash", "feature_dtype")
     diff = {k: (meta.get(k), meta_expected.get(k)) for k in keys
             if meta.get(k) != meta_expected.get(k)}
     if meta.get("geometry") != meta_expected.get("geometry"):
@@ -1219,7 +1261,7 @@ def cached_features(tag, split, X, model, geom: TiRexGeometry, *, cache_dir, che
     """Extract-or-load. Returns (feats, native, meta, hit)."""
     points = list(points) if points is not None else list(REP_NAMES)
     meta = cache_metadata(tag, split, geom, checkpoint=checkpoint, backend=backend,
-                          points=points, seed=seed, X=X, mode=mode)
+                          points=points, seed=seed, X=X, mode=mode, batch_size=batch_size)
     root = cache_root(cache_dir, tag, split, mode)
     got = read_cache(root, meta, points)
     if got is not None:

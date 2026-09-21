@@ -686,7 +686,12 @@ def parse_args(argv=None):
     p.add_argument("--probe-device", default="cpu", help="device for the tiny probe fits")
     p.add_argument("--cache-dir", default=str(REPO_ROOT / "features_cache" / "tirex"))
     p.add_argument("--out-root", default=str(OUT_DEFAULT))
-    p.add_argument("--batch-size", type=int, default=64)
+    p.add_argument("--batch-size", type=int, default=64,
+                   help="extraction batch size. NOT just a speed knob: it is part of the feature "
+                        "cache key, because the bfloat16 sLSTM recurrence makes representations "
+                        "mildly batch-size dependent on accelerator backends (see summary.json "
+                        "-> extraction.why). Keep it fixed for a whole paper; prefer a LARGE "
+                        "value (256), and avoid very small ones.")
     p.add_argument("--limit", type=int, default=0, help="cap windows per split (smoke runs only)")
     p.add_argument("--seed", type=int, default=SEED)
     p.add_argument("--epochs", type=int, default=EPOCHS)
@@ -877,6 +882,15 @@ def run_suite(args, model, geom, disc, out: Path):
         "pretraining_status_note": PROVENANCE_NOTE,
         "seeds": {"global": args.seed, "probe_init": args.seed, "bootstrap": args.seed,
                   "bootstrap_B": args.boot_b},
+        "extraction": {
+            "batch_size": args.batch_size,
+            "batch_size_is_part_of_the_cache_key": True,
+            "why": "TiRex's sLSTM recurrence runs in bfloat16; on accelerator backends a "
+                   "small-batch GEMM kernel switch perturbs block 1 by ~1e-3 of its std and the "
+                   "64-step x 12-block recurrence amplifies it to ~6e-2 by L6/L7. Measured on "
+                   "MPS: batch 4 == batch 8 BITWISE, batch 2 differs. Extraction is bitwise "
+                   "deterministic for a FIXED batch size; features are therefore never reused "
+                   "across batch sizes."},
         "suite": args.suite, "rollout_mode": args.rollout_mode,
         "rollout_mode_is_primary": args.rollout_mode == ROLLOUT_TWO,
         "primary_rollout_mode": ROLLOUT_TWO,

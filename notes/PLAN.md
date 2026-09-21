@@ -655,10 +655,61 @@ depth MASE 1.0029 vs native 0.8126. Headline effective rank (pos0, train) 6.9 (E
 N=1394) / **+0.661** (test, N=262) vs unbiased +0.001 — the test-split biased estimator is
 uninterpretable in absolute terms, so the headline estimator stays **unbiased**.
 
+## Two numerical/device facts found on the first GPU attempt (2026-09-21)
+
+### Device hygiene — was a PRODUCTION bug, not just a test bug
+
+The first Narval GPU run crashed in the test at `model._forward_model(inp, ...)` with a CPU/CUDA
+mismatch. Auditing the whole model-backed path turned up THREE faults, two of them in production:
+
+| where | fault |
+|---|---|
+| `_forecast_quantiles` defaults `output_device="cpu"` | the official forecast came back on CPU while the hook-captured states stayed on the GPU -> contract 5 would have crashed next |
+| `native_forward_two_pass` / `assert_rollout_appends_missing` call `_forward_model_tokenized` / `_forecast_single_step` directly, and those (unlike `_forecast_quantiles`) never move the context | **the driver in `two_pass`, the PRIMARY mode, would have crashed in the smoke job** |
+| the test built `pad`/`mask`/`inp` on the CPU | the observed traceback |
+
+Fixed with `model_device(model)` / `to_model_device(model, x)`: every entry point that RUNS the
+backbone normalizes its context to the model's device and pins `output_device`, mirroring what
+`_forecast_quantiles` already does for itself. Parameter-free paths (`scaler_state`,
+`rollout_contexts`, the tokenizer) deliberately FOLLOW their input instead — they carry no
+parameters, and forcing a device there would break the model-free tokenizer stub for no gain.
+`model_device` falls back to CPU for a parameter-free stand-in. Nothing is hardcoded to `.cuda()`.
+
+**Contract 32** is the regression guard: every entry point must accept a CPU/numpy context against
+a model on any device and return ONE consistent device. Validated on **CPU and on MPS** (a real
+non-CPU device on the Mac), plus a full driver smoke run on MPS in `two_pass`.
+
+### Representations are mildly BATCH-SIZE dependent on accelerators
+
+Found while validating the above on MPS. TiRex's sLSTM recurrence runs in **bfloat16**, and a
+small-batch GEMM kernel switch perturbs block 1 by ~1e-3 of its std, which 64 timesteps x 12
+blocks then amplify:
+
+| batch pair (MPS) | Emb | L1 | L5 | **L6/L7** | L12 | L12+RMS | native forecast |
+|---|---|---|---|---|---|---|---|
+| 4 vs 8 | 0 | 0 | 0 | **0** | 0 | 0 | 0 (BITWISE identical) |
+| 2 vs 8 | 0 | 1.1e-3 | 6.7e-3 | **6.1e-2 / 6.4e-2** | 1.0e-2 | 1.8e-2 | 8.6e-4 relative |
+
+(as a fraction of each depth's own std). Emb is exactly 0 everywhere — no recurrence, pure Linear.
+On CPU everything is bitwise identical. So it is a SMALL-batch effect amplified by bf16, not a
+general instability.
+
+Consequences, all implemented:
+* **`batch_size` is now part of the feature-cache key** and a differing one REJECTS the cache.
+  Numbers that depend on batch size must not be silently reused across batch sizes.
+* `--batch-size` is documented as a reproducibility parameter, not a speed knob; keep it fixed
+  for the whole paper and prefer a LARGE value (256).
+* **Contract 19 split in two**: bitwise determinism at a FIXED batch size is asserted exactly on
+  every device; across batch sizes it is asserted bitwise on CPU and otherwise MEASURED, PRINTED
+  and held under a clearly-labelled catastrophe bar (0.2 of std) that is NOT a precision claim.
+* `summary.json.extraction` records the batch size and the reason.
+
 ## Open / to check on the first Narval run
 
 - Whether the `cuda` backend changes anything: run `--compare-backends` ONCE on the GPU and
   record it. Pick one backend for the whole paper.
+- What the batch-size sensitivity measures on CUDA specifically (contract 19 prints it). MPS gave
+  6e-2 of std at L6/L7 for batch 2; batch 4 and 8 were bitwise identical. The real runs use 256.
 - Whether any depth still selects the wd grid maximum (30) on the PT-OOD datasets.
 - Whether the effective-rank collapse at L12/L12+RMS reproduces on the other six datasets — it
   is the most striking Electricity result and the one most worth being skeptical about.
