@@ -718,3 +718,124 @@ Consequences, all implemented:
 - Whether the headline and companion effective-rank curves diverge on any dataset — they track
   each other closely on Electricity train but separate on test (7.9 vs 5.8 at L1).
 - NOT DONE, deliberately: TiRex truncation / representation alignment.
+
+---
+
+# Benchmark expansion to 14 datasets — PROVISIONALLY APPROVED 2026-09-21 (yield screen pending)
+
+Answers the reviewer objection that layerwise "forecasting tunnels" might be an artifact of
+pretraining exposure. Status: roster approved **provisionally**; the registry refactor is
+**explicitly deferred** until the yield screen reports.
+
+## The roster (14)
+
+| # | dataset | freq | domain | m | source |
+|---|---|---|---|---|---|
+| 1-4 | m4_hourly, monash_electricity_hourly, uber_tlc_hourly, wind_farms_hourly | 1H | mixed/energy/transport | 24 | `autogluon/chronos_datasets` |
+| 5-7 | boom_hourly, sg_carpark, coastal_ts | 1H | cloud/transport/nature | 24 | staged arrow shards |
+| 8 | LOOP_SEATTLE_5T | 5min | road speed | 288 | `autogluon/fev_datasets` |
+| 9 | kdd_cup_2022_10T | 10min | wind power | 144 | `autogluon/fev_datasets` |
+| 10 | SZ_TAXI_15T | 15min | road speed | 96 | `autogluon/fev_datasets` |
+| 11 | monash_london_smart_meters | 30min | residential energy | 48 | `autogluon/chronos_datasets` |
+| 12 | m5 | 1D | retail | 7 | `autogluon/chronos_datasets` |
+| 13 | wiki_daily_100k | 1D | web | 7 | `autogluon/chronos_datasets` |
+| 14 | monash_traffic | 1H | road volume | 24 | `autogluon/chronos_datasets` |
+
+Designated alternates, screened but NOT in the roster: `rossmann_1D` (M5 fallback, target col
+`Sales`), `electricity_15min` (a possible 15th **control** — same 370 meters as the hourly set at
+4x the rate; a sampling-frequency control, NOT domain diversity, and must be labelled as such).
+
+Six frequency classes. Every `m_season` for a dataset shared with fev-bench EQUALS fev-bench's
+published `seasonality` — the choice has an external citation, not just our assertion.
+
+## Decisions frozen 2026-09-21
+
+- **Q=1 / tau=0.5 is the cross-model setting.** TimesFM-3's last-token line is currently
+  hard-wired to Q=9 (`NUM_QUANTILES`); it gains `--quantile-set {q1,q9}` (the probe factory
+  `timesfm3_last_token_probes.make_probe` already takes `Q`). Q=9 is retained as a
+  TimesFM-3-specific native-distribution appendix. TiRex is already Q=1; Chronos-2 has both.
+- **MASE never defines the tunnel.** The tunnel entrance stays on the common Q=1 validation
+  loss. MASE is a post-hoc interpretable test metric only, so a dataset-specific seasonal
+  denominator can never move the definition of "recoverable".
+- **`seasonal_m` is centralized per dataset** (table above), with a test pinning it to 24 for
+  the original seven so the committed numbers cannot move.
+- **M5 is kept** — the only dataset explicitly held out by all three model authors. Automatic
+  swap to `rossmann_1D` if the screen shows >30% of otherwise-eligible windows lost to
+  zero/invalid seasonal denominators, or the task is degenerate.
+
+## Provenance schema — status x evidence_scope (2-D, never collapsed)
+
+```text
+status:          pretraining_exposed | explicitly_held_out | not_listed | undocumented
+evidence_scope:  exact_dataset | benchmark_exclusion | source_level | source_family
+```
+
+`status` alone would let `wiki_daily_100k x TimesFM-3` (source_level: the card names
+"Wikipedia Pageviews, cutoff Nov 2023"; our series end 2022-12-31) read as identical evidence to
+`wiki_daily_100k x Chronos-2` (exact_dataset: Table 6 "Wiki"). It is not. Counts in any paper
+table must be reported per (status, evidence_scope) cell.
+
+Paper wording this licenses:
+> We track model-dataset pretraining provenance using explicit dataset inclusion, documented
+> benchmark exclusions, and weaker source-level evidence; we do not equate absence from a
+> corpus list with out-of-distribution evaluation.
+
+## Primary-source citations (verbatim anchors)
+
+- Chronos-2 (arXiv:2510.15821): Table 6 = "The full list" of real univariate pretraining data
+  (treat as exhaustive). Sec 5.1 fev-bench "None of these datasets or tasks were seen by
+  Chronos-2 during training."; Bench-II "None of these datasets were included in the training
+  corpus of Chronos-2."; GIFT-Eval "did not overlap with the test portions ... Nonetheless, the
+  corpus does include partial overlap with the training portions". NO cutoff stated.
+- TimesFM-3 (model card `google/timesfm-3.0-pytorch`; blog 2026-08-31, no paper): corpus =
+  "GiftEvalPretrain excluding the datasets that overlap with fev-bench" + "Wikipedia Pageviews,
+  cutoff Nov 2023" + "Google Trends top queries, cutoff EoY 2022" + "Synthetic and augmented
+  data". "augmented" is undefined — the weakest per-dataset documentation of the three.
+- TiRex (arXiv:2505.23719 App C.2/C.3): Chronos-1 corpus (Table 5) + GiftEval subset (Table 6) +
+  15M synthetic GP. "TiRex's pre-training data has no overlap with Chronos-ZS benchmark."
+  16 of 97 GIFT-Eval settings excluded — **the 16 are never named**.
+
+**CORRECTION to `data/chronos2_seen_manifest.md`:** it claims BOOM is "explicitly listed" in
+Chronos-2's documented-unseen reservoir. The strings "BOOM" and "Datadog" do NOT appear in
+arXiv:2510.15821. BOOM's held-out status is an INFERENCE via fev-bench (which contains BOOMLET,
+a BOOM subset). Downgrade `boom_hourly x Chronos-2` to not_listed + a benchmark_exclusion note.
+
+## Verified dataset facts (HF datasets-server, 2026-09-21)
+
+| dataset | series | length (min/med/max) |
+|---|---|---|
+| LOOP_SEATTLE_5T | 323 | 105,120 uniform (std 0.0) |
+| monash_traffic | 862 | 17,544 uniform |
+| wiki_daily_100k | 100,000 | 2,741 uniform (2015-07-01 -> 2022-12-31) |
+| monash_london_smart_meters | 5,560 | 288 / 30,864 / 39,648 — NOT uniform |
+| m5 | 30,490 | 124 / 1,810 / 1,969 — NOT uniform |
+| rossmann_1D | 1,115 | 942 uniform |
+| SZ_TAXI_15T | 156 | **UNVERIFIED** — statistics endpoint 500s; canonical T-GCN = 156x2976 and the 2.63 MB parquet is consistent with 2,976, not with the 1,440 first-rows reported (cell truncation). THE SCREEN MUST SETTLE THIS. |
+
+**Schema corrections:** `kdd_cup_2022_10T` has NO `target` column — the target is **`Patv`**
+(fev's own task declares `target: Patv`); columns are id/timestamp/Wspd/Wdir/Etmp/Itmp/Ndir/
+Pab1-3/Prtv/Patv. `rossmann_1D` target is **`Sales`**. fev's `SZ_TAXI_15T` task lists
+solar/weather covariates that do not exist in the config (a copy-paste bug in fev's tasks.yaml) —
+its real columns are only target/id/timestamp. fev target columns are NOT uniformly "target".
+
+## Two blockers found by inspection — must be fixed before any new dataset runs
+
+1. **`id_data._build_rolling_windows` RAISES when n_eligible_series > target_train (1394).**
+   The 262 val/test series are drawn from the full eligible pool, but the cluster-balanced round
+   robin reaches only 1394 distinct series, so the fail-loud
+   `missing = sel_set - set(tr_sid)` trips. Hits m5, wiki_daily_100k, london_smart_meters (and
+   the alternates). Fix = a DETERMINISTIC series-level cap applied before the protocol; it also
+   removes the multi-GB raw-series memory spike.
+2. **`tunnel.domain_status()` raises on unknown tags** and stamps a Chronos-2-relative label into
+   every tunnel record. Any new tag breaks `tunnel_record` on the first call.
+
+Also: `experiments/run_cka_analysis.py:71` keeps its OWN duplicate hardcoded `PT_ID_TAGS`.
+
+## Run order
+
+1. Stage data on the LOGIN node (it has internet; compute nodes do not) — see the screen's header.
+2. `salloc`/`sbatch` the yield screen (COMPUTE NODE: multi-GB raw series, sustained core,
+   millions of origins). Report realized train/val/test, rejection fraction, eligible series,
+   denominator failure rate, degeneracy MAD.
+3. **STOP. Roster approval gate.**
+4. Only then: the common dataset registry + removal of the global PT-ID/PT-OOD logic.
