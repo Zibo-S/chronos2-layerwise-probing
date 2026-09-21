@@ -37,23 +37,27 @@ from pathlib import Path
 import numpy as np
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-M_SEASON = 24                      # hourly seasonality, as in the Chronos-2 ID pipeline
-MASE_DEN_FLOOR = 1e-8
-
 
 # --------------------------------------------------------------------------- #
-# metrics (definitions copied from experiments/run_id_forecasting so both
-# models' MASE numbers are computed identically)
+# metrics -- re-exported from probing.mase, which is now the ONE implementation
 # --------------------------------------------------------------------------- #
+# There used to be a module-global `M_SEASON = 24` here and an identical copy in
+# run_id_forecasting. It was right for the seven hourly datasets and silently wrong for
+# everything added since (m=24 on 5-minute data is a two-hour "season"). The period now comes
+# from probing.registry per dataset and `m` is REQUIRED below, so a missing one is a TypeError
+# at the call site instead of a plausible-looking wrong number in a results table.
+from probing.mase import (MASE_DEFINITION, MASE_DEN_FLOOR,          # noqa: E402,F401
+                          per_window_mase, seasonal_denominator)
+from probing.registry import seasonal_m                              # noqa: E402,F401
 
-def mase_denominator(X, m=M_SEASON):
-    X64 = np.asarray(X, np.float64)
-    return np.abs(X64[:, m:] - X64[:, :-m]).mean(axis=1)
 
+def mase_denominator(X, m):
+    """In-context seasonal-naive scale. ``m`` is REQUIRED -- pass ``seasonal_m(tag)``.
 
-def per_window_mase(y_raw, yhat_raw, den):
-    return (np.abs(np.asarray(y_raw, np.float64) - np.asarray(yhat_raw, np.float64))
-            / den[:, None]).mean(axis=1)
+    Kept as a named function because five drivers import it; the arithmetic lives in
+    probing.mase.seasonal_denominator and is byte-identical to the version this replaces.
+    """
+    return seasonal_denominator(X, m)
 
 
 def cluster_ci(per_window, sid, B, seed, ref_idx):
@@ -178,7 +182,7 @@ def run_dataset(tag, args, geom, paths, model, device):
         collect_history=args.collect_history)
 
     # ---- MASE in RAW units at the headline origin + native tau=0.5 baseline ----
-    den = mase_denominator(w["X_test"][rows])
+    den = mase_denominator(w["X_test"][rows], seasonal_m(tag))
     n_clamped = int((den < MASE_DEN_FLOOR).sum())
     den = np.maximum(den, MASE_DEN_FLOOR)
     mase_curve, mase_pw = [], []
@@ -268,9 +272,9 @@ def save_bootstrap_inputs(tag, entry, sid, loss_pw, mase_pw, nat_mase_pw, nat_lo
             "n_test_windows": int(len(sid)), "n_test_series": int(len(np.unique(sid))),
             "primary_readouts": ["origin_last"], "controlled_readouts": [],
             "headline_origin_1based": entry["geometry"]["headline_origin_1based"],
-            "mase_definition": f"mase_context: in-context seasonal-naive (m={M_SEASON}, "
+            "mase_definition": f"mase_context: in-context seasonal-naive (m={seasonal_m(tag)}, "
                                f"floor {MASE_DEN_FLOOR})",
-            "seasonal_m": M_SEASON,
+            "seasonal_m": seasonal_m(tag),
             "val_selected_layer": {"origin_last": entry["val_selected_layer"]},
             "val_loss_by_layer": {"origin_last": entry["val_loss"]},
             "reported": {"quantile_loss": {"origin_last": entry["median_loss"]},
@@ -297,7 +301,8 @@ def make_figures(summary, paths):
     n = len(ds)
     for metric, ylab, natk in [
             ("median_loss", "median pinball loss (Q=1, tau=0.5)", "median_loss"),
-            ("mase_context", f"MASE (in-context seasonal-naive, m={M_SEASON})", "mase_context")]:
+            ("mase_context", "MASE (in-context seasonal-naive; m per panel)",
+             "mase_context")]:
         fig, ax = plt.subplots(1, n, figsize=(4.2 * n, 3.8), squeeze=False)
         for a, e in zip(ax[0], ds):
             L, b = e["layers"], e["bootstrap"][metric]
@@ -307,7 +312,7 @@ def make_figures(summary, paths):
             if e["val_selected_layer"] is not None:
                 a.axvline(e["val_selected_layer"], ls=":", c="k", lw=1,
                           label=f"L* = {e['layer_names'][L.index(e['val_selected_layer'])]}")
-            a.set_title(e["tag"], fontsize=10)
+            a.set_title(f"{e['tag']}  (m={seasonal_m(e['tag'])})", fontsize=10)
             a.set_xlabel("representation point (0 = Emb, 20 = L20)")
             a.grid(alpha=0.3)
         ax[0][0].set_ylabel(ylab)
@@ -454,7 +459,8 @@ def main(argv=None):
               f"numeric {bi['numeric_max_abs']:.3e} ({bi['numeric_relative']:.1e} rel)")
 
     summary = {"config": {**vars(args), "num_layers": NUM_LAYERS, "last_layer": LAST_LAYER,
-                          "m_season": M_SEASON, "cache_version": CACHE_VERSION,
+                          "m_season": {t: seasonal_m(t) for t in tags},
+                          "cache_version": CACHE_VERSION,
                           "timesfm_version": timesfm_version(), "device": device,
                           "geometry": geom.as_dict()},
                "datasets": {}}

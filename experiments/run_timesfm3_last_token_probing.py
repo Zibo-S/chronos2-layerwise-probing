@@ -53,78 +53,95 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 # ablation driver; those helpers are geometry- and quantile-agnostic). The MASE denominator is
 # byte-identical to run_id_forecasting._mase_denominator, which run_native_head_adapter uses for
 # all seven Chronos-2 datasets.
-from experiments.run_timesfm3_probing import (MASE_DEN_FLOOR, M_SEASON, cluster_ci,  # noqa: E402
+from probing.registry import seasonal_m  # noqa: E402  (per-dataset seasonal period)
+from experiments.run_timesfm3_probing import (MASE_DEN_FLOOR, cluster_ci,  # noqa: E402
                                               mase_denominator, per_window_mase)
 from probing.config import SEED as CANON_SEED  # noqa: E402
 from probing.timesfm3_last_token_probes import (WD_GRID_LAST_TOKEN,  # noqa: E402
-                                                WD_NULL_BASELINE)
-from probing.tunnel import PT_ID_TAGS, PT_OOD_TAGS  # noqa: E402  (the roster's source of truth)
+                                                WD_NULL_BASELINE, quantile_set)
+from probing import registry  # noqa: E402  (THE roster / display-name / builder source)
+from probing import window_reference as wref  # noqa: E402  (create/reference workflow)
+from probing.windows import PAPER14_SET, PAPER7_SET as PTID_SET, build_for  # noqa: E402
+from probing.tunnel import PT_ID_TAGS, PT_OOD_TAGS  # noqa: E402  (legacy Chronos-2 labels)
 
 # --------------------------------------------------------------------------- #
 # dataset suites
 # --------------------------------------------------------------------------- #
 # The HEADLINE suite is the Chronos-2 paper's seven datasets, taken from the SAME sources the
 # Chronos-2 drivers use -- nothing is re-declared or re-derived here:
-#     roster        probing/tunnel.py   PT_ID_TAGS + PT_OOD_TAGS
+#     roster        probing/registry.py  PAPER7 / PAPER14
+#     window builder probing/registry.builder(tag)  -- "rolling_within_series" | "rolling_cluster"
 #     PT-ID windows id_data.build_windows under dataset set "extended_v3_rolling"
 #                   (-> _build_rolling_windows, budgets (1394, 262, 262), seed 0)
 #     PT-OOD windows id_data.build_ood_rolling_windows(tag, C=512, H=64, seed=SEED)
-#     display names experiments/make_id_paper_figures.py:314  SHORT
-#     PT-ID/PT-OOD  experiments/run_native_head_adapter.py:72  DATASET_KIND
-# The dispatch below is the exact twin of run_native_head_adapter._windows() (== 
+#     display names probing/registry.display_name(tag)  -- one spelling, everywhere
+# The dispatch below is the exact twin of run_native_head_adapter._windows() (==
 # run_ft_specialization.target_windows()), so both models see the same x[1:512] -> x[513:576].
-PTID_SET = "extended_v3_rolling"
-PAPER7 = tuple(PT_ID_TAGS) + tuple(PT_OOD_TAGS)
+PAPER7 = registry.PAPER7
+PAPER14 = registry.PAPER14
+SHORT = {t: registry.display_name(t) for t in registry.DATASETS}
+# LEGACY Chronos-2-relative panel label, kept for the committed seven's figures only. A dataset
+# outside that seven gets no PT-ID/PT-OOD label at all -- absence from one model's corpus list
+# is not evidence of being unseen, and registry.provenance(tag, model) is where that question
+# is answered now.
 KIND = {**{t: "PT-ID" for t in PT_ID_TAGS}, **{t: "PT-OOD" for t in PT_OOD_TAGS}}
-SHORT = {"monash_electricity_hourly": "Electricity", "uber_tlc_hourly": "Uber TLC",
-         "m4_hourly": "M4", "wind_farms_hourly": "Wind Farms", "sg_carpark": "SG Carpark",
-         "coastal_ts": "Coastal T-S", "boom_hourly": "BOOM"}
 # committed Chronos-2 artifacts for those seven datasets: per-window test series/cluster ids and
 # the window counts. This is what makes "same windows" a CHECK rather than a claim.
 CHRONOS_REF_ROOT = REPO_ROOT / "results" / "ext_v5_native_head_adapter"
 
 
 def suite_tags(suite: str) -> list[str]:
-    """The dataset roster of a suite. ``paper7`` = the Chronos-2 headline seven, PT-ID first."""
+    """The dataset roster of a suite.
+
+    ``paper7``  — the original committed seven, PT-ID first (the order committed figures index).
+    ``paper14`` — the 14-dataset benchmark frozen at the 2026-09-21 roster gate.
+    Anything else — a legacy ``id_data.ID_DATASET_SPECS`` key.
+    """
     if suite == "paper7":
         return list(PAPER7)
+    if suite == "paper14":
+        return list(PAPER14)
     from probing.id_data import ID_DATASET_SPECS
     if suite in ID_DATASET_SPECS:
         return list(ID_DATASET_SPECS[suite])
-    raise SystemExit(f"unknown suite {suite!r}; known: 'paper7' (the headline seven) or any "
+    raise SystemExit(f"unknown suite {suite!r}; known: 'paper7', 'paper14', or any "
                      f"id_data.ID_DATASET_SPECS key {sorted(ID_DATASET_SPECS)}")
 
 
 def windows_for(tag: str, suite: str, args):
     """Windows for one dataset -- the EXACT twin of run_native_head_adapter._windows().
 
-    paper7:  PT-OOD -> build_ood_rolling_windows(tag, C=512, H=64, seed=SEED)
-             PT-ID  -> config.set_dataset_set("extended_v3_rolling"); build_windows(tag)
+    paper7/paper14: the builder comes from ``registry.builder(tag)`` --
+             "rolling_cluster"   -> build_ood_rolling_windows(tag, C=512, H=64, seed=SEED)
+             "rolling_within_series" -> config.set_dataset_set(<rolling set>); build_windows(tag)
     other :  the legacy auto-split path (build_windows with this driver's C/H/stride/seed).
 
-    Non-default C/H/seed are REFUSED for paper7: the committed Chronos-2 windows are C=512,
-    H=64, seed=0, and silently building different ones would break the whole point.
+    The dispatch used to read ``tag in PT_OOD_TAGS``, i.e. it decided HOW TO BUILD WINDOWS from
+    a Chronos-2-relative pretraining label. Those are unrelated facts: the window protocol
+    depends on how a dataset's series are organized (one series per unit, or several variates
+    per parent cluster), not on whose corpus it appeared in. The registry now carries the
+    builder as its own field.
+
+    Non-default C/H/seed are REFUSED for the paper suites: the committed Chronos-2 windows are
+    C=512, H=64, seed=0, and silently building different ones would break the whole point.
     """
-    from probing import config
-    from probing.id_data import build_ood_rolling_windows, build_windows
-    if suite != "paper7":
-        config.set_dataset_set(suite)
-        return build_windows(tag, C=args.context_len, H=args.horizon, stride=args.stride,
-                             seed=args.seed)
+    if suite not in ("paper7", "paper14"):
+        return build_for(tag, suite, C=args.context_len, H=args.horizon, stride=args.stride,
+                         seed=args.seed)
     bad = {k: v for k, v in (("--context-len", (args.context_len, 512)),
                              ("--horizon", (args.horizon, 64)),
                              ("--seed", (args.seed, CANON_SEED))) if v[0] != v[1]}
     if bad:
         raise SystemExit(
-            "the paper7 suite reproduces the COMMITTED Chronos-2 windows, which are C=512, "
+            f"the {suite} suite reproduces the COMMITTED Chronos-2 windows, which are C=512, "
             f"H=64, seed={CANON_SEED}; refusing " +
             ", ".join(f"{k}={v[0]} (must be {v[1]})" for k, v in bad.items()))
-    if tag in PT_OOD_TAGS:
-        # evaluation-only rosters: the cluster id (carpark / station / metric-query) is the
-        # bootstrap unit and travels in series_*, exactly as in the Chronos-2 run.
-        return build_ood_rolling_windows(tag, C=512, H=64, seed=CANON_SEED)
-    config.set_dataset_set(PTID_SET)
-    return build_windows(tag)
+    # THE dispatch lives in probing.windows so the drivers, the roster audit and the
+    # window-only smoke can never disagree about which builder a dataset gets.
+    try:
+        return build_for(tag, suite, C=512, H=64, seed=CANON_SEED)
+    except ValueError as exc:
+        raise SystemExit(str(exc)) from exc
 
 
 # --------------------------------------------------------------------------- #
@@ -150,13 +167,24 @@ def chronos_reference(tag: str, root=CHRONOS_REF_ROOT):
                       "bootstrap_inputs": str(npz.relative_to(REPO_ROOT))}}
 
 
+def window_reference_for(tag, root=None):
+    """The reference this dataset is checked against, or None.
+
+    Committed Chronos-2 artifacts win over written references, so the original seven keep being
+    compared against exactly what they always were.
+    """
+    return wref.resolve_reference(tag, chronos_reference, root)
+
+
 def window_identity(tag, w):
     """The reportable identity of one dataset's windows (counts + the first few identifiers)."""
     sid = np.asarray(w["series_test"], np.int64)
     origins = (w["meta"].get("origins", {}) or {}).get("test")
     ids = ([f"s{int(a)}@t{int(b)}" for a, b in zip(sid[:6], origins[:6])] if origins
            else [f"s{int(a)}" for a in sid[:6]])
-    return {"dataset": tag, "short": SHORT.get(tag, tag), "kind": KIND.get(tag, "unclassified"),
+    return {"dataset": tag, "short": registry.display_name(tag),
+            "kind": KIND.get(tag, "not_applicable"), "role": registry.role(tag),
+            "seasonal_m": registry.seasonal_m(tag), "builder": registry.builder(tag),
             "split_mode": w["meta"].get("split_mode"),
             "n_train_windows": int(len(w["X_train"])),
             "n_val_windows": int(len(w["X_val"])) if "X_val" in w else None,
@@ -167,16 +195,59 @@ def window_identity(tag, w):
             "test_series_first6": [int(x) for x in sid[:6]]}
 
 
-def assert_window_parity(tag, w, ref, *, strict=True):
-    """TimesFM-3 must receive the SAME x[1:512] -> x[513:576] windows as Chronos-2.
+def assert_window_parity(tag, w, ref, *, strict=True, reference_mode="require",
+                         created_by="python -m experiments.run_timesfm3_last_token_probing",
+                         reference_root=None, force_reference=False):
+    """Every model must receive the SAME x[1:512] -> x[513:576] windows.
 
-    Checks, against the committed artifacts: C, H, seasonal m, the train/val/test window COUNTS,
-    and -- the decisive one -- the per-window test series/cluster ids ELEMENT-WISE. Raises on any
-    mismatch unless ``strict=False`` (then the failures are reported and carried in the record).
+    Checks, against the reference: C, H, seasonal m, the train/val/test window COUNTS, and --
+    the decisive one -- the per-window test series/cluster ids ELEMENT-WISE (plus, for written
+    references, a digest of the test contexts themselves). Raises on any mismatch unless
+    ``strict=False`` (then the failures are reported and carried in the record).
+
+    ``reference_mode`` decides what a MISSING reference means. It used to mean "carry on with
+    parity_ok=None", which reads like a pass; a dataset added after the committed Chronos-2 run
+    could therefore be probed by a second model with nothing checking the windows at all.
+      require       -- abort, naming the command that would create the reference (default);
+      create        -- write the reference from THESE windows, then proceed;
+      allow-missing -- the old permissive behavior, now opt-in and never for reported numbers.
     """
     ident = window_identity(tag, w)
     if ref is None:
-        ident.update(chronos_parity="no_committed_reference", parity_ok=None)
+        if reference_mode == "require":
+            raise wref.MissingReferenceError(wref.missing_reference_message(tag, created_by))
+        if reference_mode == "create":
+            rec = wref.write_reference(tag, w, created_by=created_by, root=reference_root,
+                                       force=force_reference)
+            print(f"  [window reference CREATED] {rec['paths']['json']}\n"
+                  f"      digest {rec['window_digest']}  -- every later run of any model line "
+                  f"is now checked against these windows")
+            ident.update(chronos_parity="reference_created", parity_ok=None,
+                         reference_kind="window_reference", reference_created=True,
+                         window_reference=rec["paths"])
+            return ident
+        if reference_mode == "allow-missing":
+            ident.update(chronos_parity="NO REFERENCE (unchecked)", parity_ok=None,
+                         reference_kind=None,
+                         parity_warning="windows are UNVERIFIED against any other model; this "
+                                        "run must not be used for a cross-model claim")
+            print(f"  [WARNING] {tag}: no window reference and --reference-mode allow-missing; "
+                  f"cross-model window parity is UNCHECKED for this dataset")
+            return ident
+        raise ValueError(f"unknown reference mode {reference_mode!r}; "
+                         f"known: {wref.REFERENCE_MODES}")
+
+    if ref.get("kind") == "window_reference":
+        fails = wref.compare_to_reference(tag, w, ref)
+        ident.update(chronos_parity="match" if not fails else "MISMATCH",
+                     parity_ok=not fails, parity_failures=fails,
+                     reference_kind="window_reference", window_reference=ref["paths"])
+        if fails and strict:
+            raise RuntimeError(
+                f"WINDOW PARITY FAILED for {tag}: these windows differ from the reference "
+                f"every other run was checked against.\n    " + "\n    ".join(fails) +
+                f"\n  Reference: {ref['paths']['json']}.\n"
+                "  Fix the window construction -- do NOT proceed with mismatched windows.")
         return ident
     c, m = ref["config"], w["meta"]
     sid = np.asarray(w["series_test"], np.int64)
@@ -185,8 +256,8 @@ def assert_window_parity(tag, w, ref, *, strict=True):
     for name, got, want in (("C", m.get("C"), c["C"]), ("H", m.get("H"), c["H"]),
                             ("seasonal_m", m.get("m_season"), c["seasonal_m"]),
                             ("n_train", int(len(w["X_train"])), c["n_train"]),
-                            ("n_test", int(len(sid)), c["n_test"]),
-                            ("kind", KIND.get(tag), c["kind"])):
+                            ("n_test", int(len(sid)), c["n_test"])) + (
+                            (("kind", KIND.get(tag), c["kind"]),) if tag in KIND else ()):
         if got != want:
             fails.append(f"{name}: TimesFM={got!r} vs Chronos-2={want!r}")
     if "X_val" in w and int(len(w["X_val"])) != c["n_val"]:
@@ -200,7 +271,7 @@ def assert_window_parity(tag, w, ref, *, strict=True):
                      f"{int(sid[first])} vs {int(rsid[first])})")
     ident.update(chronos_parity="match" if not fails else "MISMATCH",
                  parity_ok=not fails, parity_failures=fails,
-                 chronos_reference=ref["paths"],
+                 reference_kind="committed_chronos2", chronos_reference=ref["paths"],
                  chronos_counts={"n_train": c["n_train"], "n_val": c["n_val"],
                                  "n_test": c["n_test"], "dataset_set": c["dataset_set"]})
     if fails and strict:
@@ -210,6 +281,33 @@ def assert_window_parity(tag, w, ref, *, strict=True):
             f"\n  Reference: {ref['paths']['config']} + {ref['paths']['bootstrap_inputs']}.\n"
             "  Fix the window construction -- do NOT proceed with mismatched windows.")
     return ident
+
+
+def parity_for(tag, w, args, created_by, strict=None):
+    """THE parity entry point every model driver calls.
+
+    One function so the reference lookup, the reference-mode policy and the failure wording can
+    never drift between the Chronos-2, TimesFM-3 and TiRex lines. ``getattr`` defaults mean a
+    driver that has not yet grown the CLI flags still gets the SAFE behavior (``require``)
+    rather than the permissive one.
+    """
+    return assert_window_parity(
+        tag, w, window_reference_for(tag),
+        strict=(not getattr(args, "allow_window_mismatch", False)) if strict is None else strict,
+        reference_mode=getattr(args, "reference_mode", "require"),
+        created_by=created_by,
+        force_reference=getattr(args, "force_reference", False))
+
+
+def add_reference_args(group):
+    """Add --reference-mode / --force-reference to another driver's parser, identically."""
+    group.add_argument("--reference-mode", default="require", choices=list(wref.REFERENCE_MODES),
+                       help="what a MISSING window reference means: 'require' aborts (default), "
+                            "'create' writes one from this run's windows, 'allow-missing' runs "
+                            "with NO parity check (never for reported numbers).")
+    group.add_argument("--force-reference", action="store_true",
+                       help="allow --reference-mode create to OVERWRITE an existing reference.")
+    return group
 
 
 def print_roster_audit(rows):
@@ -230,9 +328,11 @@ def print_roster_audit(rows):
               f"{' '.join(r['first_test_identifiers'][:4])}")
     ok = [r for r in rows if r.get("parity_ok")]
     nor = [r for r in rows if r.get("parity_ok") is None]
-    print(f"  -> {len(ok)}/{len(rows)} datasets match the committed Chronos-2 windows "
-          f"(counts + element-wise test series ids)" +
-          (f"; {len(nor)} have no committed reference" if nor else ""))
+    kinds = {r.get("reference_kind") for r in rows}
+    print(f"  -> {len(ok)}/{len(rows)} datasets match their window reference "
+          f"(counts + element-wise test series ids"
+          + (" + context digest" if "window_reference" in kinds else "") + ")"
+          + (f"; {len(nor)} were created or left unchecked this run" if nor else ""))
 
 
 # --------------------------------------------------------------------------- #
@@ -240,6 +340,12 @@ def print_roster_audit(rows):
 # --------------------------------------------------------------------------- #
 
 def run_dataset(tag, args, geom, paths, model, device, windows=None, ident=None):
+    # Q=9 (native, the default and the TimesFM-3-specific appendix) or Q=1 / tau=0.5 (the
+    # cross-model setting frozen for the 14-dataset benchmark). The loss keys below keep their
+    # historical `q9_*` spelling -- they mean "the loss of the SELECTED quantile set" -- and
+    # `quantile_set` / `num_quantiles` are recorded beside them so no reader can mistake one
+    # for the other. q1 writes to its own output namespace, so the two can never overwrite.
+    qvec, qcols, _qmed = quantile_set(args.quantile_set)
     from probing.timesfm3_last_token import (LAST_LAYER, LAYER_NAMES, NUM_LAYERS, NUM_QUANTILES,
                                              assert_target_roundtrip, build_last_token_targets,
                                              cached_last_token_features, denormalize,
@@ -252,7 +358,8 @@ def run_dataset(tag, args, geom, paths, model, device, windows=None, ident=None)
     t0 = time.time()
     w = windows_for(tag, args.suite, args) if windows is None else windows
     if ident is None:
-        ident = assert_window_parity(tag, w, chronos_reference(tag),
+        ident = parity_for(tag, w, args,
+                           "python -m experiments.run_timesfm3_last_token_probing",
                                      strict=not args.allow_window_mismatch)
     meta = w["meta"]
     has_val = "X_val" in w and len(w["X_val"]) > 0
@@ -347,7 +454,7 @@ def run_dataset(tag, args, geom, paths, model, device, windows=None, ident=None)
         val_feats=(va["feats"] if has_val else None),
         val_targets=(pva["targets"] if has_val else None),
         val_valid=(pva["valid"] if has_val else None),
-        H=geom.H, epochs=args.probe_epochs, lr=args.probe_lr,
+        H=geom.H, epochs=args.probe_epochs, lr=args.probe_lr, quantiles=qvec,
         wd_grid=None if args.no_wd_grid else tuple(args.wd_grid), device=device,
         null_wd=args.null_wd, batch_size=args.probe_batch_size, layers=layers,
         collect_history=args.collect_history)
@@ -355,7 +462,7 @@ def run_dataset(tag, args, geom, paths, model, device, windows=None, ident=None)
 
     # ---- MASE in RAW units + the native Q=9 / median baseline ----
     y_raw = Zte[rows, geom.target_start:geom.target_end]
-    den = mase_denominator(w["X_test"][rows])
+    den = mase_denominator(w["X_test"][rows], seasonal_m(tag))
     n_clamped = int((den < MASE_DEN_FLOOR).sum())
     den = np.maximum(den, MASE_DEN_FLOOR)
     mase_curve, mase_pw = [], []
@@ -367,8 +474,10 @@ def run_dataset(tag, args, geom, paths, model, device, windows=None, ident=None)
         mase_curve.append(float(pw.mean()))
     mase_pw = np.stack(mase_pw)
 
+    # The native head always emits its 9 quantiles; under q1 the SAME forecast is scored on
+    # the median column alone, so probe and baseline share one objective.
     nat = native_reference(te["native"], te["mu"], te["sd"], pte["trend"], pte["targets"],
-                           pte["valid"])
+                           pte["valid"], quantiles=qvec, native_columns=qcols)
     if not np.array_equal(nat["rows"], rows):
         raise RuntimeError("native baseline and probe are scored on different test windows")
     nat_mase_pw = per_window_mase(y_raw, nat["median_raw"], den)
@@ -409,6 +518,8 @@ def run_dataset(tag, args, geom, paths, model, device, windows=None, ident=None)
         "partial_layer_set": partial, "geometry": geom.as_dict(), "window_meta": meta,
         "quantiles": diag["quantiles"], "num_quantiles": diag["num_quantiles"],
         "objective": "mean pinball loss over H*Q terms (1/(H*Q) sum_t sum_q rho_tau)",
+        "quantile_set": args.quantile_set, "num_quantiles": int(len(qvec)),
+        "quantiles": [float(x) for x in qvec],
         "val_q9_loss": val,
         "test_q9_loss": [scores[i] for i in layers],
         "test_median_loss": [diag["test_median_loss"][i] for i in layers],
@@ -523,9 +634,9 @@ def save_bootstrap_inputs(tag, entry, sid, q9_pw, med_pw, mase_pw, nat, nat_mase
             "split_mode": entry["window_meta"]["split_mode"],
             "n_test_windows": int(len(sid)), "n_test_series": int(len(np.unique(sid))),
             "primary_readouts": ["last_token"], "controlled_readouts": [],
-            "mase_definition": f"mase_context: in-context seasonal-naive (m={M_SEASON}, "
+            "mase_definition": f"mase_context: in-context seasonal-naive (m={seasonal_m(tag)}, "
                                f"floor {MASE_DEN_FLOOR})",
-            "seasonal_m": M_SEASON, "boot_b": int(args.boot_b), "seed": int(args.seed),
+            "seasonal_m": seasonal_m(tag), "boot_b": int(args.boot_b), "seed": int(args.seed),
             "val_q9_loss_by_layer": {"last_token": entry["val_q9_loss"]},
             "tunnel": entry["tunnel"], "tunnel_by_tolerance": entry["tunnel_by_tolerance"],
             "reported": {"q9_loss": {"last_token": entry["test_q9_loss"]},
@@ -634,7 +745,7 @@ def make_figures(summary, paths):
         a.axhline(e["native"]["mase_context"], ls="--", c="crimson", lw=1.2,
                   label="native TimesFM-3 median")
         tun_line(a, e)
-    _panels(ds, f"MASE (in-context seasonal-naive, m={M_SEASON})",
+    _panels(ds, "MASE (in-context seasonal-naive; m per panel)",
             r"Median-forecast MASE by layer ($\tau$=0.5 row of the Q=9 probe), raw units",
             paths, "median_mase_by_layer.png", f3)
 
@@ -688,13 +799,32 @@ def parse_args(argv=None):
     g = p.add_argument_group("data")
     g.add_argument("--suite", "--dataset-set", dest="suite",
                    default=os.environ.get("TFM3_SUITE", "paper7"),
-                   help="'paper7' = the Chronos-2 headline seven (PT-ID: m4_hourly, "
-                        "monash_electricity_hourly, uber_tlc_hourly, wind_farms_hourly; PT-OOD: "
-                        "sg_carpark, coastal_ts, boom_hourly), windowed exactly as the Chronos-2 "
-                        "run. Any id_data.ID_DATASET_SPECS key also works (e.g. extended_v1, "
-                        "which is the KDD/pedestrian implementation-validation set)")
+                   help="'paper7' = the original committed seven, windowed exactly as the "
+                        "Chronos-2 run; 'paper14' = the benchmark frozen at the 2026-09-21 "
+                        "roster gate (registry.PAPER14). Any id_data.ID_DATASET_SPECS key also "
+                        "works (e.g. extended_v1, the KDD/pedestrian implementation-validation "
+                        "set). The roster, display names, seasonal periods and window builders "
+                        "all come from probing/registry.py")
+    g.add_argument("--quantile-set", default=os.environ.get("TFM3_QUANTILE_SET", "q9"),
+                   choices=["q1", "q9"],
+                   help="which quantile vector the probe head predicts. 'q9' = TimesFM-3's "
+                        "native 9 levels (default; reproduces the committed numbers exactly and "
+                        "is the model-specific native-distribution appendix). 'q1' = median "
+                        "only (tau=0.5), the CROSS-MODEL setting shared with Chronos-2 and "
+                        "TiRex. Feature caches are quantile-independent and shared; q1 writes "
+                        "to a separate output namespace so the two can never overwrite.")
     g.add_argument("--datasets", nargs="+", default=None,
                    help="subset of the suite's roster (default: all of it)")
+    g.add_argument("--reference-mode", default="require", choices=list(wref.REFERENCE_MODES),
+                   help="what a MISSING window reference means. 'require' (default) aborts, "
+                        "naming the command that would create one -- no GPU time is spent. "
+                        "'create' writes the reference from this run's windows so every later "
+                        "run of any model line is checked against them. 'allow-missing' runs "
+                        "with NO parity check and must not be used for reported numbers.")
+    g.add_argument("--force-reference", action="store_true",
+                   help="allow --reference-mode create to OVERWRITE an existing window "
+                        "reference. This redefines what parity means for every run already "
+                        "checked against it, so it is never the default.")
     g.add_argument("--allow-window-mismatch", action="store_true",
                    help="report, instead of aborting on, a disagreement with the committed "
                         "Chronos-2 windows (NOT recommended: the two models would be scored on "
@@ -791,7 +921,8 @@ def main(argv=None):
                          f"roster = {roster}")
 
     out_root = Path(args.out_root).expanduser() if args.out_root else REPO_ROOT / "results"
-    name = f"timesfm3_last_token_{args.suite}_q9" + (f"_{args.tag}" if args.tag else "")
+    name = (f"timesfm3_last_token_{args.suite}_{args.quantile_set}"
+            + (f"_{args.tag}" if args.tag else ""))
     out = out_root / name
     paths = {"out": out, "boot": out / "bootstrap", "fig": out / "figures",
              "cache": (Path(args.cache_dir).expanduser() if args.cache_dir
@@ -807,8 +938,8 @@ def main(argv=None):
     windows, idents = {}, []
     for tag in tags:
         windows[tag] = windows_for(tag, args.suite, args)
-        idents.append(assert_window_parity(tag, windows[tag], chronos_reference(tag),
-                                           strict=not args.allow_window_mismatch))
+        idents.append(parity_for(tag, windows[tag], args,
+                                 "python -m experiments.run_timesfm3_last_token_probing"))
     print_roster_audit(idents)
     if args.audit_only:
         audit_path = out / "window_audit.json"
@@ -863,13 +994,18 @@ def main(argv=None):
     print(f"  out        : {out}")
 
     summary = {"config": {**vars(args), "num_layers": NUM_LAYERS, "last_layer": LAST_LAYER,
-                          "m_season": M_SEASON, "mase_den_floor": MASE_DEN_FLOOR,
+                          "m_season": {t: seasonal_m(t) for t in tags},
+                          "mase_den_floor": MASE_DEN_FLOOR,
                           "cache_version": CACHE_VERSION, "timesfm_version": timesfm_version(),
                           "device": device, "n_backbone_param_tensors": n_par,
                           "backbone_frozen": True, "geometry": geom.as_dict(),
                           "native_quantiles": qinfo, "native_geometry": ginfo,
                           "audit_row": row, "suite": args.suite, "roster": tags,
-                          "pt_id_tags": list(PT_ID_TAGS), "pt_ood_tags": list(PT_OOD_TAGS),
+                          "quantile_set": args.quantile_set,
+                          "num_quantiles": len(quantile_set(args.quantile_set)[0]),
+                          "dataset_registry": {t: registry.spec(t).as_dict() for t in tags},
+                          "pretraining_provenance": {
+                              t: registry.provenance(t, "timesfm3").as_dict() for t in tags},
                           "ptid_dataset_set": PTID_SET,
                           "chronos_reference_root": str(CHRONOS_REF_ROOT.relative_to(REPO_ROOT))},
                "window_audit": idents,

@@ -68,9 +68,9 @@ READOUT = "content"                 # "content" (pooled) | "fslot" (shared forec
 CACHE_KEY = POOLING                 # feature-cache pooling key: "content" | f"K{K}_H{H}"
 POOL_TAG = POOLING                  # human label for filenames/records: "content" | "fslot"
 
-SHORT = {"monash_electricity_hourly": "Electricity", "uber_tlc_hourly": "Uber",
-         "m4_hourly": "M4", "wind_farms_hourly": "WindFarms",
-         "sg_carpark": "SG Carpark", "coastal_ts": "Coastal T-S", "boom_hourly": "BOOM"}
+from probing import registry  # noqa: E402  (THE display-name source)
+
+SHORT = {t: registry.display_name(t) for t in registry.DATASETS}
 
 METRICS = (("effective_rank", "effective rank  exp(H)"),
            ("spectral_entropy", "spectral entropy  H (nats)"),

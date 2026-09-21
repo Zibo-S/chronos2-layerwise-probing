@@ -62,12 +62,15 @@ NHA_TAB = NHA / "tables"
 OUT_ROOT = NHA / "compression"
 
 LAYER_LABELS = ["Emb"] + [f"L{i}" for i in range(1, 13)] + ["L12+RMS"]
-PT_ID_TAGS = ["monash_electricity_hourly", "uber_tlc_hourly", "m4_hourly", "wind_farms_hourly"]
-PT_OOD_TAGS = ["sg_carpark", "coastal_ts", "boom_hourly"]
+# Roster from probing.tunnel (itself derived from probing.registry); this module used to keep
+# a third hardcoded copy of the same two lists.
+from probing import registry  # noqa: E402
+from probing.tunnel import PT_ID_TAGS as _PT_ID, PT_OOD_TAGS as _PT_OOD  # noqa: E402
+
+PT_ID_TAGS = list(_PT_ID)
+PT_OOD_TAGS = list(_PT_OOD)
 ALL_TAGS = PT_ID_TAGS + PT_OOD_TAGS
-PRETTY = {"monash_electricity_hourly": "Electricity", "uber_tlc_hourly": "Uber TLC",
-          "m4_hourly": "M4", "wind_farms_hourly": "Wind Farms", "sg_carpark": "SG Carpark",
-          "coastal_ts": "Coastal T-S", "boom_hourly": "BOOM"}
+PRETTY = {t: registry.display_name(t) for t in registry.DATASETS}
 RULES = ("saturation", "erank")
 
 

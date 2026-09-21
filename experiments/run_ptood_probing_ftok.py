@@ -113,9 +113,9 @@ PROBE_ID_DIAG = "PT-OOD / Probe-ID (fresh target probe)"
 POST_LN_LABEL = "L12+LN"           # x-axis label for the post-final-LN native-head input
 LAYER_LABELS = ["Emb"] + [f"L{i}" for i in range(1, NUM_LAYERS)] + [POST_LN_LABEL]   # len NUM_LAYERS+1
 
-SHORT = {"monash_electricity_hourly": "Electricity", "uber_tlc_hourly": "Uber",
-         "m4_hourly": "M4", "wind_farms_hourly": "WindFarms",
-         "sg_carpark": "SG Carpark", "coastal_ts": "Coastal T-S", "boom_hourly": "BOOM"}
+from probing import registry  # noqa: E402  (THE display-name source)
+
+SHORT = {t: registry.display_name(t) for t in registry.DATASETS}
 
 
 def _derive_dirs(qset):

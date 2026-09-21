@@ -193,7 +193,9 @@ def test_matrix_order_is_per_set():
         assert R.NDATA == 4, "extended_v2 must be a 4×4 matrix"
         assert R.DATASET_ORDER == ["monash_electricity_hourly", "uber_tlc_hourly",
                                    "m4_hourly", "wind_farms_hourly"]
-        assert "M4" in R.SHORT.values() and "WindFarms" in R.SHORT.values()
+        # Display names now come from probing.registry, which reconciled this module's old
+        # "WindFarms"/"Uber" abbreviations with the paper figures' spellings.
+        assert "M4" in R.SHORT.values() and "Wind Farms" in R.SHORT.values()
         config.set_dataset_set("extended_v1"); R._derive_datasets()
         assert R.NDATA == 3, "extended_v1 OOD stays the committed 3×3 (pedestrian excluded)"
         assert R.DATASET_ORDER == ["monash_electricity_hourly", "monash_kdd_cup_2018",

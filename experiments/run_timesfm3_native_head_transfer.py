@@ -75,17 +75,18 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from experiments.run_timesfm3_last_token_probing import (KIND, PAPER7, SHORT,  # noqa: E402
+from experiments.run_timesfm3_last_token_probing import (parity_for, add_reference_args,  # noqa: E402
+                                                         KIND, PAPER7, SHORT,  # noqa: E402
                                                          assert_window_parity, chronos_reference,
                                                          suite_tags, windows_for)
-from experiments.run_timesfm3_probing import (MASE_DEN_FLOOR, M_SEASON,  # noqa: E402
+from probing import registry  # noqa: E402  (THE display-name / slug source)
+from probing.registry import seasonal_m  # noqa: E402  (per-dataset seasonal period)
+from experiments.run_timesfm3_probing import (MASE_DEN_FLOOR,  # noqa: E402
                                               cluster_ci, mase_denominator, per_window_mase)
 from probing.timesfm3_geometry import (SELECTED_TOKEN_INDEX, git_commit,  # noqa: E402
                                        paper_out_default, window_identity_hash)
 
-SLUG = {"m4_hourly": "m4", "monash_electricity_hourly": "electricity",
-        "uber_tlc_hourly": "uber_tlc", "wind_farms_hourly": "wind_farms",
-        "sg_carpark": "sg_carpark", "coastal_ts": "coastal_ts", "boom_hourly": "boom"}
+SLUG = {t: registry.slug(t) for t in registry.DATASETS}
 
 
 # --------------------------------------------------------------------------- #
@@ -317,8 +318,7 @@ def run_dataset(tag, args, geom, model, device, probe_entry) -> dict:
     print(f"\n{'=' * 82}\n[{tag}]  {short}  ({kind})\n{'=' * 82}")
 
     w = windows_for(tag, args.suite, args)
-    ident = assert_window_parity(tag, w, chronos_reference(tag),
-                                 strict=not args.allow_window_mismatch)
+    ident = parity_for(tag, w, args, "python -m experiments.run_timesfm3_native_head_transfer")
     meta = w["meta"]
     print(f"  windows: {ident['n_test_windows']} test  ({ident['n_test_series']} "
           f"{ident['cluster_unit']})   [Chronos-2 parity: {ident.get('chronos_parity')}]")
@@ -352,7 +352,7 @@ def run_dataset(tag, args, geom, model, device, probe_entry) -> dict:
                            pte["valid"])
     rows = ref["rows"]
     y_raw = Zte[rows, geom.target_start:geom.target_end]
-    den = mase_denominator(w["X_test"][rows])
+    den = mase_denominator(w["X_test"][rows], seasonal_m(tag))
     n_clamped = int((den < MASE_DEN_FLOOR).sum())
     den = np.maximum(den, MASE_DEN_FLOOR)
     ref_mase_pw = per_window_mase(y_raw, ref["median_raw"], den)
@@ -439,7 +439,7 @@ def run_dataset(tag, args, geom, model, device, probe_entry) -> dict:
                                                                "float32; this path is float64)"},
             "combined_with_probe": combined,
             "target_roundtrip_relative_err": rt, "n_denominator_clamped": n_clamped,
-            "m_season": M_SEASON,
+            "m_season": seasonal_m(tag),
             "feature_cache_used": False,
             "provenance": "representations taken in memory from decode()'s own forward pass; "
                           "no feature cache is read or written by this experiment",
@@ -679,6 +679,7 @@ def parse_args(argv=None):
     g.add_argument("--suite", default="paper7")
     g.add_argument("--datasets", nargs="+", default=None)
     g.add_argument("--layers", type=int, nargs="+", default=None)
+    add_reference_args(g)
     g.add_argument("--allow-window-mismatch", action="store_true")
     g.add_argument("--context-len", type=int, default=512)
     g.add_argument("--horizon", type=int, default=64)

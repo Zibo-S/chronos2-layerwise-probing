@@ -34,24 +34,80 @@ from __future__ import annotations
 
 import numpy as np
 
+from probing import registry
 from probing.config import BOOT_B, LAST_LAYER, NUM_LAYERS, SEED
 from probing.stats import ci_bounds, cluster_bootstrap_apply, cluster_bootstrap_counts
 
 TUNNEL_TOL = 0.05   # first-crossing threshold: 95% performance = loss within 5% of the last layer
 
-PT_ID_TAGS = ("monash_electricity_hourly", "uber_tlc_hourly", "m4_hourly", "wind_farms_hourly")
-PT_OOD_TAGS = ("sg_carpark", "coastal_ts", "boom_hourly")
+# ---------------------------------------------------------------------------
+# LEGACY, CHRONOS-2-RELATIVE ROSTERS. These are now DERIVED from probing.registry rather than
+# hand-typed here (and in run_cka_analysis, run_compression_cost and make_erank_stability_figure,
+# which each kept their own copy). Filtering PAPER7 by window builder reproduces the historical
+# tuples in their historical ORDER, which committed figures index positionally.
+#
+# They are kept ONLY so the committed Chronos-2 experiment lines keep running unchanged. They
+# must not be used to decide which window builder a dataset gets (that is registry.builder) or
+# to group a figure by pretraining status (that is registry.provenance, which is per MODEL).
+# A pt_id/pt_ood label is meaningful for Chronos-2 alone; TimesFM-3 and TiRex have different
+# corpora, so there is no model-independent "is this dataset seen".
+# ---------------------------------------------------------------------------
+PT_ID_TAGS = tuple(t for t in registry.PAPER7 if registry.builder(t) == "rolling_within_series")
+PT_OOD_TAGS = tuple(t for t in registry.PAPER7 if registry.builder(t) == "rolling_cluster")
 
 
 def domain_status(tag):
-    """{"pretraining": "pt_id"|"pt_ood", "adaptation": None} — adaptation filled by the
-    (future) fine-tuning block, never here."""
+    """LEGACY Chronos-2-relative label: {"pretraining": "pt_id"|"pt_ood", "adaptation": None}.
+
+    DEPRECATED for anything new — use ``registry.provenance(tag, model)``, which reports
+    ``status`` and ``evidence_scope`` separately and is defined per model. This function
+    survives only for the committed Chronos-2 drivers that already emit the flat label.
+
+    It raises for any dataset outside the original seven, ON PURPOSE. The failure mode being
+    prevented is a new dataset silently acquiring "pt_ood" — i.e. absence from one model's
+    documentation being reported as evidence of being unseen. ``not_listed`` is not ``OOD``.
+    """
     if tag in PT_ID_TAGS:
         return {"pretraining": "pt_id", "adaptation": None}
     if tag in PT_OOD_TAGS:
         return {"pretraining": "pt_ood", "adaptation": None}
-    raise ValueError(f"no documented pretraining status for {tag!r}; "
-                     f"known pt_id={PT_ID_TAGS} pt_ood={PT_OOD_TAGS}")
+    known = registry.known(tag)
+    raise ValueError(
+        f"no Chronos-2 pt_id/pt_ood label for {tag!r}"
+        + (" — it IS in the dataset registry, but this flat label is defined only for the "
+           "original seven and only relative to Chronos-2. Use "
+           f"registry.provenance({tag!r}, model) instead; it will not invent a status."
+           if known else
+           f" — and it is not in the dataset registry at all. Add it to probing/registry.py.")
+    )
+
+
+def pretraining_provenance(tag, model=None):
+    """The record field describing where ``tag`` sits relative to a model's pretraining corpus.
+
+    With ``model``, returns the 2-D registry cell (status x evidence_scope + citation). Without
+    one, returns ``None`` plus the reason — because there is no model-independent answer, and
+    guessing one is exactly what the old flat label did.
+    """
+    if model is None:
+        return {"model": None, "status": None,
+                "note": "pretraining provenance is model-relative; pass model= to record it "
+                        "(registry.MODELS = " + str(registry.MODELS) + ")"}
+    return {"model": model, **registry.provenance(tag, model).as_dict()}
+
+
+def _provenance_fields(tag, model):
+    """The provenance keys of a tunnel record.
+
+    ``pretraining_provenance`` (2-D, model-relative) is ALWAYS written. The legacy flat
+    ``domain_status`` is written ONLY for the original seven, so committed artifacts keep their
+    exact shape while a newly added dataset can never be stamped with a Chronos-2-relative
+    pt_id/pt_ood label it has no evidence for.
+    """
+    out = {"pretraining_provenance": pretraining_provenance(tag, model)}
+    if tag in PT_ID_TAGS or tag in PT_OOD_TAGS:
+        out["domain_status"] = domain_status(tag)
+    return out
 
 
 def _validate_curve(losses):
@@ -95,7 +151,7 @@ def check_tunnel_on_test(test_losses, l_start, tol=TUNNEL_TOL):
 
 
 def tunnel_record(tag, val_losses, test_losses, tol=TUNNEL_TOL, val_split_kind=None,
-                  extra=None):
+                  extra=None, model=None):
     """Assemble the portable per-dataset tunnel record (JSON-serializable). The first-crossing
     boundary is computed from `val_losses` only; `test_losses` enter only the generalization check
     + excursion stat. `l_start`/`tunnel` are the boundary — downstream D statistics key off them."""
@@ -104,7 +160,7 @@ def tunnel_record(tag, val_losses, test_losses, tol=TUNNEL_TOL, val_split_kind=N
     ls = tunnel_start(v, tol)
     holds, margins = check_tunnel_on_test(t, ls, tol)
     rec = {
-        "dataset": tag, "domain_status": domain_status(tag),
+        "dataset": tag, **_provenance_fields(tag, model),
         "tolerance": float(tol), "tunnel_definition": "first_crossing_95",
         "val_split_kind": val_split_kind,
         "last_layer": int(v.size - 1),
@@ -123,7 +179,7 @@ def tunnel_record(tag, val_losses, test_losses, tol=TUNNEL_TOL, val_split_kind=N
 
 
 def tunnel_record_multi(tag, val_by_run, test_by_run, run_seeds, run_type="probe_seed",
-                        tol=TUNNEL_TOL, val_split_kind=None, extra=None):
+                        tol=TUNNEL_TOL, val_split_kind=None, extra=None, model=None):
     """Multi-run tunnel record: 3 independent runs, tunnel defined from the MEAN validation
     curve (never per-seed tunnel indices averaged), evaluated on the MEAN test curve.
 
@@ -140,7 +196,7 @@ def tunnel_record_multi(tag, val_by_run, test_by_run, run_seeds, run_type="probe
     ls = tunnel_start(mv, tol)                       # MEAN val curve defines the first-crossing boundary
     holds, margins = check_tunnel_on_test(mt, ls, tol)
     rec = {
-        "dataset": tag, "domain_status": domain_status(tag),
+        "dataset": tag, **_provenance_fields(tag, model),
         "run_type": run_type, "run_seeds": [int(s) for s in run_seeds],
         "val_loss_by_run": V.tolist(), "test_loss_by_run": T.tolist(),
         "mean_val_loss_by_layer": mv.tolist(), "std_val_loss_by_layer": V.std(axis=0).tolist(),

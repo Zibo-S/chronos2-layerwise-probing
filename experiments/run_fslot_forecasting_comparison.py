@@ -62,7 +62,8 @@ from probing.probes import (QUANTILE_SETS, _apply_shared_head, _slot_transform, 
 from probing.stats import ci_bounds, cluster_bootstrap_apply, cluster_bootstrap_counts
 from probing.id_data import build_windows
 from probing.tunnel import PT_ID_TAGS
-from experiments.run_id_forecasting import (M_SEASON, _ctx_stats, _mase_denominator,
+from probing.registry import seasonal_m  # noqa: E402  (per-dataset seasonal period)
+from experiments.run_id_forecasting import (_ctx_stats, _mase_denominator,
                                             native_median_forecast)
 from experiments.run_ptood_probing_ftok import (C, H, K, LAYER_LABELS, OUT_ROOT, PROBE_FAMILIES,
                                                 RUN_SEEDS, RUNS_TAG, SHORT, _fslot_feats)
@@ -114,7 +115,7 @@ def _last_value_raw(X_test):
     return np.repeat(np.asarray(X_test, np.float64)[:, -1:], H, axis=1)          # (n, H)
 
 
-def _seasonal_naive_raw(X_test, m=M_SEASON):
+def _seasonal_naive_raw(X_test, m):
     """Raw seasonal-naive: tile the last m context values across H (y_hat[h] = x[C-m + h mod m])."""
     X64 = np.asarray(X_test, np.float64)
     idx = X64.shape[1] - m + (np.arange(H) % m)
@@ -198,7 +199,7 @@ def evaluate_dataset(tag, qset, quantiles, native_wql, device):
     n = int(w["meta"]["n_test"])
     mu, s = _ctx_stats(X_test, w["meta"]["sigma_eps"])
     y_raw = _raw_future(w, mu, s)
-    denom = np.maximum(_mase_denominator(X_test), 1e-8)[:, None]
+    denom = np.maximum(_mase_denominator(X_test, seasonal_m(tag)), 1e-8)[:, None]
     qmid = median_index(quantiles)
     S, inv = _series_group(w["series_test"])
     M = cluster_bootstrap_counts(S, BOOT_B, SEED)            # ONE shared resample -> paired methods
@@ -216,7 +217,7 @@ def evaluate_dataset(tag, qset, quantiles, native_wql, device):
 
     yhat_lv = _last_value_raw(X_test)
     pw_mase["last_value"] = _mase_pw(y_raw, yhat_lv, denom); pw_mae["last_value"] = _mae_pw(y_raw, yhat_lv)
-    yhat_sn = _seasonal_naive_raw(X_test)
+    yhat_sn = _seasonal_naive_raw(X_test, seasonal_m(tag))
     pw_mase["seasonal_naive"] = _mase_pw(y_raw, yhat_sn, denom)
     pw_mae["seasonal_naive"] = _mae_pw(y_raw, yhat_sn)
     # point baselines: repeat the point across quantiles for a (flagged) WQL
@@ -287,7 +288,8 @@ def evaluate_dataset(tag, qset, quantiles, native_wql, device):
                                             - boot_mase["native_chronos2"])[0]), 6),
             "mase_minus_native_ci_hi": round(float(ci_bounds(boot_mase[method]
                                             - boot_mase["native_chronos2"])[1]), 6),
-            "n_windows": n, "n_series": S, "seasonal_m": M_SEASON, "run_seeds": " ".join(map(str, RUN_SEEDS)),
+            "n_windows": n, "n_series": S, "seasonal_m": seasonal_m(tag),
+            "run_seeds": " ".join(map(str, RUN_SEEDS)),
         })
         m = rows[-1]
         print(f"    {method:>22}  MASE {m['mase']:.3f} [{m['mase_ci_lo']:.3f},{m['mase_ci_hi']:.3f}]  "

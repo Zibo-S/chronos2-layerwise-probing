@@ -51,7 +51,7 @@ from probing.stats import cluster_bootstrap_counts, cluster_bootstrap_apply
 # reuse the per-dataset pipeline's MASE definition + cached native forecast + context inverse,
 # so the diagonal MASE matches the committed per-dataset numbers exactly (importing this module
 # only defines functions; it does not run the per-dataset main()).
-from experiments.run_id_forecasting import compute_mase, _ctx_stats, M_SEASON, ID_STYLE
+from experiments.run_id_forecasting import compute_mase, _ctx_stats, ID_STYLE
 
 # ---- fixed experimental frame (inherited from the per-dataset pipeline; DO NOT diverge) ----
 POOLING = "content"            # content-token mean pooling (the primary pooled readout)
@@ -73,11 +73,9 @@ ORDER_BY_SET = {
     # rolling-origin within-series 4×4 (same roster as extended_v2; uniform temporal split)
     "extended_v3_rolling": ["monash_electricity_hourly", "uber_tlc_hourly", "m4_hourly", "wind_farms_hourly"],
 }
-SHORT_LABELS = {
-    "monash_electricity_hourly": "Electricity", "monash_kdd_cup_2018": "KDD",
-    "uber_tlc_hourly": "Uber", "monash_pedestrian_counts": "Pedestrian",
-    "m4_hourly": "M4", "wind_farms_hourly": "WindFarms", "solar_1h": "Solar",
-}
+from probing import registry  # noqa: E402  (THE display-name source)
+
+SHORT_LABELS = {t: registry.display_name(t) for t in registry.DATASETS}
 
 
 def _derive_datasets():

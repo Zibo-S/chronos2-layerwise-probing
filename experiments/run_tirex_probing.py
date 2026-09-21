@@ -77,11 +77,13 @@ from probing.tirex_probes import (EPOCHS, LR, TAU, WD_GRID_TIREX,               
 # ONE definition of MASE + cluster CIs for every model line (read-only import; these helpers are
 # model- and geometry-agnostic, and the denominator is byte-identical to
 # run_id_forecasting._mase_denominator, which the committed Chronos-2 runs use).
-from experiments.run_timesfm3_probing import (MASE_DEN_FLOOR, M_SEASON, cluster_ci,  # noqa: E402
+from probing.registry import seasonal_m  # noqa: E402  (per-dataset seasonal period)
+from experiments.run_timesfm3_probing import (MASE_DEN_FLOOR, cluster_ci,  # noqa: E402
                                               mase_denominator, per_window_mase)
 # Dataset roster, window construction and the committed-window parity gate: imported, never
 # re-declared, so TiRex is probed on EXACTLY the windows Chronos-2 and TimesFM-3 were.
-from experiments.run_timesfm3_last_token_probing import (PAPER7, SHORT,          # noqa: E402
+from experiments.run_timesfm3_last_token_probing import (parity_for, add_reference_args,  # noqa: E402
+                                                         PAPER7, SHORT,          # noqa: E402
                                                          assert_window_parity as _parity,
                                                          chronos_reference, suite_tags,
                                                          windows_for)
@@ -116,7 +118,7 @@ def run_dataset(tag, args, model, geom, paths):
     t0 = time.time()
     print(f"\n=== {tag} ({SHORT.get(tag, tag)}) " + "=" * (56 - len(tag)))
     w = windows_for(tag, args.suite, args)
-    ident = assert_window_parity(tag, w, chronos_reference(tag), strict=not args.allow_window_mismatch)
+    ident = parity_for(tag, w, args, "python -m experiments.run_tirex_probing")
     print(f"  windows: train {ident['n_train_windows']} / val {ident['n_val_windows']} / "
           f"test {ident['n_test_windows']}  ({ident['n_test_series']} test clusters, "
           f"parity={ident.get('chronos_parity')})")
@@ -194,8 +196,10 @@ def run_dataset(tag, args, model, geom, paths):
                                       splits["test"]["scale"], splits["test"]["targets"], geom)
 
     # ---- MASE in RAW units, same denominator as every other line ----
-    den = np.maximum(mase_denominator(splits["test"]["X"]), MASE_DEN_FLOOR)
-    n_clamped = int((mase_denominator(splits["test"]["X"]) < MASE_DEN_FLOOR).sum())
+    _m = seasonal_m(tag)                       # per-dataset, never a global 24
+    _den_raw = mase_denominator(splits["test"]["X"], _m)
+    den = np.maximum(_den_raw, MASE_DEN_FLOOR)
+    n_clamped = int((_den_raw < MASE_DEN_FLOOR).sum())
     y_raw = splits["test"]["raw_future"].astype(np.float64)
     mase_pw = {}
     for name in args.points:
@@ -305,7 +309,7 @@ def run_dataset(tag, args, model, geom, paths):
         "native_head_identity": vn, "rollout_mode_gap": gap,
         "target_roundtrip": {sp: splits[sp]["roundtrip"] for sp in splits},
         "representation_norms": {sp: representation_norms(feats[sp]) for sp in ("train", "test")},
-        "mase": {"definition": f"in-context seasonal-naive (m={M_SEASON}, floor {MASE_DEN_FLOOR})",
+        "mase": {"definition": f"in-context seasonal-naive (m={seasonal_m(tag)}, floor {MASE_DEN_FLOOR})",
                  "n_denominator_clamped": n_clamped},
         "bootstrap": boot,
         "geometry": {sp: {k: v for k, v in g.items() if k != "cka"} for sp, g in geo.items()},
@@ -607,7 +611,7 @@ def make_figures(summary, paths, args):
         ax.axhline(e["native"]["test_mase"], ls="--", c="crimson", lw=1.1, label="TiRex native")
         ax.axvline(e["tunnel"]["index"], c="green", lw=1.1, alpha=0.7)
         ax.legend(fontsize=6)
-    panels("probe_mase_by_depth", draw_mase, f"MASE (m={M_SEASON})",
+    panels("probe_mase_by_depth", draw_mase, "MASE (in-context seasonal-naive; m per panel)",
            "TiRex median-forecast MASE by depth, raw units")
 
     # 3. the per-patch diagnostic (spec section K)
@@ -719,6 +723,7 @@ def parse_args(argv=None):
                         "different implementations of the recurrence and are not expected to "
                         "agree bit-for-bit, so the size of the gap should be recorded, not "
                         "assumed. Needs `pip install xlstm ninja` for the cuda side.")
+    add_reference_args(p)
     p.add_argument("--allow-window-mismatch", action="store_true",
                    help="downgrade the committed-window parity gate to a report")
     p.add_argument("--no-figures", action="store_true")

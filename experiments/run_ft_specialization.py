@@ -79,7 +79,8 @@ from probing.tunnel import d_stat_boot, tunnel_record_multi, val_curve_from_sele
 # B3/B5 reuse the native-forecasting + paired-bootstrap primitives verbatim (NO parallel evaluation
 # logic): the in-context MASE denom + arcsinh inverse from run_id_forecasting / the forecasting
 # comparison, and the per-window MASE/WQL + series-cluster-bootstrap adapters from that same driver.
-from experiments.run_id_forecasting import M_SEASON, _ctx_stats, _mase_denominator
+from experiments.run_id_forecasting import _ctx_stats, _mase_denominator
+from probing.registry import seasonal_m  # noqa: E402  (per-dataset seasonal period)
 from experiments.run_fslot_forecasting_comparison import (
     _raw_future, _mase_pw, _mae_pw, _wql_pw_parts, _series_group, _boot_mean, _boot_ratio)
 
@@ -95,9 +96,9 @@ PT_ID_TARGETS = ("monash_electricity_hourly", "uber_tlc_hourly", "m4_hourly", "w
 PT_OOD_TARGETS = ("boom_hourly", "sg_carpark", "coastal_ts")
 ALL_TARGETS = PT_ID_TARGETS + PT_OOD_TARGETS
 
-SHORT = {"monash_electricity_hourly": "Electricity", "uber_tlc_hourly": "Uber",
-         "m4_hourly": "M4", "wind_farms_hourly": "WindFarms",
-         "sg_carpark": "SG-Carpark", "coastal_ts": "Coastal-TS", "boom_hourly": "BOOM"}
+from probing import registry  # noqa: E402  (THE display-name source)
+
+SHORT = {t: registry.display_name(t) for t in registry.DATASETS}
 
 OUT_ROOT = config.REPO_ROOT / "results" / "ft_specialization" / "stageB"
 FT_MANIFEST = config.REPO_ROOT / "results" / "ft_specialization" / FT_SOURCE / "manifest.json"
@@ -613,7 +614,7 @@ def _native_cell(stage_label, hash8, tag, w, qr, quantiles):
     X_test = np.asarray(w["X_test"], np.float64)
     mu, s = _ctx_stats(X_test, w["meta"]["sigma_eps"])
     y_raw = _raw_future(w, mu, s)                                   # arcsinh inverse mu + s*sinh(z)
-    denom = np.maximum(_mase_denominator(X_test), 1e-8)[:, None]
+    denom = np.maximum(_mase_denominator(X_test, seasonal_m(tag)), 1e-8)[:, None]
     qmid = median_index(quantiles)
     med = qr[:, qmid, :]
     mase_pw, mae_pw = _mase_pw(y_raw, med, denom), _mae_pw(y_raw, med)
@@ -624,7 +625,7 @@ def _native_cell(stage_label, hash8, tag, w, qr, quantiles):
            "stage": stage_label, "target": tag, "short": SHORT[tag],
            "pt_status": pt, "ft_status": ft, "probe_status": "native_head",
            "method": "native_chronos2", "ft_source": FT_SOURCE, "quantile_set": QSET,
-           "checkpoint_hash": (hash8 or "pretrained"), "seasonal_m": M_SEASON,
+           "checkpoint_hash": (hash8 or "pretrained"), "seasonal_m": seasonal_m(tag),
            "mase_denominator": "in_context_seasonal_naive_m24",
            "mase": round(float(mase_pw.mean()), 6), "median_mae": round(float(mae_pw.mean()), 6),
            "wql": round(float(num.sum() / max(den.sum(), 1e-12)), 6),

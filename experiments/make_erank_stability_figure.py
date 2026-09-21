@@ -44,9 +44,13 @@ FIG_DIR = SPEC_DIR / "figures"
 STEM = "erank_stability_{layout}__fslot__probe_input__train"
 DIAG_STEM = "erank_stability_diagnostic_2x4__fslot__probe_input__train"
 
-PT_ID_TAGS = {"monash_electricity_hourly": "Electricity", "uber_tlc_hourly": "Uber",
-              "m4_hourly": "M4", "wind_farms_hourly": "WindFarms"}
-PT_OOD_TAGS = {"sg_carpark": "SG Carpark", "coastal_ts": "Coastal T-S", "boom_hourly": "BOOM"}
+# Roster + display names from probing.registry; this module used to hardcode both, with its
+# own abbreviations ("Uber", "WindFarms") that disagreed with every other figure.
+from probing import registry  # noqa: E402
+from probing.tunnel import PT_ID_TAGS as _PT_ID, PT_OOD_TAGS as _PT_OOD  # noqa: E402
+
+PT_ID_TAGS = {t: registry.display_name(t) for t in _PT_ID}
+PT_OOD_TAGS = {t: registry.display_name(t) for t in _PT_OOD}
 TAGS = {**PT_ID_TAGS, **PT_OOD_TAGS}       # every dataset with a committed spectral record
 
 # layout -> (grid, figsize, datasets). The four-panel layouts are the committed PT-ID figure and

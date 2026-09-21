@@ -31,7 +31,12 @@ Q9 = QUANTILE_SETS["q9"]
 P = int(OUTPUT_PATCH_SIZE)
 Hh = fc.H                                     # driver horizon (64)
 C = 128                                       # context length (> m=24)
-M_SEASON = fc.M_SEASON
+# The seasonal period is now per-dataset (probing.registry), not a module global. These
+# synthetic windows stand in for an hourly dataset, so the test pins the hourly value that
+# every one of the original seven datasets resolves to.
+from probing.registry import seasonal_m
+M_SEASON = seasonal_m("monash_electricity_hourly")
+assert M_SEASON == 24, M_SEASON
 
 
 def _windows(n, seed=0):

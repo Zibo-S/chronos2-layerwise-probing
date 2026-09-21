@@ -44,9 +44,11 @@ from probing.probes import (CHRONOS2_QUANTILES, QUANTILE_SETS, WD_GRID_V2,
 from probing.native_head_adapter import (NUM_NATIVE_QUANTILES, LinearAdapter, fit_adapter_explicit_val,
                                         native_head_modules, slots_to_normalized_quantiles)
 from probing.id_data import build_ood_rolling_windows, build_windows
+from probing import registry
 from probing.tunnel import PT_ID_TAGS, PT_OOD_TAGS
 from probing.stats import cluster_bootstrap_apply, cluster_bootstrap_counts, ci_bounds
-from experiments.run_id_forecasting import M_SEASON, _ctx_stats, _mase_denominator
+from experiments.run_id_forecasting import _ctx_stats, _mase_denominator
+from probing.registry import seasonal_m  # noqa: E402  (per-dataset seasonal period)
 from experiments.run_ptood_probing_ftok import C, H, K, SHORT, _fslot_feats, load_ptid_ckpt
 
 OUT_ROOT = REPO_ROOT / "results" / "ext_v5_native_head_adapter"
@@ -68,7 +70,9 @@ REF_IDX = NUM_LAYERS                        # 13 = L12+RMS = native endpoint (no
 ADAPTER_LAYERS = list(range(NUM_LAYERS))   # 0..12 get trained adapters
 ALL_LAYERS = list(range(NUM_LAYERS + 1))   # 0..13, for zero-shot + native
 CONDITIONS = ("native", "zero_shot", "linear_adapter")
-ALL_TAGS = list(PT_ID_TAGS) + list(PT_OOD_TAGS)
+ALL_TAGS = list(registry.PAPER7)
+# LEGACY Chronos-2-relative panel label; defined for the committed seven only. New datasets get
+# no PT-ID/PT-OOD label -- see registry.provenance(tag, model).
 DATASET_KIND = {**{t: "PT-ID" for t in PT_ID_TAGS}, **{t: "PT-OOD" for t in PT_OOD_TAGS}}
 RECON_REL_TOL = 5e-3                        # native reconstruction vs pipeline (float32 through the head)
 SANITY_LAYERS = [0, 3, 8, 12, 13]
@@ -99,7 +103,9 @@ def _transfer_dirs():
 
 
 def _windows(tag):
-    if tag in PT_OOD_TAGS:
+    # The builder is a REGISTRY fact (how the dataset's series are organized), not a
+    # pretraining-status one. This used to branch on `tag in PT_OOD_TAGS`.
+    if registry.builder(tag) == "rolling_cluster":
         w = build_ood_rolling_windows(tag, C=C, H=H, seed=SEED)
         return w, ("train_rolling", "val_rolling", "test_rolling")
     w = build_windows(tag)
@@ -219,7 +225,7 @@ def process_dataset(tag, quantiles, device, pipeline, sanity=False):
     Xte = np.asarray(w["X_test"], np.float64)
     mu, s = _ctx_stats(Xte, m["sigma_eps"])
     y_raw = mu[:, None] + s[:, None] * np.sinh(np.asarray(w["Y_test_traj"], np.float64))
-    denom = np.maximum(_mase_denominator(Xte), 1e-8)[:, None]
+    denom = np.maximum(_mase_denominator(Xte, seasonal_m(tag)), 1e-8)[:, None]
     S, inv = _series_group(w["series_test"])
     qmid = median_index(quantiles)
     print(f"  windows: train {m['n_train']} / val {m['n_val'] if 'n_val' in m else '?'} / "
@@ -357,7 +363,7 @@ def _save_config(tag, kind, meta, quantiles):
            "epochs": EPOCHS, "lr": LR, "early_stopping": False, "adapter": "shared Linear(768,768), identity init",
            "adapter_param_count": 768 * 768 + 768, "seeds": "single deterministic fit (identity init)",
            "n_train": int(meta["n_train"]), "n_test": int(meta["n_test"]),
-           "n_val": int(meta.get("n_val", -1)), "seasonal_m": M_SEASON,
+           "n_val": int(meta.get("n_val", -1)), "seasonal_m": seasonal_m(tag),
            "dataset_set": config.DATASET_SET, "bootstrap_B": BOOT_B,
            "note": ("A_l is supervised by the forecast target Y through the FROZEN native head; a low "
                     "adapter loss shows a linear map of layer l is SUFFICIENT to make it usable by the "
@@ -399,7 +405,7 @@ def _q1_baseline_pw(tag, device):
     Xte = np.asarray(w["X_test"], np.float64)
     mu, s = _ctx_stats(Xte, m["sigma_eps"])
     y_raw = mu[:, None] + s[:, None] * np.sinh(np.asarray(w["Y_test_traj"], np.float64))
-    denom = np.maximum(_mase_denominator(Xte), 1e-8)[:, None]
+    denom = np.maximum(_mase_denominator(Xte, seasonal_m(tag)), 1e-8)[:, None]
     seed_mase = {}
     for seed in Q1_SEEDS:
         fitted = _q1_fitted(tag, w, splits, seed, q1, device)
@@ -462,7 +468,7 @@ def _eval_context(tag, quantiles, device, head, final_rms, pipeline):
     Xte = np.asarray(w["X_test"], np.float64)
     mu, s = _ctx_stats(Xte, m["sigma_eps"])
     y_raw = mu[:, None] + s[:, None] * np.sinh(np.asarray(w["Y_test_traj"], np.float64))
-    denom = np.maximum(_mase_denominator(Xte), 1e-8)[:, None]
+    denom = np.maximum(_mase_denominator(Xte, seasonal_m(tag)), 1e-8)[:, None]
     S, inv = _series_group(w["series_test"])
     qmid = median_index(quantiles)
     native_qr = _raw_quantiles(f_te[REF_IDX], None, False, final_rms, head, quantiles, mu, s, device)

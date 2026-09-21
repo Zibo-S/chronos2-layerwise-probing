@@ -75,13 +75,15 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from experiments.run_timesfm3_last_token_probing import (KIND, PAPER7, SHORT,  # noqa: E402
+from experiments.run_timesfm3_last_token_probing import (parity_for, add_reference_args,  # noqa: E402
+                                                         KIND, PAPER7, SHORT,  # noqa: E402
                                                          assert_window_parity, chronos_reference,
                                                          print_roster_audit, suite_tags,
                                                          windows_for)
 from experiments.run_timesfm3_native_head_transfer import (SLUG, _panel_grid,  # noqa: E402
                                                            head_checksum)
-from experiments.run_timesfm3_probing import (MASE_DEN_FLOOR, M_SEASON,  # noqa: E402
+from probing.registry import seasonal_m  # noqa: E402  (per-dataset seasonal period)
+from experiments.run_timesfm3_probing import (MASE_DEN_FLOOR,  # noqa: E402
                                               cluster_ci, mase_denominator, per_window_mase)
 from probing.timesfm3_alignment import (ALIGNMENT_VERSION, ALIGNMENTS,  # noqa: E402
                                         RIDGE_GRID, SOLVE_DTYPE, apply_alignment,
@@ -227,8 +229,7 @@ def run_dataset(tag, args, geom, model, device, ref_entry, adapter_dir) -> dict:
 
     # ---- windows: the committed Chronos-2 / TimesFM-3 paper7 ones, verified ----
     w = windows_for(tag, args.suite, args)
-    ident = assert_window_parity(tag, w, chronos_reference(tag),
-                                 strict=not args.allow_window_mismatch)
+    ident = parity_for(tag, w, args, "python -m experiments.run_timesfm3_representation_alignment")
     meta = w["meta"]
     if "X_val" not in w or len(w["X_val"]) == 0:
         raise RuntimeError(
@@ -290,7 +291,7 @@ def run_dataset(tag, args, geom, model, device, ref_entry, adapter_dir) -> dict:
                                 pte["targets"], pte["valid"])
     rows = official["rows"]
     y_raw = Zte[rows, geom.target_start:geom.target_end]
-    den = mase_denominator(w["X_test"][rows])
+    den = mase_denominator(w["X_test"][rows], seasonal_m(tag))
     n_clamped = int((den < MASE_DEN_FLOOR).sum())
     den = np.maximum(den, MASE_DEN_FLOOR)
     official_mase = per_window_mase(y_raw, official["median_raw"], den)
@@ -438,7 +439,7 @@ def run_dataset(tag, args, geom, model, device, ref_entry, adapter_dir) -> dict:
             "tunnel_entrance_5pct": (ref_entry or {}).get("tunnel_entrance_5pct"),
             "tunnel_entrance_5pct_name": (ref_entry or {}).get("tunnel_entrance_5pct_name"),
             "target_roundtrip_relative_err": rt, "n_denominator_clamped": n_clamped,
-            "m_season": M_SEASON, "cache_roots": {s: R[s]["cache_root"] for s in R},
+            "m_season": seasonal_m(tag), "cache_roots": {s: R[s]["cache_root"] for s in R},
             "quantile_sorting": ctx["sorting"], "cached_native_check": ctx["native_check"],
             "seconds": round(time.time() - t0, 1)}
 
@@ -856,6 +857,7 @@ def parse_args(argv=None):
     g.add_argument("--seed", type=int, default=0)
     g.add_argument("--no-detrend", action="store_true")
     g.add_argument("--feature-dtype", default="float32")
+    add_reference_args(g)
     g.add_argument("--allow-window-mismatch", action="store_true")
     g.add_argument("--ignore-timesfm-version", action="store_true")
     g.add_argument("--roundtrip-rtol", type=float, default=1e-4)
@@ -963,7 +965,7 @@ def main(argv=None):
             "native_head": ck_before, "native_head_checksum_after": ck_after,
             "native_head_unchanged": True,
             "native_quantiles": [float(x) for x in NATIVE_QUANTILES],
-            "num_quantiles": NUM_QUANTILES, "m_season": M_SEASON,
+            "num_quantiles": NUM_QUANTILES, "m_season": {t: seasonal_m(t) for t in tags},
             "reference_results": ref, "config": vars(args), "git_commit": git_commit(),
             "computed": datetime.datetime.now().isoformat(timespec="seconds"),
             "seconds": round(time.time() - t0, 1)}

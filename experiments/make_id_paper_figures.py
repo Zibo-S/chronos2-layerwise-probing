@@ -115,9 +115,9 @@ TAB_DIR = V4 / QSET / "id" / "tables"
 # is "L12+RMS" here even though the ext_v4 filenames/records spell it "L12+LN".
 LABELS = ["Emb"] + [f"L{i}" for i in range(1, 13)] + ["L12+RMS"]
 
-TITLES = {"monash_electricity_hourly": "Electricity", "m4_hourly": "M4",
-          "uber_tlc_hourly": "Uber TLC", "wind_farms_hourly": "Wind Farms",
-          "sg_carpark": "SG Carpark", "coastal_ts": "Coastal T-S", "boom_hourly": "BOOM"}
+from probing import registry  # noqa: E402  (THE display-name source)
+
+TITLES = {t: registry.display_name(t) for t in registry.DATASETS}
 # group -> (datasets, title, stem, drop_emb). drop_emb omits the input-embedding point from the
 # x axis only; the loaded curves and the emitted table stay full length.
 GROUPS = {"main": (("monash_electricity_hourly", "m4_hourly"),
@@ -311,9 +311,11 @@ def make_figure(rows, title, stem, boot_b, dpi=400, show_title=True, drop_emb=Fa
 GROUP_ORDER = ["PT-ID / Probe-ID", "PT-ID / Probe-OOD", "PT-OOD / Probe-OOD"]
 SRC_COLOR = {"monash_electricity_hourly": "#1F5FA8", "uber_tlc_hourly": "#D95F02",
              "m4_hourly": "#7570B3", "wind_farms_hourly": "#1B9E77"}
-SHORT = {"monash_electricity_hourly": "Electricity", "uber_tlc_hourly": "Uber TLC",
-         "m4_hourly": "M4", "wind_farms_hourly": "Wind Farms", "sg_carpark": "SG Carpark",
-         "coastal_ts": "Coastal T-S", "boom_hourly": "BOOM"}
+# These display names WERE the canonical ones; they now live in probing.registry so every
+# figure, table and driver reads the same spelling from one place.
+from probing import registry  # noqa: E402
+
+SHORT = {t: registry.display_name(t) for t in registry.DATASETS}
 
 
 def load_transfer_cells(boot_b, seed):
@@ -1143,9 +1145,7 @@ PTOOD_FIG_DIR = V4 / "ptood_probing"
 PT_OOD_FIG_TAGS = ("sg_carpark", "coastal_ts", "boom_hourly")
 LEGEND_SCALE_REF = 1.25          # the legend scale the panel geometry is calibrated at
 
-EPS_TITLES = {"monash_electricity_hourly": "Electricity", "m4_hourly": "M4",
-              "uber_tlc_hourly": "Uber TLC", "wind_farms_hourly": "Wind Farms",
-              "sg_carpark": "SG Carpark", "coastal_ts": "Coastal T-S", "boom_hourly": "BOOM"}
+EPS_TITLES = TITLES          # one spelling; was a second hardcoded copy
 
 
 def _ptood_panel_curves(tag):

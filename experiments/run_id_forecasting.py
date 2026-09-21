@@ -136,9 +136,14 @@ DATASET_NOTES = {
 }
 
 
-# MASE seasonal period: all four ID datasets are HOURLY, so the seasonal-naive scale uses
-# lag m=24 (same-hour-yesterday). Revisit if a non-hourly dataset is ever added.
-M_SEASON = 24
+# MASE seasonal period. This used to be a module-global `M_SEASON = 24` with the comment
+# "revisit if a non-hourly dataset is ever added". A non-hourly dataset WAS added, and a global
+# 24 would not have crashed -- it would have reported a MASE normalized by a two-hour "season"
+# of 5-minute data. The period now comes from probing.registry per dataset, and the denominator
+# below takes it as a REQUIRED argument so a missing one is a TypeError, never a wrong number.
+from probing.mase import (MASE_DEFINITION, MASE_DEN_FLOOR,          # noqa: E402,F401
+                          seasonal_denominator)
+from probing.registry import seasonal_m                              # noqa: E402,F401
 
 
 def _bytes_per_split(n, pools=3):
@@ -158,10 +163,13 @@ def _ctx_stats(X, sigma_eps):
     return mu, s
 
 
-def _mase_denominator(X, m=M_SEASON):
-    """Seasonal-naive in-context scale d_n = mean_t |x_t - x_{t-m}| over the C-m lagged pairs."""
-    X64 = np.asarray(X, np.float64)
-    return np.abs(X64[:, m:] - X64[:, :-m]).mean(axis=1)
+def _mase_denominator(X, m):
+    """Seasonal-naive in-context scale d_n = mean_t |x_t - x_{t-m}| over the C-m lagged pairs.
+
+    ``m`` is REQUIRED -- pass ``seasonal_m(tag)``. Arithmetic unchanged (probing.mase holds the
+    one implementation), so every committed number reproduces bit-for-bit at m=24.
+    """
+    return seasonal_denominator(X, m)
 
 
 def native_median_forecast(tag, X_test, H):
@@ -204,13 +212,13 @@ def compute_mase(tag, w, diags):
     # raw future reconstructed from the arcsinh label with the SAME mu/s used to invert the
     # probe predictions -- keeps target and prediction exactly consistent.
     y_raw = mu[:, None] + s[:, None] * np.sinh(Y_traj.astype(np.float64))
-    d = _mase_denominator(X_test)
-    n_clamped = int((d < 1e-8).sum())
-    d = np.maximum(d, 1e-8)[:, None]
+    d = _mase_denominator(X_test, seasonal_m(tag))
+    n_clamped = int((d < MASE_DEN_FLOOR).sum())
+    d = np.maximum(d, MASE_DEN_FLOOR)[:, None]
 
     native = native_median_forecast(tag, X_test, Y_traj.shape[1])
     A_nat = np.abs(y_raw - native) / d                      # (n, H) per-step scaled errors
-    entry = {"seasonal_m": M_SEASON, "n_denominator_clamped": n_clamped,
+    entry = {"seasonal_m": seasonal_m(tag), "n_denominator_clamped": n_clamped,
              "native_mase": float(A_nat.mean()),
              "poolings": {}}
     per_window = {"native": A_nat.mean(axis=1)}
@@ -280,10 +288,10 @@ def save_bootstrap_inputs(tag, w, result, diags, mase_pw):
             "n_test_windows": n_test, "n_test_series": int(len(np.unique(sid))),
             "primary_readouts": list(POOLINGS),
             "controlled_readouts": list(result["kslot"]["probes"]),
-            "mase_definition": f"mase_context: in-context seasonal-naive scale (m={M_SEASON}, "
+            "mase_definition": f"mase_context: in-context seasonal-naive scale (m={seasonal_m(tag)}, "
                                "over the C-step context, clamped at 1e-8) — the definition of "
                                "the reported MASE; not the canonical train-series MASE",
-            "seasonal_m": M_SEASON,
+            "seasonal_m": seasonal_m(tag),
             "n_denominator_clamped": result["mase"]["n_denominator_clamped"],
             "reported": {"quantile_loss": reported_loss,
                          "mase_context": result["mase"]["poolings"],
@@ -767,7 +775,7 @@ def make_mase_figures(id_results):
         for ax in axes[-1]:   ax.set_xlabel("representation")
         for ax in axes[:, 0]: ax.set_ylabel("test MASE")
         fig.suptitle(f"MASE: per-layer linear probe (median forecast) vs native Chronos-2 — "
-                     f"{pool} pooling\nseasonal-naive scale m={M_SEASON}; LOWER = better; "
+                     f"{pool} pooling\nseasonal-naive scale m per dataset; LOWER = better; "
                      "★ = best probe layer", fontsize=13)
         fig.tight_layout(rect=[0, 0, 1, 0.94])
         out = QDIR / f"mase_{pool}_vs_native.png"
@@ -800,7 +808,7 @@ def make_mase_kslot_figure(id_results):
     for ax in axes[-1]:   ax.set_xlabel("representation")
     for ax in axes[:, 0]: ax.set_ylabel("test MASE")
     fig.suptitle("MASE (controlled K-slot pass): pooled content/REG vs SHARED forecast-token vs native\n"
-                 f"seasonal-naive m={M_SEASON}; LOWER = better; ★ = best probe layer", fontsize=13)
+                 "seasonal-naive m per dataset; LOWER = better; ★ = best probe layer", fontsize=13)
     fig.tight_layout(rect=[0, 0, 1, 0.94])
     out = QDIR / "shared_forecast_mase.png"
     fig.savefig(out, dpi=140, bbox_inches="tight"); plt.close(fig)
@@ -810,7 +818,9 @@ def make_mase_kslot_figure(id_results):
 def write_mase_json(id_results):
     """Focused MASE JSON: per dataset the native Chronos-2 MASE + per-pooling per-layer probe
     MASE, argmin, and the probe-vs-native ratio (<1 = probe beat the native median)."""
-    payload = {"config": {"seasonal_m": M_SEASON, "poolings": list(POOLINGS),
+    payload = {"config": {"seasonal_m": {t: seasonal_m(t) for t in id_results},
+                          "mase_definition_sentence": MASE_DEFINITION,
+                          "poolings": list(POOLINGS),
                           "quantile_set": QUANTILE_SET,
                           "note": "MASE of the q=0.5 forecast, un-transformed to raw units "
                                   "(y = mu_ctx + sigma_ctx*sinh(z)); denominator = in-context "
@@ -1067,7 +1077,7 @@ def main():
               f"L0={ql[0]:.3f}  L{LAST_LAYER}={ql[LAST_LAYER]:.3f}")
     # MASE (content) — probe median forecast vs native Chronos-2 on the same test windows
     if has_mase:
-        print(f"\n  MASE, median forecast  (content pooling; m={M_SEASON}; LOWER=better):")
+        print(f"\n  MASE, median forecast  (content pooling; m per dataset; LOWER=better):")
         for tag, r in id_results.items():
             mc = np.array(r["mase"]["poolings"]["content"])
             nat = r["mase"]["native_mase"]

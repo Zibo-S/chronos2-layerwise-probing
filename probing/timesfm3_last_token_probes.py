@@ -44,7 +44,7 @@ import torch
 from sklearn.preprocessing import StandardScaler
 
 from probing.config import SEED
-from probing.probes import WD_GRID_V2, validate_quantiles
+from probing.probes import WD_GRID_V2, median_index, validate_quantiles
 from probing.timesfm3_last_token import (LAYER_NAMES, MODEL_DIMS, NATIVE_MEDIAN_IDX,
                                          NATIVE_QUANTILES, NUM_LAYERS, NUM_QUANTILES,
                                          safe_sigma)
@@ -84,7 +84,47 @@ WD_GRID_LAST_TOKEN = tuple(WD_GRID_V2) + (10.0, 30.0)
 # measurement rather than an assumption.
 WD_NULL_BASELINE = 100.0
 
-__all__ = ["NATIVE_QUANTILES", "NUM_QUANTILES", "WD_GRID_LAST_TOKEN", "WD_NULL_BASELINE",
+# --------------------------------------------------------------------------- #
+# quantile sets -- the cross-model probe objective
+# --------------------------------------------------------------------------- #
+# The 2026-09-21 benchmark decision froze Q=1 / tau=0.5 as the CROSS-MODEL setting: Chronos-2
+# has q1/q9/q21, TiRex is natively Q=1, and TimesFM-3 was hard-wired to its native Q=9. A
+# cross-model tunnel comparison has to read one objective, so TimesFM-3 gains q1 here.
+#
+# Q=9 is NOT removed. It stays the default of this module and is retained as the
+# TimesFM-3-specific native-distribution appendix -- it is the only one of the three models
+# whose full native quantile vector a linear probe can be asked to reproduce.
+QUANTILE_SETS = {
+    "q9": NATIVE_QUANTILES,                                   # TimesFM-3's native vector
+    "q1": np.array([0.5], dtype=np.float64),                  # cross-model setting
+}
+
+#: Which columns of the model's OWN (n, H, 9) native forecast a set scores against. The native
+#: head always emits 9 quantiles; scoring it on q1 means selecting its median column, not
+#: re-running the model.
+NATIVE_COLUMNS = {
+    "q9": np.arange(NUM_QUANTILES),
+    "q1": np.array([NATIVE_MEDIAN_IDX]),
+}
+
+
+def quantile_set(name: str):
+    """``(quantile vector, native column indices, median index WITHIN the set)``.
+
+    Fails loudly on an unknown name -- there is no default quantile set at a call site.
+    """
+    if name not in QUANTILE_SETS:
+        raise ValueError(f"unknown quantile set {name!r}; known: {sorted(QUANTILE_SETS)}")
+    q = QUANTILE_SETS[name]
+    mid = median_index(q)
+    if mid is None:                       # MASE reads the median; a set without 0.5 cannot serve
+        raise ValueError(f"quantile set {name!r} has no exact 0.5 level, so no median forecast "
+                         f"and therefore no MASE could be computed from it")
+    return q, NATIVE_COLUMNS[name], mid
+
+
+__all__ = ["NATIVE_QUANTILES", "NUM_QUANTILES", "QUANTILE_SETS", "NATIVE_COLUMNS",
+           "quantile_set", "WD_GRID_LAST_TOKEN", "WD_NULL_BASELINE",
            "make_probe",
            "reshape_prediction",
            "pinball_loss", "pinball_loss_per_window", "median_pinball_per_window",
@@ -273,6 +313,10 @@ def last_token_layerwise(train_feats, train_targets, train_valid,
     device = device or ("cuda" if torch.cuda.is_available() else "cpu")
     q_np = validate_quantiles(quantiles)
     Q = len(q_np)
+    # The median's position depends on the quantile vector actually in use (index 4 of the
+    # native 9, index 0 of the Q=1 set). Reading it from q_np is what makes --quantile-set q1
+    # score the right column instead of indexing past the end of a (B, 1, H) prediction.
+    med_idx = median_index(q_np)
     q = torch.as_tensor(q_np, dtype=torch.float32, device=device)
     train_targets = np.asarray(train_targets, np.float32)
     test_targets = np.asarray(test_targets, np.float32)
@@ -436,10 +480,10 @@ def last_token_layerwise(train_feats, train_targets, train_valid,
             out[i] = float(pw.mean().item())
             diag["test_q9"][i] = out[i]
             diag["test_q9_window"][i] = pw.cpu().numpy().astype(np.float64)
-            mpw = median_pinball_per_window(pred, yte, NATIVE_MEDIAN_IDX)
+            mpw = median_pinball_per_window(pred, yte, med_idx)
             diag["test_median_loss"][i] = float(mpw.mean().item())
             diag["test_median_window"][i] = mpw.cpu().numpy().astype(np.float64)
-            diag["test_median_pred"][i] = pred[:, NATIVE_MEDIAN_IDX, :].cpu().numpy(
+            diag["test_median_pred"][i] = pred[:, med_idx, :].cpu().numpy(
                 ).astype(np.float32)
             diag["test_per_quantile"][i] = per_quantile_loss(pred, yte, q)
             if null_m is not None:
@@ -453,7 +497,7 @@ def last_token_layerwise(train_feats, train_targets, train_valid,
                 diag["null_baseline"][i].update(
                     test_q9=float(npw.mean().item()),
                     test_median_loss=float(median_pinball_per_window(
-                        npred, yte, NATIVE_MEDIAN_IDX).mean().item()))
+                        npred, yte, med_idx).mean().item()))
                 del Xte_n, npred
             del Xte, pred
         if verbose:
@@ -471,7 +515,7 @@ def last_token_layerwise(train_feats, train_targets, train_valid,
 # --------------------------------------------------------------------------- #
 
 def native_reference(native_raw, mu, sd, trend, targets, valid, quantiles=NATIVE_QUANTILES,
-                     device=None) -> dict:
+                     device=None, native_columns=None) -> dict:
     """The native TimesFM-3 forecast, normalized into the probe target space and scored there.
 
     decode() returns RAW units; dividing out the SAME (trend, mu, sigma) the probe targets use
@@ -481,6 +525,12 @@ def native_reference(native_raw, mu, sd, trend, targets, valid, quantiles=NATIVE
     """
     device = device or "cpu"
     q_np = validate_quantiles(quantiles)
+    med_idx = median_index(q_np)
+    # The native head always emits its 9 quantiles. Under a smaller probe quantile set we score
+    # the SAME forecast on the same levels the probe is scored on, by selecting those columns --
+    # never by re-running or re-fitting anything.
+    if native_columns is not None:
+        native_raw = np.asarray(native_raw)[:, :, np.asarray(native_columns, int)]
     q = torch.as_tensor(q_np, dtype=torch.float32, device=device)
     rows = np.flatnonzero(np.asarray(valid, bool).reshape(-1))
     nat = np.asarray(native_raw, np.float64)[rows]                       # (n, H, Q)
@@ -495,12 +545,12 @@ def native_reference(native_raw, mu, sd, trend, targets, valid, quantiles=NATIVE
     y = torch.as_tensor(np.asarray(targets, np.float32)[rows], device=device)
     with torch.no_grad():
         pw = pinball_loss_per_window(pred, y, q).cpu().numpy().astype(np.float64)
-        mpw = median_pinball_per_window(pred, y, NATIVE_MEDIAN_IDX).cpu().numpy().astype(
+        mpw = median_pinball_per_window(pred, y, med_idx).cpu().numpy().astype(
             np.float64)
         per_q = per_quantile_loss(pred, y, q)
     return {"q9_loss": float(pw.mean()), "q9_window": pw,
             "median_loss": float(mpw.mean()), "median_window": mpw,
-            "per_quantile": per_q, "median_raw": nat[:, :, NATIVE_MEDIAN_IDX],
+            "per_quantile": per_q, "median_raw": nat[:, :, med_idx],
             "rows": rows}
 
 

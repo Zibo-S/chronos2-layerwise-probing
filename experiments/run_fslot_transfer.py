@@ -60,7 +60,8 @@ from probing.id_data import build_ood_rolling_windows, build_windows
 from probing.probes import QUANTILE_SETS, validate_quantiles
 from probing.tunnel import PT_ID_TAGS, PT_OOD_TAGS, domain_status
 # reuse the per-dataset pipeline's in-context MASE pieces (import only defines functions)
-from experiments.run_id_forecasting import M_SEASON, _ctx_stats, _mase_denominator
+from experiments.run_id_forecasting import _ctx_stats, _mase_denominator
+from probing.registry import seasonal_m  # noqa: E402  (per-dataset seasonal period)
 # frozen-probe loader + shared fslot frame from the diagnostic driver (constants are module-level,
 # so importing does not run its main(); _fslot_feats uses that module's H/K/NUM_LAYERS globals).
 # PROBE_FAMILIES routes the readout head (shared_linear default | native_mlp) — same features/windows/
@@ -192,7 +193,7 @@ def _fslot_mase(tag, w, diag):
     to all 14 fslot points. Leakage-free (context-only inversion + denominator)."""
     mu, s = _ctx_stats(w["X_test"], w["meta"]["sigma_eps"])
     y_raw = mu[:, None] + s[:, None] * np.sinh(w["Y_test_traj"].astype(np.float64))
-    d = np.maximum(_mase_denominator(w["X_test"]), 1e-8)[:, None]
+    d = np.maximum(_mase_denominator(w["X_test"], seasonal_m(tag)), 1e-8)[:, None]
     out = {}
     for i in sorted(diag["test_median"]):
         yhat = mu[:, None] + s[:, None] * np.sinh(diag["test_median"][i].astype(np.float64))
@@ -376,7 +377,8 @@ def _write_records(sources, targets, cells, mean_ql, mean_mase, ell, tunnels, ga
     tag = "4x4" if gap is not None else "pt_ood"
     _dump_csv_json(TAB_DIR / f"transfer_summary__{tag}__{qset}", summary)
     _dump_csv_json(TAB_DIR / f"transfer_by_layer__{tag}__{qset}", tidy)
-    json.dump({"mase_definition": f"mase_context in-context seasonal-naive (m={M_SEASON})",
+    _ms = {t: seasonal_m(t) for t in sorted(set(sources) | set(targets))}
+    json.dump({"mase_definition": f"mase_context in-context seasonal-naive (m per dataset: {_ms})",
                "final_reference": REF_LABEL, "run_seeds": list(RUN_SEEDS), "cells": curves},
               open(TAB_DIR / f"transfer_curves__{tag}__{qset}.json", "w"), indent=2)
     print(f"  [saved] {len(summary)} cell records + {len(tidy)} layer rows -> {TAB_DIR}")

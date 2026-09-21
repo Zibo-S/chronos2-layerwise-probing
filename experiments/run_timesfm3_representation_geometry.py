@@ -80,13 +80,14 @@ from probing.timesfm3_geometry import (LAYER_NAMES, MODEL_DIMS, NUM_LAYERS,  # n
                                        effective_rank_curve, estimator_provenance, git_commit,
                                        load_last_token_reps, paper_out_default)
 # roster / windows / display names / Chronos-2 parity: ONE source of truth, the probe driver
-from experiments.run_timesfm3_last_token_probing import (KIND, PAPER7, SHORT,  # noqa: E402
+from experiments.run_timesfm3_last_token_probing import (parity_for, add_reference_args,  # noqa: E402
+                                                         KIND, PAPER7, SHORT,  # noqa: E402
                                                          assert_window_parity, chronos_reference,
                                                          suite_tags, windows_for)
 
-SLUG = {"m4_hourly": "m4", "monash_electricity_hourly": "electricity",
-        "uber_tlc_hourly": "uber_tlc", "wind_farms_hourly": "wind_farms",
-        "sg_carpark": "sg_carpark", "coastal_ts": "coastal_ts", "boom_hourly": "boom"}
+from probing import registry  # noqa: E402
+
+SLUG = {t: registry.slug(t) for t in registry.DATASETS}
 
 HEADLINE_ESTIMATOR = "biased"     # parity with run_cka_analysis.py
 HEADLINE_CKA_SPLIT = "test"       # parity with run_cka_analysis.py --fslot-split
@@ -148,8 +149,7 @@ def analyse_dataset(tag, args, geom, tunnels, floors) -> dict:
     print(f"\n{'=' * 78}\n[{tag}]  {short}  ({kind})\n{'=' * 78}")
 
     w = windows_for(tag, args.suite, args)
-    ident = assert_window_parity(tag, w, chronos_reference(tag),
-                                 strict=not args.allow_window_mismatch)
+    ident = parity_for(tag, w, args, "python -m experiments.run_timesfm3_representation_geometry")
     print(f"  windows: {ident['n_train_windows']} train / {ident['n_val_windows']} val / "
           f"{ident['n_test_windows']} test   [Chronos-2 parity: {ident.get('chronos_parity')}]")
 
@@ -583,6 +583,7 @@ def parse_args(argv=None):
                    help="skip ONLY the timesfm-version field of the cache metadata check (for "
                         "analysing a cache built under a different install); every other field "
                         "and the element-wise window check still apply")
+    add_reference_args(g)
     g.add_argument("--allow-window-mismatch", action="store_true",
                    help="report instead of aborting on a disagreement with the committed "
                         "Chronos-2 windows (NOT recommended)")

@@ -35,6 +35,7 @@ from pathlib import Path
 import numpy as np
 
 from probing.config import SEED
+from probing import registry
 
 # Chronos-2-seen ID dataset sets (HF config + target column per tag). The active set is
 # selected by probing.config.DATASET_SET (env ID_DATASET_SET, or the --dataset-set CLI
@@ -79,6 +80,16 @@ ID_DATASET_SPECS = {
         "wind_farms_hourly":         {"hf_config": "wind_farms_hourly",         "target": "target"},  # Renewable generation
     },
 }
+# The 14-dataset benchmark frozen at the 2026-09-21 roster gate. It is DERIVED from
+# probing.registry, not re-typed: the registry owns the roster, the source repo/config, the
+# target column, the seasonal period and the deterministic series cap. Only the PT-ID datasets
+# appear here — the three OOD-roster datasets keep their own builder
+# (build_ood_rolling_windows), which id_data dispatches on registry.builder(tag).
+ID_DATASET_SPECS["paper14_rolling"] = {
+    _t: {"hf_config": registry.spec(_t).source_config, "target": registry.spec(_t).target_column}
+    for _t in registry.PAPER14 if registry.builder(_t) == "rolling_within_series"
+}
+
 _HF_REPO = "autogluon/chronos_datasets"
 
 # Matched TOTAL train/test window budget per dataset set (applied by the existing uniform
@@ -91,13 +102,16 @@ BUDGET_BY_SET = {
     # rolling-origin sets carry a (train, VAL, test) 3-tuple: val is a dedicated temporal split,
     # not a carve of train. build_windows dispatches these to _build_rolling_windows.
     "extended_v3_rolling": (1394, 262, 262),
+    # identical budget to extended_v3_rolling: the point of the expansion is more DATASETS at
+    # the same per-dataset budget, so nothing about window supply changes between them.
+    "paper14_rolling": (1394, 262, 262),
 }
 
 # Dataset sets that use the uniform rolling-origin WITHIN-SERIES split (explicit temporal
 # train/val/test, H-spaced non-overlapping targets) instead of the length-derived
 # within_series/cross_series auto split. Their BUDGET_BY_SET entry is a (train, val, test)
 # 3-tuple and build_windows routes them through _build_rolling_windows.
-ROLLING_SETS = {"extended_v3_rolling"}
+ROLLING_SETS = {"extended_v3_rolling", "paper14_rolling"}
 
 
 def _active_specs() -> dict:
@@ -117,12 +131,31 @@ def __getattr__(name):  # PEP 562: `id_data.ID_DATASETS` / from-imports stay dyn
 # raw series loading
 # --------------------------------------------------------------------------- #
 def load_seen_series(tag: str) -> list[np.ndarray]:
-    """Download an ID dataset and return its target series as a list of 1-D float64 arrays."""
+    """Download an ID dataset and return its target series as a list of 1-D float64 arrays.
+
+    Source repo / config / target column come from ``probing.registry`` — NOT from a hardcoded
+    ``_HF_REPO``, because two of the 14 roster datasets (LOOP_SEATTLE_5T, SZ_TAXI_15T) live in
+    ``autogluon/fev_datasets``, and fev's target columns are not uniformly ``"target"``
+    (kdd_cup_2022 uses ``Patv``, rossmann uses ``Sales``).
+
+    When ``tag`` is also in the ACTIVE legacy dataset set, the registry row is cross-checked
+    against that set's entry and any disagreement raises. The two tables must never drift.
+    """
     from datasets import load_dataset
 
-    spec = _active_specs()[tag]
-    ds = load_dataset(_HF_REPO, spec["hf_config"], split="train")
-    col = spec["target"]
+    rspec = registry.spec(tag)
+    if not (rspec.source_repo and rspec.source_config and rspec.target_column):
+        raise ValueError(f"{tag}: registry row has no HF source — it is a {rspec.builder} "
+                         f"dataset and must be loaded by its own builder")
+    legacy = _active_specs().get(tag)
+    if legacy is not None and (legacy["hf_config"], legacy["target"]) != (
+            rspec.source_config, rspec.target_column):
+        raise RuntimeError(
+            f"{tag}: probing.registry says {rspec.source_config}/{rspec.target_column} but the "
+            f"active dataset set says {legacy['hf_config']}/{legacy['target']} — reconcile "
+            f"probing/registry.py with ID_DATASET_SPECS before running anything")
+    ds = load_dataset(rspec.source_repo, rspec.source_config, split="train")
+    col = rspec.target_column
     return [np.asarray(r[col], dtype=np.float64) for r in ds]
 
 
@@ -223,6 +256,50 @@ def _subsample(ctxs, ys, yvecs, sids, target, rng):
             [yvecs[i] for i in idx], [sids[i] for i in idx])
 
 
+def apply_series_cap(tag, eligible_ids, seed, max_series=None):
+    """DETERMINISTIC series-level cap, applied AFTER ordinary eligibility and BEFORE any
+    train/val/test construction. Returns ``(kept_ids, audit)``.
+
+    WHY IT EXISTS. ``_build_rolling_windows`` draws its ``target_val`` (262) val/test series
+    from the FULL eligible pool, but the cluster-balanced round robin only reaches
+    ``target_train`` (1394) DISTINCT series. Whenever more than 1394 series are eligible, some
+    selected val/test series keep no train window and the fail-loud coverage check raises. The
+    2026-09-21 yield screen measured exactly which datasets hit this: london_smart_meters
+    (5555 eligible), m5 (28491) and wiki_daily_100k (100000).
+
+    HOW THE SELECTION IS MADE, and what each property is for:
+      * ``sorted(eligible_ids)`` first — a CANONICAL order, so the result never depends on
+        Arrow row order, dict iteration order or the order series happened to be loaded in;
+      * a seeded uniform sample WITHOUT replacement over that canonical order — not a
+        ``[:cap]`` truncation, which would silently mean "whatever the shard was written in";
+      * the drawn ids are re-sorted, so downstream iteration stays chronological-by-index;
+      * it depends on nothing but the ids and the seed — never on target values, window
+        content or fitted quantities, so it cannot leak anything into the split.
+
+    PARITY. The cap draws from a DEDICATED rng stream
+    (``default_rng([seed, registry.SERIES_CAP_RNG_STREAM])``), never from the builder's main
+    ``rng``. When it does not fire it touches no randomness at all, so a dataset at or below
+    its cap produces byte-identical windows to the pre-cap implementation. That is what makes
+    the original seven provably unaffected: their eligible pools (262-414) are far below 1394.
+    """
+    ids = sorted(int(i) for i in eligible_ids)
+    cap = registry.max_series(tag) if max_series is None else max_series
+    audit = {"applied": False, "max_series": cap, "n_eligible_before": len(ids),
+             "n_eligible_after": len(ids), "rng_stream": registry.SERIES_CAP_RNG_STREAM,
+             "seed": int(seed), "selection": "seeded uniform sample without replacement over "
+                                             "the sorted eligible series ids"}
+    if cap is None or len(ids) <= cap:
+        audit["reason"] = ("no cap declared for this dataset" if cap is None else
+                           f"eligible pool {len(ids)} already <= cap {cap}; no randomness drawn")
+        return ids, audit
+    cap_rng = np.random.default_rng([int(seed), registry.SERIES_CAP_RNG_STREAM])
+    kept = sorted(int(i) for i in cap_rng.choice(np.asarray(ids), size=int(cap), replace=False))
+    audit.update(applied=True, n_eligible_after=len(kept),
+                 reason=f"eligible pool {len(ids)} exceeds cap {cap}",
+                 capped_series_ids=kept)
+    return kept, audit
+
+
 def _build_rolling_windows(tag, C, H, stride, sigma_eps, m_season, seed,
                            target_train=None, target_val=None, target_test=None):
     """Uniform rolling-origin WITHIN-SERIES windows for the extended_v3_rolling set.
@@ -268,9 +345,39 @@ def _build_rolling_windows(tag, C, H, stride, sigma_eps, m_season, seed,
             excl["insufficient_valid"] += 1
             continue
         eligible[i] = starts
+
+    # DETERMINISTIC series cap -- after ordinary eligibility, before ANY split construction.
+    # Without it the fail-loud coverage check below raises for every dataset with more than
+    # target_train eligible series. See apply_series_cap for why it cannot perturb the seven.
+    kept_ids, cap_audit = apply_series_cap(tag, eligible.keys(), seed)
+    if cap_audit["applied"]:
+        dropped = set(eligible) - set(kept_ids)
+        eligible = {i: eligible[i] for i in kept_ids}
+        for i in dropped:                    # release the raw series we will never read again
+            series[i] = None
+        print(f"  [series cap] {tag}: {cap_audit['n_eligible_before']} eligible -> "
+              f"{cap_audit['n_eligible_after']} (seed {seed}, stream "
+              f"{registry.SERIES_CAP_RNG_STREAM:#x}); the cap is part of the split definition")
+    # A dataset with FEWER eligible series than the val/test budget used to raise here. For the
+    # original four that never fired (262-414 eligible against a 262 budget), but the 14-dataset
+    # roster contains datasets that simply do not have 262 series -- SZ_TAXI_15T has 156 -- and
+    # refusing to window them would silently mean "the roster cannot run".
+    #
+    # So the budget becomes a CEILING rather than a requirement, exactly as the OOD builder
+    # already treats it (build_ood_rolling_windows defaults target_val=None = every eligible
+    # series contributes). The reduction is never silent: it is printed, recorded in
+    # meta["valtest_budget"], and it is a real loss of statistical power -- the cluster
+    # bootstrap resamples these units, so a dataset at 156 units has visibly wider CIs than one
+    # at 262 and must be read that way.
+    valtest_budget = {"requested": int(target_val), "realized": int(target_val),
+                      "reduced": False, "n_eligible_series": len(eligible)}
     if len(eligible) < target_val:
-        raise RuntimeError(f"{tag}: only {len(eligible)} eligible series (need {target_val} for "
-                           "val/test) — lower the val/test budget or check the data")
+        valtest_budget.update(realized=len(eligible), reduced=True,
+                              reason=f"only {len(eligible)} eligible series available")
+        print(f"  [val/test budget] {tag}: {len(eligible)} eligible series < requested "
+              f"{target_val}; using all {len(eligible)} for val/test. Fewer bootstrap units "
+              f"means WIDER confidence intervals for this dataset.")
+        target_val = target_test = len(eligible)
 
     # 2) the SAME deterministic series carry val AND test (one window each)
     elig_idx = np.array(sorted(eligible))
@@ -322,7 +429,7 @@ def _build_rolling_windows(tag, C, H, stride, sigma_eps, m_season, seed,
     test_denominator = np.array([den_by_series[int(i)] for i in te_sid], np.float64)
 
     meta = {
-        "tag": tag, "hf_config": _active_specs()[tag]["hf_config"],
+        "tag": tag, "hf_config": registry.spec(tag).source_config,
         "split_mode": "rolling_origin_within_series",
         "n_series": len(series), "n_eligible_series": len(eligible), "excluded_series": excl,
         "C": C, "H": H, "stride": H, "test_frac": None,
@@ -331,6 +438,9 @@ def _build_rolling_windows(tag, C, H, stride, sigma_eps, m_season, seed,
         "mase_denominator": "per_series_history_before_test_seasonal_naive",
         "mase_canonical": True,
         "selected_series": [int(i) for i in sel],                 # the val/test series (req: metadata)
+        "series_cap": cap_audit,                                  # deterministic cap audit trail
+        "valtest_budget": valtest_budget,                         # requested vs realized units
+        "eligible_series_ids": [int(i) for i in sorted(eligible)],
         "origins": {"train": [int(o) for o in tr_org],            # per-window target-start index
                     "val": [int(o) for o in va_org],
                     "test": [int(o) for o in te_org]},
@@ -359,7 +469,7 @@ def build_windows(
     target_train: int | None = None,
     target_test: int | None = None,
     sigma_eps: float = 1e-6,
-    m_season: int = 24,
+    m_season: int | None = None,
     seed: int = SEED,
 ):
     """Build ID probing windows for one seen dataset.
@@ -371,6 +481,10 @@ def build_windows(
         meta                      : split_mode, counts, skip counts, params
     """
     from probing import config
+    # The seasonal period is a REGISTRY fact, never a 24 baked into a signature default. It
+    # feeds only the canonical `test_denominator` here (the REPORTED MASE uses the in-context
+    # denominator in probing.mase), but a wrong m must still be impossible rather than invisible.
+    m_season = registry.seasonal_m(tag) if m_season is None else m_season
     # rolling-origin sets use a uniform explicit temporal train/val/test split for ALL datasets;
     # dispatch before the length-derived within_series/cross_series logic below (legacy path).
     if config.DATASET_SET in ROLLING_SETS:
@@ -722,7 +836,7 @@ def build_ood_windows(tag, C: int = 512, H: int = 64, stride: int = 64,
 
 
 def build_ood_rolling_windows(tag, C: int = 512, H: int = 64, sigma_eps: float = 1e-6,
-                              m_season: int = 24, seed: int = SEED,
+                              m_season: int | None = None, seed: int = SEED,
                               target_train: int | None = 1394,
                               target_val: int | None = None,
                               target_test: int | None = None):
@@ -748,6 +862,7 @@ def build_ood_rolling_windows(tag, C: int = 512, H: int = 64, sigma_eps: float =
     Returns the ``_build_rolling_windows`` dict shape (X_val/y_val/Y_val_traj/series_val
     included); ``test_denominator`` = per-series seasonal-naive scale of the history strictly
     before the test target (``mase_canonical`` True)."""
+    m_season = registry.seasonal_m(tag) if m_season is None else m_season
     loaded = load_ood_target_series(tag)
     rng = np.random.default_rng(seed)
 
@@ -765,6 +880,13 @@ def build_ood_rolling_windows(tag, C: int = 512, H: int = 64, sigma_eps: float =
         eligible.append((i, int(cid), starts))
     if not eligible:
         raise RuntimeError(f"{tag}: no eligible series for the rolling split")
+    # Same deterministic cap as the PT-ID builder. Every current OOD roster is far below any
+    # cap (354 series at most), so this is inert today -- it is here so a larger roster added
+    # later cannot reach the fail-loud coverage check by a different route.
+    _kept, cap_audit = apply_series_cap(tag, [e[0] for e in eligible], seed)
+    if cap_audit["applied"]:
+        _keep = set(_kept)
+        eligible = [e for e in eligible if e[0] in _keep]
     if target_val is not None or target_test is not None:
         if target_val != target_test:
             raise ValueError("rolling split uses the SAME series for val and test; "
@@ -811,6 +933,7 @@ def build_ood_rolling_windows(tag, C: int = 512, H: int = 64, sigma_eps: float =
         "sigma_eps": sigma_eps, "seed": seed, "m_season": m_season,
         "mase_denominator": "per_series_history_before_test_seasonal_naive",
         "mase_canonical": True,
+        "series_cap": cap_audit,
         "n_series_total": len(loaded["series"]), "n_eligible_series": len(eligible),
         "excluded_series": excl,
         "n_train_windows_before_subsample": n_tr_full,

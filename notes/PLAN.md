@@ -721,11 +721,14 @@ Consequences, all implemented:
 
 ---
 
-# Benchmark expansion to 14 datasets — PROVISIONALLY APPROVED 2026-09-21 (yield screen pending)
+# Benchmark expansion to 14 datasets — APPROVED 2026-09-21 (yield screen reported, gate passed)
 
 Answers the reviewer objection that layerwise "forecasting tunnels" might be an artifact of
-pretraining exposure. Status: roster approved **provisionally**; the registry refactor is
-**explicitly deferred** until the yield screen reports.
+pretraining exposure. Status: roster **FROZEN** on measured numbers (`experiments/
+rolling_yield_screen14.py`, full run 2026-09-21, `$SCRATCH/yield_screen14.json`). One
+casualty (`kdd_cup_2022_10T`), one promotion (`electricity_15min` as a labelled control).
+The registry refactor is now UNBLOCKED — but four blockers must land before any new dataset
+is extracted.
 
 ## The roster (14)
 
@@ -734,19 +737,25 @@ pretraining exposure. Status: roster approved **provisionally**; the registry re
 | 1-4 | m4_hourly, monash_electricity_hourly, uber_tlc_hourly, wind_farms_hourly | 1H | mixed/energy/transport | 24 | `autogluon/chronos_datasets` |
 | 5-7 | boom_hourly, sg_carpark, coastal_ts | 1H | cloud/transport/nature | 24 | staged arrow shards |
 | 8 | LOOP_SEATTLE_5T | 5min | road speed | 288 | `autogluon/fev_datasets` |
-| 9 | kdd_cup_2022_10T | 10min | wind power | 144 | `autogluon/fev_datasets` |
+| 9 | electricity_15min | 15min | residential energy | 96 | `autogluon/chronos_datasets` |
 | 10 | SZ_TAXI_15T | 15min | road speed | 96 | `autogluon/fev_datasets` |
 | 11 | monash_london_smart_meters | 30min | residential energy | 48 | `autogluon/chronos_datasets` |
 | 12 | m5 | 1D | retail | 7 | `autogluon/chronos_datasets` |
 | 13 | wiki_daily_100k | 1D | web | 7 | `autogluon/chronos_datasets` |
 | 14 | monash_traffic | 1H | road volume | 24 | `autogluon/chronos_datasets` |
 
-Designated alternates, screened but NOT in the roster: `rossmann_1D` (M5 fallback, target col
-`Sales`), `electricity_15min` (a possible 15th **control** — same 370 meters as the hourly set at
-4x the rate; a sampling-frequency control, NOT domain diversity, and must be labelled as such).
+**#9 `electricity_15min` is a CONTROL, not a domain.** It is the SAME 370 meters as
+`monash_electricity_hourly` at 4x the sampling rate, so it holds domain AND series fixed and
+varies only the rate: *does the tunnel entrance move with sampling frequency?* Every table and
+figure must label it as a frequency control — it may never be counted toward domain diversity.
 
-Six frequency classes. Every `m_season` for a dataset shared with fev-bench EQUALS fev-bench's
-published `seasonality` — the choice has an external citation, not just our assertion.
+Designated alternates, screened but NOT in the roster: `rossmann_1D` (M5 fallback, target col
+`Sales`) and `kdd_cup_2022_10T` (dropped at the gate — see below).
+
+**FIVE** genuine frequency classes (5min / 15min / 30min / 1H / 1D) plus the 15min control
+pair. The 10-min class is deliberately empty. Every `m_season` for a dataset shared with
+fev-bench EQUALS fev-bench's published `seasonality` — the choice has an external citation,
+not just our assertion.
 
 ## Decisions frozen 2026-09-21
 
@@ -818,7 +827,85 @@ Pab1-3/Prtv/Patv. `rossmann_1D` target is **`Sales`**. fev's `SZ_TAXI_15T` task 
 solar/weather covariates that do not exist in the config (a copy-paste bug in fev's tasks.yaml) —
 its real columns are only target/id/timestamp. fev target columns are NOT uniformly "target".
 
-## Two blockers found by inspection — must be fixed before any new dataset runs
+## YIELD SCREEN RESULT — the gate report (2026-09-21, compute node nc20108)
+
+Full 16-dataset run (14 proposed + 2 alternates), `--json $SCRATCH/yield_screen14.json`.
+
+### The `denomfail%` column was a FALSE ALARM — and this matters
+
+The screen measures `id_data._seasonal_naive_scale(s[:te_st+C], m)`, the **canonical** per-series
+denominator stored as `test_denominator`. **Nothing consumes it.** Grepped every consumer across
+`probing/*.py` + `experiments/*.py`: zero, and `run_id_forecasting.py:250` says so in its own
+docstring ("NOT the canonical train-series MASE (id_data.test_denominator, unused here)").
+
+Every reported MASE — Chronos-2, TimesFM-3 AND TiRex — goes through
+`run_timesfm3_probing.mase_denominator(X_test)` (`run_tirex_probing.py:197`,
+`run_timesfm3_last_token_probing.py:358`, `run_timesfm3_native_head_transfer.py:356`,
+`run_timesfm3_representation_alignment.py:294`): the **IN-CONTEXT** seasonal-naive scale over the
+512-point context, floored at `MASE_DEN_FLOOR = 1e-8`. The context is finite by construction (the
+window validity filter guarantees it), so that denominator **can never fail**.
+
+**=> wind_farms_hourly's committed MASE is NOT broken.** 96.3% / 100% / 98.5% invalidate nothing
+that has been published.
+
+What the column DOES measure is "this series has >= 1 NaN anywhere in its history", because
+`_seasonal_naive_scale` uses `.mean()`. London's arithmetic confirms the mechanism: median length
+30,864 -> `(30864-576)//64+1` = 474 origins; one isolated NaN sits inside `C+H = 576` points and
+therefore rejects 9 consecutive windows; 9/474 = **1.9%** vs the measured **2.15% rejection**.
+That is *sparse isolated missing readings*, not a leading pad — harmless under the in-context
+denominator.
+
+Two consequences to carry into the writeup:
+- our MASE is **not** the fev-bench / GIFT-Eval denominator, and a reviewer will notice. For
+  wind_farms / kdd / london we now know we **could not** switch to the canonical one even if
+  asked — unless `_seasonal_naive_scale` gains a `nanmean` over valid lagged pairs (a one-line
+  change; it is currently fail-loud by design). NOT done, deliberately.
+- `M_SEASON = 24` is a module constant with no per-dataset path (blocker 3).
+
+### Per-dataset verdicts
+
+| dataset | verdict | measured basis |
+|---|---|---|
+| m4, electricity, uber, sg_carpark, coastal | clean | committed; nothing moved |
+| **m5** | **KEPT — swap trigger did NOT fire** | rej 0.62%, denom fail 0.000%, madMed **0.490**. The ">30% of windows lost to zero/invalid denominators, or degenerate" rule is not met, so `rossmann_1D` stays benched. |
+| LOOP_SEATTLE, SZ_TAXI, wiki, traffic, electricity_15min | clean | rej <= 0.36%, denom fail 0 |
+| **wind_farms_hourly** | kept (committed) + NEW CAVEAT | **21.95% of its val/test windows have a literally constant future** (`mad_const == 0`) — by far the highest in the roster. Those windows score ~0 at EVERY depth, so they are dead weight compressing the layer-to-layer differences. Plausible (curtailed turbines); belongs in the writeup. |
+| **boom_hourly** | kept (committed) + caveat | madMed **0.121**, ~3x lower than any other dataset, plus 12.0% zero-MAD. Least dynamic range in the roster => small absolute deltas there mean less than they look. |
+| **kdd_cup_2022_10T** | **DROPPED** | below |
+
+### Why kdd_cup_2022_10T was dropped
+
+**75.2% of candidate windows rejected** — not a footnote: the evaluation lands on a
+**missingness-selected 25% of time**, and the sensor outages choose which 25%, not us.
+Compounding it, val/test caps at **134 clusters** (51% of the 262 everything else gets), so it is
+simultaneously the least trustworthy AND the least powered dataset in the roster. Its domain
+(wind power) is already covered by `wind_farms_hourly`, so dropping it costs the 10-min frequency
+class but **no unique domain**. Replaced by `electricity_15min`, promoted from alternate to
+labelled frequency control.
+
+### Screen-reporting bug (data fine, table under-reports)
+
+`rolling_yield_screen14.screen` hardcodes `realized_valtest = min(BUDGET_VALTEST=262, n_clusters)`,
+but `build_ood_rolling_windows` defaults `target_val = target_test = None` — EVERY eligible series
+contributes. So the screen understates the three OOD rows:
+
+| dataset | screen printed | builder actually gives |
+|---|---|---|
+| sg_carpark | 262 / 262 | **354 / 354** |
+| boom_hourly | 262 / 262 | **354 / 354** |
+| coastal_ts | 24 / 24 | **48 / 48** windows over 24 clusters |
+
+These match the counts already recorded above, so nothing regressed — but do not read those rows
+as a change. The cluster count is the statistically meaningful number either way.
+
+### Still open from the screen
+
+- `SZ_TAXI_15T` length is settled only in the JSON, not in the printed table (the realized column
+  caps at 1394 and both 1,440 and 2,976 clear it). Read it off with
+  `python -c "import json;print([(r['tag'],r['series_len_min_med_max']) for r in json.load(open('$SCRATCH/yield_screen14.json'))['rows']])"`
+  (login node, seconds, one small JSON).
+
+## Four blockers — ALL LANDED 2026-09-21 (see the implementation record below)
 
 1. **`id_data._build_rolling_windows` RAISES when n_eligible_series > target_train (1394).**
    The 262 val/test series are drawn from the full eligible pool, but the cluster-balanced round
@@ -826,10 +913,23 @@ its real columns are only target/id/timestamp. fev target columns are NOT unifor
    `missing = sel_set - set(tr_sid)` trips. Hits m5, wiki_daily_100k, london_smart_meters (and
    the alternates). Fix = a DETERMINISTIC series-level cap applied before the protocol; it also
    removes the multi-GB raw-series memory spike.
-2. **`tunnel.domain_status()` raises on unknown tags** and stamps a Chronos-2-relative label into
-   every tunnel record. Any new tag breaks `tunnel_record` on the first call.
-
-Also: `experiments/run_cka_analysis.py:71` keeps its OWN duplicate hardcoded `PT_ID_TAGS`.
+   **CONFIRMED BY MEASUREMENT** — and for exactly three datasets: london (5555 eligible),
+   m5 (28491), wiki_daily_100k (100000).
+2. **`tunnel.domain_status()` raises on unknown tags** (`probing/tunnel.py:53`) and stamps a
+   Chronos-2-relative label into every tunnel record. Any new tag breaks `tunnel_record` on the
+   first call. STILL STANDS.
+3. **NEW — the screen did not catch this one. `seasonal_m` is not centralized ANYWHERE yet.**
+   `mase_denominator(X, m=M_SEASON)` defaults to the module constant **24**
+   (`run_timesfm3_probing.py:40,49`) and all four drivers call it positionally with no override.
+   Add LOOP_SEATTLE_5T (m=288) and the MASE denominator is built on a **2-hour** "season" of
+   5-minute data: it will NOT crash, it will silently report a wrong number. Same for
+   SZ_TAXI/electricity_15min (96), london (48), m5/wiki (7). The frozen decision below
+   ("`seasonal_m` is centralized per dataset") is not implemented. Safe to land: all seven
+   current datasets map to 24, so a per-dataset table is **bit-identical** on the committed
+   numbers — which is exactly what the pinning test must assert.
+4. **NEW — two duplicate rosters, not one.** `experiments/run_cka_analysis.py:71` keeps its own
+   hardcoded `PT_ID_TAGS` **and** (line 72) its own `SHORT` display-name dict. Both must be
+   reconciled with the registry, not just the tag set.
 
 ## Run order
 
@@ -837,5 +937,102 @@ Also: `experiments/run_cka_analysis.py:71` keeps its OWN duplicate hardcoded `PT
 2. `salloc`/`sbatch` the yield screen (COMPUTE NODE: multi-GB raw series, sustained core,
    millions of origins). Report realized train/val/test, rejection fraction, eligible series,
    denominator failure rate, degeneracy MAD.
-3. **STOP. Roster approval gate.**
-4. Only then: the common dataset registry + removal of the global PT-ID/PT-OOD logic.
+3. ~~**STOP. Roster approval gate.**~~ **PASSED 2026-09-21** — roster frozen at the 14 above.
+4. ~~Land the FOUR blockers.~~ **DONE** — see the implementation record below.
+5. ~~The common dataset registry + removal of the global PT-ID/PT-OOD logic.~~ **DONE.**
+6. **NEXT: the window-only smoke** (compute node, no GPU, no model):
+   `python -m experiments.window_smoke14 --json $SCRATCH/window_smoke14.json`
+   then, deliberately, `--create-references` once the counts are approved.
+7. Only after that: GPU extraction.
+
+---
+
+# Registry / 14-dataset refactor — IMPLEMENTED 2026-09-21
+
+32 model-free contracts in `tests/test_dataset_registry.py`; the whole existing suite still
+passes (the only red is `test_ood_targets`, which needs the staged OOD shards and fails
+identically on the pre-refactor tree).
+
+## New modules
+
+| module | role |
+|---|---|
+| `probing/registry.py` | **THE** dataset facts: tag, display name, slug, source repo/config, target column, freq, domain, `seasonal_m`, cluster unit, builder, `max_series`, role, roster + the 2-D provenance table. Stdlib only; every lookup raises on an unknown tag. |
+| `probing/mase.py` | THE reported MASE. `seasonal_denominator(X, m)` with `m` **required**; `denominator_for(tag, X)` resolves it from the registry. |
+| `probing/windows.py` | THE window dispatch, on `registry.builder(tag)`. Torch-free. |
+| `probing/window_reference.py` | The create/reference workflow (below). |
+| `experiments/window_smoke14.py` | Window-only smoke: real builders, real data, no model. |
+
+## What changed, per blocker
+
+1. **Series cap** — `id_data.apply_series_cap(tag, ids, seed)`: seeded uniform sample without
+   replacement over the **sorted** eligible ids (never Arrow order, never `[:n]`), applied after
+   eligibility and before any split construction, recorded in `meta["series_cap"]` with the kept
+   ids. It draws from a **dedicated RNG stream** (`default_rng([seed, 0x5E12E5])`), so when it
+   does not fire it consumes no randomness and the windows are **byte-identical** to the
+   pre-cap builder — verified directly against `git show HEAD:probing/id_data.py`.
+   Fires for london (5555), m5 (28491), wiki (100000); inert for the original seven.
+2. **`domain_status`** — no longer gates anything. `PT_ID_TAGS`/`PT_OOD_TAGS` are now DERIVED
+   from `registry.PAPER7` (identical tuples, identical order); `domain_status` is kept for the
+   committed seven and **raises with a pointer** for anything else, so a new dataset can never
+   acquire a Chronos-2-relative `pt_ood` label. `tunnel_record` gained `model=` and always
+   emits `pretraining_provenance` (2-D); it emits the legacy flat `domain_status` key ONLY for
+   the seven. **The tunnel criterion itself is untouched.**
+3. **`seasonal_m`** — the global `M_SEASON = 24` is GONE from both modules that had it. All 17
+   denominator call sites now pass `seasonal_m(tag)`. Bit-identity for the seven is a test, not
+   a claim (test 11 compares against a verbatim transcription of the old function).
+4. **Duplicate rosters** — `run_cka_analysis`, `make_erank_stability_figure`,
+   `run_compression_cost`, `run_native_head_adapter`, `run_spectral`, `run_ptood_probing`,
+   `run_ptood_probing_ftok`, `run_ft_specialization`, `run_ood_transfer`,
+   `make_id_paper_figures` and both TimesFM `SLUG` dicts now read the registry. Test 24 greps
+   the tree and fails if any of them comes back. This also **reconciled drifted spellings**:
+   "Uber"→"Uber TLC", "WindFarms"→"Wind Farms", "SG-Carpark"→"SG Carpark" (labels only).
+
+## Three things found while implementing
+
+- **`SZ_TAXI_15T` would have crashed.** It has 156 eligible series against a 262 val/test
+  budget, and `_build_rolling_windows` *raised* below the budget. The budget is now a
+  **ceiling**, matching what the OOD builder already did, and the reduction is printed and
+  recorded in `meta["valtest_budget"]`. It is a real loss of bootstrap units → wider CIs for
+  that dataset, and must be read that way.
+- **`load_seen_series` hardcoded `autogluon/chronos_datasets`.** Two roster datasets
+  (LOOP_SEATTLE_5T, SZ_TAXI_15T) live in `autogluon/fev_datasets`. It is registry-driven now,
+  and cross-checks against the legacy `ID_DATASET_SPECS` entry so the two tables cannot drift.
+- **`probing/__init__.py` imported torch eagerly**, so even `probing.registry` needed the whole
+  DL stack. The heavy names are lazy (PEP 562) now — identical spellings, deferred import —
+  which is what lets the window smoke run with no torch at all.
+
+## The create/reference workflow (blocker 8)
+
+A dataset with no committed Chronos-2 artifact used to report `parity_ok=None`, which reads
+like a pass. Now `--reference-mode`:
+
+| mode | behavior |
+|---|---|
+| `require` (default) | **ABORTS**, naming the command that would create the reference. No GPU time spent. |
+| `create` | writes `results/window_references/window_reference__<tag>.{json,npz}` from this run's windows; **refuses to overwrite** without `--force-reference`. |
+| `allow-missing` | the old permissive behavior, now opt-in, and it prints a warning that the run must not be used for a cross-model claim. |
+
+A written reference pins counts, C/H, seasonal m, the cap audit, the per-window test ids
+element-wise, **and a sha256 digest of the test contexts** — which catches a re-windowing that
+preserves the ids, something the committed Chronos-2 artifacts cannot detect.
+
+## Provenance: 9 of 42 cells are UNVERIFIED
+
+`registry.unverified_provenance()` lists them. They are usable as working assumptions but must
+NOT be cited until checked against the primary source:
+
+- `LOOP_SEATTLE_5T` / `SZ_TAXI_15T` x {chronos2, timesfm3} — is each a *fev-bench task*, or
+  merely a member of the `autogluon/fev_datasets` collection? The exclusion statement only
+  covers the former.
+- `m5` x {chronos2, timesfm3, tirex} — confirm Chronos Benchmark II / fev-bench / Chronos-ZS
+  membership.
+- `wiki_daily_100k` x timesfm3 — the card names the SOURCE ("Wikipedia Pageviews, cutoff Nov
+  2023"), not this dataset.
+- `monash_traffic` x chronos2 — our Table 6 transcription ends in "a.o." and does not settle
+  whether "Traffic" is an entry. **Check the published Table 6.**
+
+Also recorded deliberately: `uber_tlc_hourly` x chronos2 is `pretraining_exposed` at
+**`source_family`** scope, not `exact_dataset` — Table 6 lists "Taxi" (NYC TLC), and Uber TLC is
+the same source family, not a verbatim entry. That is a downgrade from the old flat `pt_id`
+label and is exactly what the 2-D schema exists to express.

@@ -72,9 +72,9 @@ RUN_SEEDS = (0, 1, 2)              # 3 independent probe-init runs (backbone fro
 RUN_TYPE = "probe_seed"            # the committed single-seed run, reused verbatim as run 1
 RUNS_TAG = "runs" + "-".join(str(s) for s in RUN_SEEDS)
 
-SHORT = {"monash_electricity_hourly": "Electricity", "uber_tlc_hourly": "Uber",
-         "m4_hourly": "M4", "wind_farms_hourly": "WindFarms",
-         "sg_carpark": "SG Carpark", "coastal_ts": "Coastal T-S", "boom_hourly": "BOOM"}
+from probing import registry  # noqa: E402  (THE display-name source)
+
+SHORT = {t: registry.display_name(t) for t in registry.DATASETS}
 
 
 def _derive_dirs():

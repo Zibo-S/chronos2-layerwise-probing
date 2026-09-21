@@ -37,7 +37,8 @@ from probing.extraction import extract_window_features
 from probing.probes import QUANTILE_SETS, median_index, chronos2_quantile_loss_per_window
 from probing.stats import cluster_bootstrap_counts, cluster_bootstrap_apply
 from experiments.run_id_forecasting import (native_median_forecast, _mase_denominator,
-                                            _ctx_stats, M_SEASON, ID_STYLE)
+                                            _ctx_stats, ID_STYLE)
+from probing.registry import seasonal_m  # noqa: E402  (per-dataset seasonal period)
 # reuse the OOD experiment's frame + frozen-checkpoint loader; importing only defines things.
 from experiments import run_ood_transfer as ood
 
@@ -75,9 +76,9 @@ def target_baselines(target, qset, quantiles):
     Y = w["Y_test_traj"]                                        # (n, H) arcsinh-normalized future
     mu, s = _ctx_stats(X, w["meta"]["sigma_eps"])
     y_raw = mu[:, None] + s[:, None] * np.sinh(Y.astype(np.float64))   # future in raw units
-    d = np.maximum(_mase_denominator(X), 1e-8)[:, None]        # in-context seasonal-naive scale
+    m = seasonal_m(target)
+    d = np.maximum(_mase_denominator(X, m), 1e-8)[:, None]     # in-context seasonal-naive scale
     Hh = Y.shape[1]
-    m = M_SEASON
 
     seas_idx = Cx - m + (np.arange(Hh) % m)                     # (H,) — context indices only
     assert seas_idx.max() < Cx and seas_idx.min() >= 0, "seasonal-naive index out of context"
@@ -376,7 +377,8 @@ def self_check(qset, seed):
     assert a["metrics"] == b["metrics"], "baseline must be deterministic / reusable per target"
     # seasonal-naive uses only context (native cache guard already checks same windows)
     w = build_windows(t); Cx = np.asarray(w["X_test"]).shape[1]
-    assert (Cx - M_SEASON + (np.arange(H) % M_SEASON)).max() < Cx, "seasonal index leaks future"
+    _m = seasonal_m(t)
+    assert (Cx - _m + (np.arange(H) % _m)).max() < Cx, "seasonal index leaks future"
     # degenerate q9 mean-reduction: per-window .mean() == scalar quantile loss
     z = np.zeros_like(a["y_raw"]); pw = _degenerate_qloss_per_window(z, w["Y_test_traj"], quantiles)
     assert np.isfinite(pw).all() and pw.ndim == 1, "degenerate q9 per-window malformed"

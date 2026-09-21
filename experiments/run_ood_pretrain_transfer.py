@@ -49,7 +49,8 @@ from probing.id_data import build_ood_windows, OOD_CLUSTER_UNIT
 from probing.extraction import extract_window_features
 from probing.probes import QUANTILE_SETS, median_index, predict_quantile_probe
 from experiments.run_id_forecasting import (compute_mase, _ctx_stats, _mase_denominator,
-                                            native_median_forecast, M_SEASON, ID_STYLE)
+                                            native_median_forecast, ID_STYLE)
+from probing.registry import seasonal_m  # noqa: E402  (per-dataset seasonal period)
 # reuse the committed-transfer frame: frozen-checkpoint loader, paired bootstrap, relative gain.
 from experiments import run_ood_transfer as ood
 
@@ -106,8 +107,9 @@ def ood_target_baselines(target, w):
     Y = w["Y_test_traj"]
     mu, s = _ctx_stats(X, w["meta"]["sigma_eps"])
     y_raw = mu[:, None] + s[:, None] * np.sinh(Y.astype(np.float64))
-    d = np.maximum(_mase_denominator(X), 1e-8)[:, None]
-    seas = X[:, Cx - M_SEASON + (np.arange(H) % M_SEASON)]
+    d = np.maximum(_mase_denominator(X, seasonal_m(target)), 1e-8)[:, None]
+    _m = seasonal_m(target)
+    seas = X[:, Cx - _m + (np.arange(H) % _m)]
     fc = {"last_value": np.repeat(X[:, -1:], H, axis=1), "seasonal_naive": seas,
           "native_chronos2": native_median_forecast(target, w["X_test"], H).astype(np.float64)}
     metrics, pw = {}, {}

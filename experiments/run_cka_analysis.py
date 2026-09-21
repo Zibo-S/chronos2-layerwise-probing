@@ -68,10 +68,14 @@ FSLOT_POOL = f"K{K}_H{H}"                              # "K4_H64"
 CSLOT_POOL = f"{SLOT_TOKEN_TAGS['content_last']}K{K}_H{H}"   # "cslotL_K4_H64"
 CLS_POOL = f"K{math.ceil(16 / OUTPUT_PATCH_SIZE)}_H16"  # FordA cls extraction horizon 16 -> K1 -> "K1_H16"
 
-PT_ID_TAGS = {"monash_electricity_hourly", "uber_tlc_hourly", "m4_hourly", "wind_farms_hourly"}
-SHORT = {"monash_electricity_hourly": "Electricity", "uber_tlc_hourly": "Uber", "m4_hourly": "M4",
-         "wind_farms_hourly": "WindFarms", "sg_carpark": "SG-Carpark", "coastal_ts": "Coastal-TS",
-         "boom_hourly": "BOOM"}
+# Roster and display names come from probing.registry. This module used to keep its own
+# hardcoded copies of both (a set literal and a SHORT dict), which is how "Uber"/"WindFarms"
+# here drifted from "Uber TLC"/"Wind Farms" in the paper figures. One spelling now.
+from probing import registry  # noqa: E402
+from probing.tunnel import PT_ID_TAGS as _PT_ID_TAGS  # noqa: E402  (legacy Chronos-2 label)
+
+PT_ID_TAGS = set(_PT_ID_TAGS)
+SHORT = {t: registry.display_name(t) for t in registry.DATASETS}
 
 # extended_v3 roster: Group A (in-domain PT-ID) == Group B (cross-dataset transfer sources) -> one
 # matrix each (no duplication); Group C = completely unseen / exploratory OOD.

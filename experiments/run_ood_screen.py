@@ -39,7 +39,8 @@ from probing import config, id_data
 from probing.config import SEED
 from probing.id_data import (load_seen_series, build_windows, load_ood_target_series,
                              build_ood_windows, OOD_TARGET_TAGS)
-from experiments.run_id_forecasting import _ctx_stats, _mase_denominator, M_SEASON
+from experiments.run_id_forecasting import _ctx_stats, _mase_denominator
+from probing.registry import seasonal_m  # noqa: E402  (per-dataset seasonal period)
 
 M_WEEK = 168   # weekly seasonal period for hourly data (optional secondary naive baseline)
 
@@ -165,7 +166,8 @@ def naive_baselines(w, want_native=False):
     Y = w["Y_test_traj"]; H = Y.shape[1]
     mu, s = _ctx_stats(X, w["meta"]["sigma_eps"])
     y_raw = mu[:, None] + s[:, None] * np.sinh(Y.astype(np.float64))
-    d_raw = _mase_denominator(X)                              # in-context seasonal-naive scale (m=24)
+    _m = seasonal_m(w["meta"]["tag"])                         # per-dataset seasonal period
+    d_raw = _mase_denominator(X, _m)                          # in-context seasonal-naive scale
     n_zero = int((d_raw < 1e-8).sum()); n_nan = int((~np.isfinite(d_raw)).sum())
     d = np.maximum(d_raw, 1e-8)[:, None]
     out = {"n_test_windows": n, "denominator_clamped": n_zero, "denominator_non_finite": n_nan,
@@ -173,7 +175,7 @@ def naive_baselines(w, want_native=False):
                                   round(float(np.percentile(d_raw, 50)), 4)]}
     out["last_value_mase"] = round(_mase(y_raw, np.repeat(X[:, -1:], H, axis=1), d), 4)
     out["seasonal_naive_m24_mase"] = round(
-        _mase(y_raw, X[:, C - M_SEASON + (np.arange(H) % M_SEASON)], d), 4)
+        _mase(y_raw, X[:, C - _m + (np.arange(H) % _m)], d), 4)
     if C >= M_WEEK:
         out["seasonal_naive_m168_mase"] = round(
             _mase(y_raw, X[:, C - M_WEEK + (np.arange(H) % M_WEEK)], d), 4)

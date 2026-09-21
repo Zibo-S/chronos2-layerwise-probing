@@ -280,7 +280,11 @@ def test_paper7_roster_and_labels():
     assert [SHORT[t] for t in PT_OOD_TAGS] == ["SG Carpark", "Coastal T-S", "BOOM"]
     assert {KIND[t] for t in PT_ID_TAGS} == {"PT-ID"}
     assert {KIND[t] for t in PT_OOD_TAGS} == {"PT-OOD"}
-    assert set(SLUG) == set(seven) == set(NH_SLUG), "both drivers must cover all seven"
+    # SLUG now comes from probing.registry, which knows every registered dataset -- not just
+    # these seven. The contract is COVERAGE plus agreement, not an exact set equality that
+    # would break every time a dataset is added to the registry.
+    assert set(seven) <= set(SLUG) and set(seven) <= set(NH_SLUG), "both drivers must cover "\
+        "all seven"
     assert SLUG == NH_SLUG, "the two drivers must name files identically"
     for t in ("monash_kdd_cup_2018", "monash_pedestrian_counts"):
         assert t not in seven
@@ -417,8 +421,12 @@ def test_native_head_transfer_contracts():
     assert H * Q == 576
 
     # 31/33: the scoring helpers are IMPORTED, not reimplemented
-    from experiments.run_timesfm3_probing import M_SEASON
-    assert M_SEASON == 24, M_SEASON
+    # The seasonal period moved from a module global to probing.registry, per dataset. The
+    # contract is now that every one of the paper7 datasets still resolves to the hourly 24,
+    # which is what keeps the committed MASE numbers reproducible.
+    from probing.registry import PAPER7, seasonal_m
+    assert {seasonal_m(t) for t in PAPER7} == {24}, {t: seasonal_m(t) for t in PAPER7}
+    assert "M_SEASON" not in src, "driver must not reintroduce a global seasonal period"
     assert "from experiments.run_timesfm3_probing import" in src
     assert "per_window_mase" in src and "mase_denominator" in src
     assert "native_reference" in src and "def native_reference" not in src
