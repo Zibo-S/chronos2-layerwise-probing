@@ -15,8 +15,18 @@ written by the orchestrator — so that:
 WHERE TO RUN: the login node is fine. It reads a few MB of CSV/JSON and finishes in seconds.
 
 OUTPUTS (under ``<output-root>/combined/``)
-    tunnel_matrix.csv          models x datasets, normalized tunnel entrance (+ the absolute
-                               representation label, which a normalized number cannot replace)
+    tunnel_matrix.csv          models x datasets, normalized SUSTAINED tunnel entrance at the
+                               run's headline tolerance (+ the absolute representation label,
+                               which a normalized number cannot replace)
+    tunnel_matrix_{02,05,10}.csv   the same matrix at each reported tolerance
+    first_crossing_matrix.csv  the OLD first-crossing statistic, named as the diagnostic it is
+    tunnel_sensitivity.csv     one row per cell x tolerance: entrance, normalized depth, the
+                               val/test ratio there, and how far the sustained rule sits behind
+                               first crossing
+    wd_selection_summary.csv   per cell: how many depths sit at the grid min/max, the median
+                               selected wd, and whether a grid-max selection is the
+                               no-information floor or a cut-off search
+    wd_selection_all.csv       every depth's selected wd and every candidate's validation loss
     layer_metrics_all.csv      one row per model x dataset x layer, every layerwise metric
     geometry_summary.csv       one row per model x dataset x variant x split x layer
     cka_index.csv              where every CKA matrix lives, with its null floor
@@ -42,7 +52,7 @@ from probing import phase1, registry                                    # noqa: 
 from probing.phase1 import MODELS, ROSTER, write_csv                    # noqa: E402
 from probing.phase1_cells import cell_dirs                              # noqa: E402
 
-DEFAULT_ROOT = REPO_ROOT / "results" / "three_model_final"
+DEFAULT_ROOT = REPO_ROOT / "results" / "three_model_phase1_q9_expanded"
 
 
 def _read_csv(path: Path) -> list[dict]:
@@ -77,10 +87,13 @@ def collect(root: Path, roster=ROSTER) -> dict:
                     "layers": _read_csv(d / "layer_metrics.csv"),
                     "erank": _read_csv(d / "effective_rank.csv"),
                     "cka": (_read_json(d / "cka" / "cka_metadata.json") or {}).get("index", []),
+                    "wd": _read_csv(d / "wd_selection.csv"),
+                    "hparams": _read_json(d / "probe_hparams.json"),
                     "marker": _read_json(d / "COMPLETE")}
                 h = tun["headline"]
                 nat = (summary or {}).get("native_baseline") or {}
                 rec.update(
+                    tunnel_definition=tun.get("definition"),
                     tunnel_layer=h["label"], tunnel_index=h["index"],
                     tunnel_relative_depth=h["relative_depth"],
                     tunnel_relative_position=h["relative_position"],
@@ -106,6 +119,17 @@ def collect(root: Path, roster=ROSTER) -> dict:
                     n_layers_at_wd_grid_max=sum(
                         1 for r in _read_csv(d / "layer_metrics.csv")
                         if str(r.get("wd_at_grid_max", "")).lower() == "true"))
+                gc = ((cells[(model, tag)]["hparams"] or {}).get("grid_clipping") or {})
+                rec.update(n_layers_at_wd_grid_min=gc.get("n_layers_at_grid_min", ""),
+                           median_selected_wd=gc.get("median_selected_wd", ""),
+                           wd_grid_max=gc.get("grid_max", ""),
+                           first_crossing_layer=((tun.get("first_crossing") or {})
+                                                 .get(f"first_crossing_{h['tolerance']:g}", {})
+                                                 .get("label", "")),
+                           test_ratio_at_tunnel=((tun.get("generalization_at_entrance") or {})
+                                                 .get("test_ratio_at_tunnel", "")),
+                           val_ratio_at_tunnel=((tun.get("generalization_at_entrance") or {})
+                                                .get("val_ratio_at_tunnel", "")))
                 final_mase = [r for r in cells[(model, tag)]["layers"]
                               if r["layer"] == rec["reference_layer"]
                               and r.get("point_type", "block_depth") == "block_depth"]
@@ -122,20 +146,130 @@ def build(root: Path, roster=ROSTER) -> dict:
     got = collect(root, roster)
     cells, tags = got["cells"], got["tags"]
 
-    # ---- 1. tunnel matrix: rows = models, columns = the 14 datasets ---------- #
-    tm_rows = []
+    # ---- 1. tunnel matrices: rows = models, columns = the 14 datasets -------- #
+    # tunnel_matrix.csv is the HEADLINE: the SUSTAINED entrance at the headline tolerance of
+    # whatever run wrote these cells. One file per reported tolerance sits beside it so a
+    # sensitivity figure never has to re-derive a criterion, and the first-crossing statistic
+    # gets its own clearly-named rows -- it is a diagnostic, never "the tunnel".
+    def _entry(c, tol=None, first_crossing=False):
+        if c is None:
+            return None
+        tun = c["tunnel"]
+        if tol is None:
+            return tun["headline"]
+        key = (f"first_crossing_{tol:g}" if first_crossing else f"tol_{tol:g}")
+        src = tun.get("first_crossing" if first_crossing else "by_tolerance", {})
+        return src.get(key)
+
+    def _matrix(path, tol=None, first_crossing=False, title=""):
+        rows = []
+        for model in MODELS:
+            norm = {"model": model,
+                    "quantity": f"normalized_tunnel_entrance{title} (block_index/num_blocks)"}
+            lab = {"model": model, "quantity": f"tunnel_entrance_representation_label{title}"}
+            pos = {"model": model, "quantity": f"tunnel_entrance_relative_position{title}"}
+            for tag in tags:
+                h = _entry(cells.get((model, tag)), tol, first_crossing)
+                norm[tag] = "" if h is None else h["relative_depth"]
+                lab[tag] = "" if h is None else h["label"]
+                pos[tag] = "" if h is None else h["relative_position"]
+            rows += [norm, lab, pos]
+        write_csv(path, rows, ["model", "quantity"] + tags)
+
+    _matrix(out / "tunnel_matrix.csv")                       # headline: sustained, run tolerance
+    for t in phase1.PHASE1_REPORTED_TOLS:
+        _matrix(out / f"tunnel_matrix_{int(round(t * 100)):02d}.csv", tol=t,
+                title=f"_sustained_{t:g}")
+    _matrix(out / "first_crossing_matrix.csv", tol=phase1.PHASE1_TUNNEL_TOL,
+            first_crossing=True, title="_FIRST_CROSSING_DIAGNOSTIC")
+
+    # ---- 1b. tunnel sensitivity: one row per cell x tolerance ---------------- #
+    sens = []
     for model in MODELS:
-        norm = {"model": model, "quantity": "normalized_tunnel_entrance (block_index/num_blocks)"}
-        lab = {"model": model, "quantity": "tunnel_entrance_representation_label"}
-        pos = {"model": model, "quantity": "tunnel_entrance_relative_position"}
         for tag in tags:
             c = cells.get((model, tag))
-            h = c["tunnel"]["headline"] if c else None
-            norm[tag] = "" if h is None else h["relative_depth"]
-            lab[tag] = "" if h is None else h["label"]
-            pos[tag] = "" if h is None else h["relative_position"]
-        tm_rows += [norm, lab, pos]
-    write_csv(out / "tunnel_matrix.csv", tm_rows, ["model", "quantity"] + tags)
+            if c is None:
+                continue
+            tun = c["tunnel"]
+            gen = tun.get("generalization_at_entrance") or {}
+            for key, e in sorted(tun["by_tolerance"].items(),
+                                 key=lambda kv: kv[1]["tolerance"]):
+                fc = (tun.get("first_crossing") or {}).get(f"first_crossing_{e['tolerance']:g}")
+                dep_idx = e["depth_axis_index"]
+                sens.append({
+                    "model": model, "dataset": tag,
+                    "display_name": registry.display_name(tag),
+                    "definition": tun.get("definition"),
+                    "tolerance": e["tolerance"],
+                    "is_headline_tolerance": bool(abs(e["tolerance"]
+                                                      - tun["headline"]["tolerance"]) < 1e-12),
+                    "tunnel_layer": e["label"], "tunnel_index": e["index"],
+                    "tunnel_depth_axis_index": dep_idx,
+                    "normalized_tunnel": e["relative_depth"],
+                    "n_depth_points": len(tun["depth_axis_labels"]),
+                    "reference_layer": tun["reference_point"],
+                    "val_ratio_at_tunnel": e.get("ratio_to_reference", ""),
+                    "test_ratio_at_tunnel": e.get("test_ratio_to_reference", ""),
+                    "suffix_excursion_at_tunnel": e.get("suffix_excursion_at_entrance", ""),
+                    "first_crossing_layer": "" if fc is None else fc["label"],
+                    "first_crossing_depth_axis_index": ("" if fc is None
+                                                        else fc["depth_axis_index"]),
+                    "sustained_minus_first_crossing": (
+                        "" if fc is None else dep_idx - fc["depth_axis_index"]),
+                    "headline_val_ratio_at_tunnel": gen.get("val_ratio_at_tunnel", ""),
+                    "headline_test_ratio_at_tunnel": gen.get("test_ratio_at_tunnel", "")})
+    if sens:
+        write_csv(out / "tunnel_sensitivity.csv", sens, list(sens[0]))
+
+    # ---- 1c. weight-decay selection summary ---------------------------------- #
+    # THE table this rerun exists to produce: is the EXPANDED grid still clipped?
+    wd_rows, wd_all = [], []
+    for model in MODELS:
+        for tag in tags:
+            c = cells.get((model, tag))
+            if c is None:
+                continue
+            wd_all.extend(c["wd"])
+            gc = ((c["hparams"] or {}).get("grid_clipping") or {})
+            n = len(c["wd"]) or 1
+            depth_rows = [r for r in c["wd"]
+                          if str(r.get("include_in_main_depth_axis", "True")).lower() == "true"]
+            sel = [float(r["selected_wd"]) for r in c["wd"] if r.get("selected_wd")]
+            sel_depth = [float(r["selected_wd"]) for r in depth_rows if r.get("selected_wd")]
+            wd_rows.append({
+                "model": model, "dataset": tag,
+                "display_name": registry.display_name(tag),
+                "n_points": len(c["wd"]), "n_depth_points": len(depth_rows),
+                "wd_grid": (c["wd"][0]["wd_grid"] if c["wd"] else ""),
+                "wd_grid_min": gc.get("grid_min", ""), "wd_grid_max": gc.get("grid_max", ""),
+                "lr": gc.get("lr", ""),
+                "n_at_grid_max": gc.get("n_layers_at_grid_max", ""),
+                "n_at_grid_min": gc.get("n_layers_at_grid_min", ""),
+                "fraction_at_grid_max": gc.get("fraction_at_grid_max",
+                                               (gc.get("n_layers_at_grid_max", 0) or 0) / n),
+                "fraction_at_grid_min": gc.get("fraction_at_grid_min",
+                                               (gc.get("n_layers_at_grid_min", 0) or 0) / n),
+                "median_selected_wd": gc.get("median_selected_wd", ""),
+                "min_selected_wd": min(sel) if sel else "",
+                "max_selected_wd": max(sel) if sel else "",
+                "median_selected_wd_depth_axis": (
+                    float(sorted(sel_depth)[len(sel_depth) // 2]) if sel_depth else ""),
+                "layers_at_grid_max": "|".join(gc.get("layers_at_grid_max", []) or []),
+                "selected_wd_by_layer": "|".join(
+                    f"{k}={v:g}" for k, v in (gc.get("selected_wd_by_layer") or {}).items()),
+                "constant_forecast_floor_val_loss":
+                    gc.get("constant_forecast_floor_val_loss", ""),
+                "at_grid_max_val_over_floor": json.dumps(
+                    gc.get("at_grid_max_val_over_floor", {})),
+                "still_clipped_reading": (
+                    "no depth at the grid maximum" if not gc.get("n_layers_at_grid_max") else
+                    "at grid max; compare at_grid_max_val_over_floor with 1.0 — near 1.0 means "
+                    "the depth's optimum IS the no-information floor, well below means the "
+                    "search was cut off")})
+    if wd_rows:
+        write_csv(out / "wd_selection_summary.csv", wd_rows, list(wd_rows[0]))
+    if wd_all:
+        write_csv(out / "wd_selection_all.csv", wd_all, list(wd_all[0]))
 
     # ---- 2/3/4. long tables -------------------------------------------------- #
     layers = [r for c in cells.values() for r in c["layers"]]

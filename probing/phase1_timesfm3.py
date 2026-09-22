@@ -44,16 +44,27 @@ EPOCHS = 300
 LR = 1e-2
 
 
-def _late():
-    """Deferred imports: these modules pull torch and the TimesFM geometry checks."""
-    from probing.timesfm3_last_token_probes import (WD_GRID_LAST_TOKEN, WD_NULL_BASELINE)
-    return WD_GRID_LAST_TOKEN, WD_NULL_BASELINE
+#: THE PHASE-1 GRID — the SAME 13 candidates all three models use, for Q=9 and Q=1 alike.
+#: ``timesfm3_last_token_probes.WD_GRID_LAST_TOKEN`` stays that LINE's own grid, untouched, so
+#: the committed paper7 last-token results keep their exact protocol; Phase 1 asserts the new
+#: grid is a strict superset of it rather than replacing it silently.
+#:
+#: WHY IT GREW, measured on the committed Phase-1 cell (timesfm3 x monash_electricity_hourly):
+#: 16 of 21 depths selected the old maximum 30 and validation was STILL falling there
+#: (L19: 0.12419 at wd=10 -> 0.11677 at wd=30). The wd=100 null beat wd=30 at only 3 of 21
+#: depths, so the optimum sits INSIDE (30, 100) — which is exactly the interval the new
+#: candidates 45/65/90 cover, and the largest interval AdamW's decoupled decay admits at lr=1e-2.
+WD_GRID = phase1.PHASE1_WD_GRID
+NULL_WD = phase1.PHASE1_WD_NULL
 
 
-try:                                             # import-time constants, fail soft for docs
-    WD_GRID, NULL_WD = _late()
-except Exception:                                # pragma: no cover
-    WD_GRID, NULL_WD = (1e-5, 1e-4, 1e-3, 1e-2, 1e-1, 0.3, 1.0, 3.0, 10.0, 30.0), 100.0
+def _assert_superset():
+    """The no-regression rule, checked lazily (the legacy grid lives behind a torch import)."""
+    from probing.timesfm3_last_token_probes import WD_GRID_LAST_TOKEN
+    if not phase1.wd_grid_is_superset_of(WD_GRID, WD_GRID_LAST_TOKEN):
+        raise RuntimeError("the Phase-1 grid must retain every legacy TimesFM-3 candidate; "
+                           f"{WD_GRID} is not a superset of {WD_GRID_LAST_TOKEN}")
+    return True
 
 
 def _spec():
@@ -138,8 +149,9 @@ def fit_layerwise(tag: str, data: dict, *, quantiles, median_idx: int, geom, dev
     """
     from probing.timesfm3_last_token_probes import last_token_layerwise
     spec = _spec()
-    wd_grid = tuple(WD_GRID if wd_grid is None else wd_grid)
+    _assert_superset()
     null_wd = NULL_WD if null_wd is None else null_wd
+    wd_grid = phase1.assert_wd_grid(WD_GRID if wd_grid is None else wd_grid, lr, null_wd=null_wd)
     tr, va, te = data["train"], data["val"], data["test"]
 
     scores, diag = last_token_layerwise(
@@ -176,7 +188,16 @@ def fit_layerwise(tag: str, data: dict, *, quantiles, median_idx: int, geom, dev
         "rows_test": np.asarray(diag["test_rows"], np.int64),
         "rows_val": np.asarray(diag["val_rows"], np.int64),
         "probe_description": f"Linear(1280, {geom.H}*{len(quantiles)})",
+        "wd_grid": [float(w) for w in wd_grid],
     }
+    # The closed-form no-information floor, beside the per-depth FITTED null at wd=100. The two
+    # answer the same question two ways, which is why both are kept: the fitted null shows what
+    # this optimizer does at the wall, the closed form shows where the wall actually is.
+    res["constant_forecast_floor"] = phase1.constant_forecast_floor(
+        np.asarray(tr["targets"])[np.asarray(tr["valid"], bool)],
+        {"val": np.asarray(va["targets"])[np.asarray(va["valid"], bool)],
+         "test": np.asarray(te["targets"])[np.asarray(te["valid"], bool)]},
+        quantiles)
     # The sweep drops windows the target builder marked invalid; every downstream array must be
     # indexed by the SAME rows or the cluster ids would not align with the losses.
     res["target_test"] = np.asarray(te["targets"], np.float32)[res["rows_test"]]

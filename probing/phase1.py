@@ -83,7 +83,9 @@ from probing.probes import mean_pinball_loss, median_index, validate_quantiles
 # delegates to probing.cka / probing.spectral_metrics. Reused, never re-implemented — see the
 # module docstring's "what this module does not own".
 from probing.timesfm3_geometry import cka_layer_matrix, cka_null_floor, effective_rank_curve
-from probing.tunnel import TUNNEL_TOL, tunnel_start
+from probing.tunnel import (SUSTAINED_TUNNEL_DEFINITION, TUNNEL_TOL,
+                            assert_tolerance_monotone, suffix_excursion,
+                            sustained_tunnel_start, tunnel_start)
 
 __all__ = [
     "PHASE1_PROTOCOL_VERSION", "PHASE1_C", "PHASE1_H", "PHASE1_QUANTILES",
@@ -94,6 +96,10 @@ __all__ = [
     "model_spec", "mean_pinball_per_window", "tunnel_record", "geometry_block",
     "cluster_ci", "cluster_ratio_ci", "CellStore", "cell_config_hash", "environment_record", "registry_snapshot",
     "registry_hash", "provenance_rows", "write_csv", "atomic_write_json", "git_state",
+    "PHASE1_WD_GRID", "PHASE1_WD_DECOUPLED_LIMIT", "PHASE1_WD_NULL", "PHASE1_REPORTED_TOLS",
+    "assert_wd_grid", "wd_grid_is_superset_of", "TUNNEL_DEFINITION_VERSION",
+    "TUNNEL_DEFINITION_CAVEAT", "constant_forecast_floor", "wd_selection_rows",
+    "fit_config_hash", "postprocess_config_hash", "split_cell_config",
 ]
 
 # --------------------------------------------------------------------------- #
@@ -120,9 +126,119 @@ PHASE1_QUANTILE_SETS = {
     "q1": np.array([0.5], dtype=np.float64),
 }
 
-PHASE1_TUNNEL_TOL = TUNNEL_TOL                       # 0.05 — the project's existing 5% rule
+PHASE1_TUNNEL_TOL = TUNNEL_TOL                       # 0.05 — the headline tolerance
 PHASE1_TUNNEL_TOLS = (0.01, 0.02, 0.05, 0.10)        # all saved so a re-run is never needed
+#: The three the paper reports. 0.01 is saved too (it costs nothing) but is not a paper number.
+PHASE1_REPORTED_TOLS = (0.02, 0.05, 0.10)
 PHASE1_BOOT_B = 5000                                 # the frozen paper value (run_native_head_adapter)
+
+# --------------------------------------------------------------------------- #
+# THE TUNNEL DEFINITION (headline from 2026-09-22) — versioned, and IN THE HASH
+# --------------------------------------------------------------------------- #
+#: Bumped whenever the criterion changes. It enters the POSTPROCESS half of the cell hash, so a
+#: definition change invalidates the derived tunnel without invalidating the probe fits.
+#:
+#: ``first_crossing_v1``    the earliest depth that dips inside the band (the committed rule of
+#:                          every published Chronos-2 / TimesFM-3 / TiRex number; still computed,
+#:                          still reported, but under the name ``first_crossing_<tol>``).
+#: ``sustained_suffix_v1``  THE HEADLINE. The earliest depth after which that depth AND EVERY
+#:                          LATER BLOCK DEPTH stay within tol of the final-block validation loss.
+TUNNEL_DEFINITION_VERSION = SUSTAINED_TUNNEL_DEFINITION      # "sustained_suffix_v1"
+TUNNEL_DEFINITION_CAVEAT = (
+    "The Phase-1 forecasting tunnel begins at the earliest BLOCK DEPTH after which that depth "
+    "and all subsequent block depths remain within tol of the final-block VALIDATION loss "
+    "(sustained entry). An isolated early crossing does not open a tunnel. The older "
+    "first-crossing statistic is retained under the explicitly diagnostic name "
+    "`first_crossing_<tol>` and is never called the tunnel.")
+
+# --------------------------------------------------------------------------- #
+# THE WEIGHT-DECAY GRID — one grid, three models, both quantile sets
+# --------------------------------------------------------------------------- #
+# ONE grid for all three models and for Q=9 and Q=1 alike, so a Q1-vs-Q9 or a cross-model
+# difference can never be a difference in the search space. It is a strict SUPERSET of all three
+# model lines' own grids, which are left untouched where they live (probes.WD_GRID_V2,
+# timesfm3_last_token_probes.WD_GRID_LAST_TOKEN, tirex_probes.WD_GRID_TIREX) so no committed
+# result outside Phase 1 moves:
+#     probes.WD_GRID_V2         1e-5 1e-4 1e-3 1e-2 1e-1 0.3 1 3                  (Chronos-2)
+#     WD_GRID_LAST_TOKEN        ... + 10 30                                       (TimesFM-3)
+#     WD_GRID_TIREX             ... + 10 30                                       (TiRex)
+#     PHASE1_WD_GRID            ... + 45 65 90                                    (Phase 1)
+#
+# WHY IT HAD TO GROW — measured on the committed Phase-1 cells, not predicted:
+#     timesfm3 x Electricity   16 of 21 depths selected the grid maximum 30, and the validation
+#                              curve was still FALLING at 30 (L19: 0.12419 at wd=10 ->
+#                              0.11677 at 30).
+#     chronos2 x m4_hourly      9 of 14 depths selected ITS grid maximum 3 — the Chronos-2 grid
+#                              is the narrowest of the three and clipped hardest.
+#     tirex    x Electricity    0 depths clipped; its optimum is interior at wd=10.
+#
+# WHY IT STOPS AT 90 AND NOT AT 100/300/1000 — a hard property of the optimizer, not a
+# preference. AdamW's decay is DECOUPLED: every step multiplies the weight by (1 - lr*wd). At
+# the project's lr = 1e-2 that gives, measured on synthetic features of each model's real probe
+# shape (300 epochs, the Phase-1 protocol):
+#     wd= 30  lr*wd 0.30   max|W| 3.6e-2   regularized fit
+#     wd= 45  lr*wd 0.45   max|W| 2.7e-2   regularized fit
+#     wd= 65  lr*wd 0.65   max|W| 2.0e-2   regularized fit
+#     wd= 90  lr*wd 0.90   max|W| 1.5e-2   regularized fit  <- SELECTION CEILING
+#     wd=100  lr*wd 1.00   max|W| 1.4e-2   weight zeroed EVERY step: a BIAS-ONLY fit, i.e. the
+#                                          marginal-quantile forecast — the no-information floor
+#     wd=300  lr*wd 3.00   max|W| inf      |1 - lr*wd| > 1: the decay term alone amplifies the
+#                                          weight with alternating sign; diverges
+# So 100 is not a stronger regularizer, it is the NULL, and everything above it is unstable.
+# Selecting either would report an optimizer artifact as a probe. The candidates therefore
+# continue log-spaced from 30 up to the wall instead of through it.
+#
+# WHAT THE CEILING BUYS, measured: the val curve is SMOOTH and MONOTONE into the null across
+# (30, 100) — on the TimesFM-3-shaped fixture, val 0.3820 (30) -> 0.3670 (45) -> 0.3597 (65) ->
+# 0.3568 (90) -> 0.3564 (100 = the null). The grid maximum now sits within ~1e-3 relative of the
+# no-information floor, so "selected at the grid maximum" no longer means "the search was cut
+# off": it means THIS DEPTH'S VALIDATION OPTIMUM IS ESSENTIALLY THE NO-INFORMATION FLOOR, which
+# is a finding to report, not a grid to widen. Every cell records the floor beside it so that
+# reading is a measurement (``constant_forecast_floor``), and the drivers say so in the warning.
+PHASE1_WD_GRID = (1e-5, 1e-4, 1e-3, 1e-2, 1e-1, 0.3, 1.0, 3.0, 10.0, 30.0, 45.0, 65.0, 90.0)
+
+#: lr*wd at or above this leaves AdamW's well-behaved decoupled-decay regime. Same constant and
+#: same rule as ``tirex_probes.WD_DECOUPLED_LIMIT``; a contract test pins the two together.
+PHASE1_WD_DECOUPLED_LIMIT = 1.0
+
+#: The extreme decay that produces the bias-only fit. NEVER a selection candidate — it is the
+#: no-information reference the TimesFM-3 line already fits per depth.
+PHASE1_WD_NULL = 100.0
+
+
+def assert_wd_grid(wd_grid, lr: float, *, null_wd=None) -> tuple:
+    """Refuse a grid that leaves AdamW's decoupled-decay regime, and return it sorted.
+
+    Raises when any candidate has ``lr * wd >= PHASE1_WD_DECOUPLED_LIMIT`` (at lr=1e-2: wd >= 100
+    zeroes the weight every step or blows it up), when the grid is empty or has duplicates, or
+    when ``null_wd`` — the no-information reference — appears among the candidates, which would
+    let the null be selected and reported as a probe.
+    """
+    grid = [float(w) for w in wd_grid]
+    if not grid:
+        raise ValueError("the weight-decay grid is empty")
+    if len(set(grid)) != len(grid):
+        raise ValueError(f"duplicate weight-decay candidates in {grid}")
+    if any(w < 0 for w in grid):
+        raise ValueError(f"negative weight-decay candidates in {grid}")
+    bad = [w for w in grid if w * float(lr) >= PHASE1_WD_DECOUPLED_LIMIT]
+    if bad:
+        raise ValueError(
+            f"weight-decay candidates {bad} give lr*wd >= {PHASE1_WD_DECOUPLED_LIMIT} at "
+            f"lr={lr:g}: AdamW's DECOUPLED decay multiplies the weight by (1 - lr*wd) every "
+            "step, so at lr*wd = 1 the fit collapses to a bias-only predictor (that is the NULL, "
+            f"PHASE1_WD_NULL = {PHASE1_WD_NULL:g}) and above it the weight diverges with "
+            "alternating sign. Selecting one would report an optimizer artifact as a probe.")
+    if null_wd is not None and float(null_wd) in set(grid):
+        raise ValueError(f"the null baseline wd={float(null_wd):g} must never be a SELECTION "
+                         "candidate — it is the no-information floor, not a hyperparameter")
+    return tuple(sorted(grid))
+
+
+def wd_grid_is_superset_of(grid, *others) -> bool:
+    """True when ``grid`` retains every candidate of each legacy grid (the no-regression rule)."""
+    g = {round(float(w), 12) for w in grid}
+    return all({round(float(w), 12) for w in o} <= g for o in others)
 
 MODELS = ("chronos2", "timesfm3", "tirex")
 ROSTER = "paper14"
@@ -527,23 +643,32 @@ def per_quantile_mean_loss(pred, target, q) -> list[float]:
 # --------------------------------------------------------------------------- #
 def tunnel_record(spec: ModelSpec, val_losses, test_losses=None,
                   tol: float = PHASE1_TUNNEL_TOL, tols=PHASE1_TUNNEL_TOLS) -> dict:
-    """The 5% forecasting-tunnel entrance for one model x dataset cell, from VALIDATION only.
+    """The forecasting-tunnel entrance for one model x dataset cell, from VALIDATION only.
+
+    THE CRITERION (sustained entry, ``TUNNEL_DEFINITION_VERSION``):
+
+        l_tunnel(tol) = min { l in DEPTH AXIS : max_{j >= l} (L_val(j)/L_val(L) - 1) <= tol }
+
+    with L = the final BLOCK output. In words: the earliest depth after which that depth and
+    every later block depth stay within ``tol`` of the final-block validation loss. An isolated
+    early crossing that a later hump climbs back out of does NOT open a tunnel — which is the
+    whole difference from the first-crossing rule, and the reason the excursion is bounded by
+    ``tol`` inside the tunnel by construction rather than merely hoped for.
 
     ``val_losses`` / ``test_losses`` are FULL curves, one entry per probed point in
     ``spec.points`` order — head-input diagnostics included, because they are probed and
-    reported. The criterion, however, runs on the DEPTH AXIS ALONE
-    (``spec.depth_indices``): a final normalization is not a model depth, so it can neither be
-    selected as an entrance nor serve as the final-depth reference. The reference is
-    ``spec.reference_index``, the final BLOCK output.
+    reported. The criterion, however, runs on the DEPTH AXIS ALONE (``spec.depth_indices``): a
+    final normalization is not a model depth, so it can neither be selected as an entrance nor
+    serve as the final-depth reference. The reference is ``spec.reference_index``.
 
-    The first-crossing scan is ``probing.tunnel.tunnel_start`` called verbatim on the
-    depth-axis subcurve — there is no second implementation of the criterion anywhere in the
-    Phase-1 code. Test losses, when given, enter only as a reported generalization check; they
-    can never move the entrance.
+    Both scans are ``probing.tunnel`` functions called verbatim — ``sustained_tunnel_start`` for
+    the headline, ``tunnel_start`` for the ``first_crossing_<tol>`` diagnostics. There is no
+    second implementation of either criterion anywhere in the Phase-1 code. Test losses, when
+    given, enter only as a reported generalization check; they can never move the entrance.
 
     Every tolerance in ``tols`` is evaluated and saved, so a 1% / 2% / 10% criterion never
-    requires re-running a foundation model. The excluded points and their losses are recorded
-    beside the result, so the exclusion is visible rather than merely done.
+    requires re-running a foundation model, and the entrance is asserted MONOTONE in the
+    tolerance (a theorem under this rule, hence a bug if it ever fails).
     """
     v_all = np.asarray(val_losses, np.float64)
     if v_all.ndim != 1 or v_all.size != spec.n_points:
@@ -554,21 +679,35 @@ def tunnel_record(spec: ModelSpec, val_losses, test_losses=None,
                          f"{v_all.tolist()} — the tunnel entrance would be meaningless")
     dep = spec.depth_indices
     v = v_all[dep]                                  # DEPTH AXIS ONLY: Emb, L1..L_N
+    excursion = suffix_excursion(v)                 # E_l, non-increasing in l
 
-    def one(t):
-        pos = int(tunnel_start(v, t))               # position within the depth axis
-        i = dep[pos]                                # -> index into the full point list
-        pnt = spec.points[i]
-        return {"tolerance": float(t), "index": i, "depth_axis_index": pos, **pnt.as_dict(),
+    def _at(pos, t, definition):
+        i = dep[pos]
+        return {"tolerance": float(t), "definition": definition,
+                "index": i, "depth_axis_index": pos, **spec.points[i].as_dict(),
                 "val_loss_at_entrance": float(v[pos]),
                 "val_loss_at_reference": float(v[-1]),
-                "ratio_to_reference": float(v[pos] / v[-1])}
+                "ratio_to_reference": float(v[pos] / v[-1]),
+                "suffix_excursion_at_entrance": float(excursion[pos])}
+
+    def sustained(t):
+        return _at(int(sustained_tunnel_start(v, t)), t, TUNNEL_DEFINITION_VERSION)
+
+    def crossing(t):
+        return _at(int(tunnel_start(v, t)), t, "first_crossing_v1")
+
+    by_tol = {f"tol_{t:g}": sustained(t) for t in tols}
+    assert_tolerance_monotone({e["tolerance"]: e["depth_axis_index"] for e in by_tol.values()})
 
     rec = {
-        "definition": "first_crossing_95 (probing.tunnel.tunnel_start, called unchanged)",
-        "criterion": "min { l in DEPTH AXIS : L_val(l) <= (1 + tol) * L_val(final block) }",
+        "definition": TUNNEL_DEFINITION_VERSION,
+        "definition_caveat": TUNNEL_DEFINITION_CAVEAT,
+        "criterion": ("min { l in DEPTH AXIS : max_{j >= l} (L_val(j)/L_val(final block) - 1) "
+                      "<= tol }   (sustained entry; probing.tunnel.sustained_tunnel_start)"),
         "split_used": "validation",
         "test_never_used_for_selection": True,
+        "reported_tolerances": [float(t) for t in PHASE1_REPORTED_TOLS],
+        "headline_tolerance": float(tol),
         "depth_axis_labels": spec.depth_labels,
         "depth_axis_indices": dep,
         "excluded_points": spec.diagnostic_labels,
@@ -577,10 +716,19 @@ def tunnel_record(spec: ModelSpec, val_losses, test_losses=None,
         "reference_point": spec.reference_label,
         "reference_index": spec.reference_index,
         "reference_is_final_block": True,
-        "headline": one(tol),
-        "by_tolerance": {f"tol_{t:g}": one(t) for t in tols},
+        "headline": sustained(tol),
+        "by_tolerance": by_tol,
+        # The OLD statistic, kept for continuity and explicitly NOT called the tunnel.
+        "first_crossing": {f"first_crossing_{t:g}": crossing(t) for t in tols},
+        "first_crossing_note": ("the earliest depth that DIPS inside the band, even if later "
+                                "depths climb back out; retained as a diagnostic only — the "
+                                "tunnel is the sustained entrance above"),
         "val_loss_by_point": [float(x) for x in v_all],
         "val_loss_by_depth": [float(x) for x in v],
+        "val_suffix_excursion_by_depth": [float(x) for x in excursion],
+        # R_val_l / R_val_L per depth: the generalization diagnostic the writeup reports beside
+        # the entrance. The test twin is added below when a test curve is supplied.
+        "val_ratio_by_depth": [float(x) for x in (v / v[-1])],
         "val_argmin_depth_index": int(np.argmin(v)),
         "val_argmin_point": spec.depth_labels[int(np.argmin(v))],
     }
@@ -599,16 +747,116 @@ def tunnel_record(spec: ModelSpec, val_losses, test_losses=None,
         ls = rec["headline"]["depth_axis_index"]
         rec["test_loss_by_point"] = [float(x) for x in t_all]
         rec["test_loss_by_depth"] = [float(x) for x in t_]
+        rec["test_ratio_by_depth"] = [float(x) for x in (t_ / t_[-1])]
+        rec["test_suffix_excursion_by_depth"] = [float(x) for x in suffix_excursion(t_)]
         rec["test_margins"] = [float(x) for x in (t_ / t_[-1] - 1.0)]
         rec["test_criterion_holds"] = bool(np.all(t_[ls:] <= (1.0 + tol) * t_[-1]))
         rec["max_excursion_val"] = float((v[ls:] / v[-1] - 1.0).max())
         rec["max_excursion_test"] = float((t_[ls:] / t_[-1] - 1.0).max())
         rec["test_argmin_point"] = spec.depth_labels[int(np.argmin(t_))]
+        # DESCRIPTIVE ONLY (spec section 9): the test-side ratio at the VALIDATION-selected
+        # entrance. It reports whether validation-selected recoverability generalizes; it never
+        # redefines the entrance, and no selection reads it.
+        rec["generalization_at_entrance"] = {
+            "val_ratio_at_tunnel": float(v[ls] / v[-1]),
+            "test_ratio_at_tunnel": float(t_[ls] / t_[-1]),
+            "test_suffix_excursion_at_tunnel": float(suffix_excursion(t_)[ls]),
+            "note": "descriptive; the tunnel is selected on validation and never on test"}
+        for e in list(by_tol.values()) + list(rec["first_crossing"].values()):
+            e["test_loss_at_entrance"] = float(t_[e["depth_axis_index"]])
+            e["test_ratio_to_reference"] = float(t_[e["depth_axis_index"]] / t_[-1])
+        rec["headline"] = by_tol[f"tol_{tol:g}"] if f"tol_{tol:g}" in by_tol else sustained(tol)
         for i in spec.diagnostic_indices:
             rec["head_input_diagnostic"][spec.points[i].label]["test_loss"] = float(t_all[i])
             rec["head_input_diagnostic"][spec.points[i].label][
                 "test_ratio_to_final_block"] = float(t_all[i] / t_[-1])
     return rec
+
+
+# --------------------------------------------------------------------------- #
+# the no-information floor — closed form, NO fit, so no optimizer artifact can reach it
+# --------------------------------------------------------------------------- #
+def constant_forecast_floor(y_train, splits: dict, q) -> dict:
+    """Loss of the best CONSTANT forecast: the per-step TRAIN quantile at each level.
+
+    The pinball-optimal constant predictor, computed in closed form from the training targets —
+    no fit, no optimizer, nothing that a weight decay could distort. It is the "no linearly
+    decodable information" floor every probe curve should sit below, and it is what makes
+    "this depth selected the weight-decay grid maximum" readable: a selected wd at the top of
+    the grid whose validation loss equals this floor means the depth's optimum IS the floor,
+    not that the search was cut off.
+
+    ``y_train`` is (n, H); ``splits`` maps a split name to its own (n, H) targets.
+    """
+    ytr = np.asarray(y_train, np.float64)
+    qv = np.asarray(q, np.float64)
+    const = np.quantile(ytr, qv, axis=0)                                    # (Q, H)
+    out = {"predictor": "per-step quantiles of the TRAIN targets (the pinball-optimal constant)",
+           "fit": "closed form — no optimizer, so no weight decay can reach or distort it"}
+    for name, y in splits.items():
+        y = np.asarray(y, np.float64)
+        pred = np.repeat(const[None, :, :], len(y), axis=0)
+        out[f"{name}_loss"] = float(mean_pinball_per_window(pred, y, qv).mean())
+    return out
+
+
+# --------------------------------------------------------------------------- #
+# weight-decay selection diagnostics
+# --------------------------------------------------------------------------- #
+#: Chronos-2's shared-slot fit trains and SELECTS with ``chronos2_quantile_loss``, which SUMS the
+#: pinball terms over quantiles; the TimesFM-3 and TiRex fits average them. The two differ by
+#: exactly 2Q, so the wd argmin is identical either way (contract 16) — but the raw numbers are
+#: not comparable, so every saved selection curve carries its convention AND a 2Q-rescaled twin.
+WD_SELECTION_CONVENTIONS = {
+    "chronos2": ("chronos2_quantile_loss (SUM over quantiles) = 2Q x mean pinball", 1.0),
+    "timesfm3": ("mean pinball over (batch, quantiles, horizon)", 0.0),
+    "tirex": ("mean pinball over (batch, quantiles, horizon)", 0.0),
+}
+
+
+def wd_selection_rows(model: str, tag: str, spec: ModelSpec, res: dict, grid,
+                      *, lr: float, floor: dict | None = None) -> list[dict]:
+    """One row per probed point: the selected wd, the grid, min/max flags and every candidate's
+    validation loss — the table that answers "is the EXPANDED grid still clipped?".
+
+    ``val_loss_by_wd_mean_pinball`` rescales Chronos-2's sum-over-quantiles selection curve by
+    1/(2Q) so the three models' curves can be put in one table without a unit error.
+    """
+    grid = [float(w) for w in grid]
+    gmax, gmin = max(grid), min(grid)
+    conv, is_sum = WD_SELECTION_CONVENTIONS.get(model, ("mean pinball", 0.0))
+    Q = len(res["quantiles"])
+    scale = 1.0 / (2.0 * Q) if is_sum else 1.0
+    floor_val = (floor or {}).get("val_loss")
+    rows = []
+    for i, pnt in enumerate(spec.points):
+        sel = {float(k): float(x) for k, x in (res["selection"][i] or {}).items()}
+        chosen = float(res["wd"][i])
+        best = min(sel.values()) if sel else float("nan")
+        row = {"model": model, "dataset": tag, "point_index": i, "layer": pnt.label,
+               "point_type": pnt.point_type,
+               "include_in_main_depth_axis": pnt.on_depth_axis,
+               "relative_depth": "" if pnt.relative_depth is None else pnt.relative_depth,
+               "selected_wd": chosen,
+               "wd_at_grid_max": bool(chosen == gmax), "wd_at_grid_min": bool(chosen == gmin),
+               "wd_grid": "|".join(f"{w:g}" for w in grid),
+               "wd_grid_max": gmax, "wd_grid_min": gmin, "n_wd_candidates": len(grid),
+               "lr": float(lr), "lr_times_selected_wd": float(lr) * chosen,
+               "val_loss_selection_convention": conv,
+               "val_loss_at_selected_wd": best * scale if sel else "",
+               "val_loss_by_wd": json.dumps({f"{k:g}": sel[k] for k in sorted(sel)}),
+               "val_loss_by_wd_mean_pinball":
+                   json.dumps({f"{k:g}": sel[k] * scale for k in sorted(sel)}),
+               "train_loss": res["train_loss"][i], "val_loss": res["val_loss"][i],
+               "test_loss": res["test_loss"][i],
+               "n_probe_params": res["n_params"][i]}
+        # Is a grid-max selection actually AT the no-information floor, or is the search cut off?
+        # Only the floor can tell them apart, so it is carried on the row that raises the question.
+        row["constant_forecast_floor_val_loss"] = "" if floor_val is None else floor_val
+        row["val_over_floor"] = ("" if not floor_val else
+                                 float(res["val_loss"][i]) / float(floor_val))
+        rows.append(row)
+    return rows
 
 
 # --------------------------------------------------------------------------- #
@@ -896,18 +1144,60 @@ def provenance_rows(roster_name: str = ROSTER) -> list[dict]:
 # --------------------------------------------------------------------------- #
 # cell identity
 # --------------------------------------------------------------------------- #
+#: Keys of a cell config that affect ONLY the derived tunnel/postprocessing, never a fitted
+#: probe, an extracted representation, a per-window metric or a bootstrap input. Changing one of
+#: these re-derives a tunnel from artifacts that are already on disk; it must NOT invalidate GPU
+#: work. Everything NOT listed here lands in the fit half of the identity.
+POSTPROCESS_KEYS = ("tunnel_definition", "tunnel_tol", "tunnel_tols")
+
+
+def split_cell_config(cfg: dict) -> tuple[dict, dict]:
+    """``(fit_cfg, post_cfg)`` — the two halves of a cell's identity.
+
+    FIT half: the protocol version, the geometry (C/H/Q + the vector), the checkpoint, every
+    extraction parameter that provably moves numbers (batch size, backend, rollout mode, feature
+    dtype), the probe protocol (wd grid / epochs / lr / seed / architecture), the bootstrap B,
+    the window digest and the registry hash. Changing ANY of these means the probes must be
+    refit and the backbone possibly re-read.
+
+    POSTPROCESS half: :data:`POSTPROCESS_KEYS`. These are pure functions of curves already
+    saved in the cell, so a change here is repairable by ``experiments.rebuild_phase1_tunnels``
+    with no GPU, no model and no probe fit.
+    """
+    post = {k: cfg[k] for k in POSTPROCESS_KEYS if k in cfg}
+    fit = {k: v for k, v in cfg.items() if k not in POSTPROCESS_KEYS}
+    return fit, post
+
+
+def _digest(obj) -> str:
+    blob = json.dumps(obj, sort_keys=True, separators=(",", ":"), default=str).encode()
+    return "sha256:" + hashlib.sha256(blob).hexdigest()
+
+
+def fit_config_hash(cfg: dict) -> str:
+    """Digest of everything a REFIT would be needed for (the fit half of :func:`split_cell_config`)."""
+    return _digest(split_cell_config(cfg)[0])
+
+
+def postprocess_config_hash(cfg: dict) -> str:
+    """Digest of the derived-tunnel configuration alone (the postprocess half)."""
+    return _digest(split_cell_config(cfg)[1])
+
+
 def cell_config_hash(cfg: dict) -> str:
     """Digest of everything that would make two cells scientifically different.
 
+    Now defined as the digest of BOTH halves, so it keeps its old meaning — a Q=9 old-grid cell
+    can never satisfy a Q=9 expanded-grid run, and Q=1 and Q=9 can never share a COMPLETE
+    marker — while ``fit_config_hash`` / ``postprocess_config_hash`` let the store tell a
+    CHANGED PROBE PROTOCOL apart from a CHANGED TUNNEL DEFINITION. The first costs GPU hours;
+    the second is a re-derivation from artifacts already on disk.
+
     Deliberately EXCLUDES the git commit and the wall-clock: a docs commit must not invalidate
-    43 GPU-hours. What it includes is the protocol version (bumped by hand when semantics
-    change), the geometry (C/H/Q, the quantile vector), the checkpoint, the extraction
-    parameters that provably move numbers (batch size, backend, rollout mode, feature dtype),
-    the probe protocol (wd grid / epochs / lr / seed), the bootstrap B, the dataset window
-    digest, and the registry hash.
+    43 GPU-hours. The commit is recorded in the manifest instead.
     """
-    blob = json.dumps(cfg, sort_keys=True, separators=(",", ":"), default=str).encode()
-    return "sha256:" + hashlib.sha256(blob).hexdigest()
+    fit, post = split_cell_config(cfg)
+    return _digest({"fit": _digest(fit), "postprocess": _digest(post)})
 
 
 # --------------------------------------------------------------------------- #
@@ -917,8 +1207,8 @@ def cell_config_hash(cfg: dict) -> str:
 #: cell failed partway; marking it complete anyway would make a later combined table quietly
 #: report an incomplete run as a finished one.
 REQUIRED_ARTIFACTS = ("cell_config.json", "summary.json", "layer_metrics.csv", "tunnel.json",
-                      "probe_hparams.json", "effective_rank.csv", "spectral_metrics.npz",
-                      "bootstrap_inputs.npz", "cka/cka_metadata.json")
+                      "probe_hparams.json", "wd_selection.csv", "effective_rank.csv",
+                      "spectral_metrics.npz", "bootstrap_inputs.npz", "cka/cka_metadata.json")
 
 STATUSES = ("pending", "running", "complete", "failed")
 
@@ -1005,14 +1295,31 @@ class CellStore:
         except Exception:
             return {"config_hash": "unreadable"}
 
-    def status(self, config_hash: str) -> tuple[str, str]:
-        """``(status, reason)`` for this cell under ``config_hash``."""
+    def status(self, config_hash: str, fit_hash: str | None = None,
+               post_hash: str | None = None) -> tuple[str, str]:
+        """``(status, reason)`` for this cell under ``config_hash``.
+
+        With ``fit_hash`` / ``post_hash`` the mismatch is DIAGNOSED rather than merely reported:
+        a cell whose fitted probes are still valid but whose TUNNEL DEFINITION has changed comes
+        back as ``stale_postprocess``, which ``experiments.rebuild_phase1_tunnels`` repairs
+        without a GPU. Anything else that differs is ``incompatible`` and needs a refit.
+        """
         mk = self.read_marker()
         if mk is None:
             return "pending", "no COMPLETE marker"
         if mk.get("config_hash") != config_hash:
+            same_fit = fit_hash is not None and mk.get("fit_hash") == fit_hash
+            if same_fit and post_hash is not None and mk.get("postprocess_hash") != post_hash:
+                return "stale_postprocess", (
+                    "the fitted probes, representations and bootstrap inputs are VALID (fit "
+                    f"hash {fit_hash} matches) but the derived tunnel was computed under "
+                    f"postprocess config {mk.get('postprocess_hash')} and this run is "
+                    f"{post_hash}. No refit is needed — re-derive it with "
+                    "`python -m experiments.rebuild_phase1_tunnels`.")
             return "incompatible", (f"COMPLETE marker carries config hash "
-                                    f"{mk.get('config_hash')} but this run is {config_hash}")
+                                    f"{mk.get('config_hash')} but this run is {config_hash}"
+                                    + ("" if fit_hash is None else
+                                       f" (fit half {mk.get('fit_hash')} vs {fit_hash})"))
         missing = [a for a in REQUIRED_ARTIFACTS if not (self.final / a).exists()]
         if missing:
             return "corrupt", f"COMPLETE but missing artifacts {missing}"
@@ -1031,7 +1338,8 @@ class CellStore:
     def validate(self, stage: Path) -> list[str]:
         return [a for a in REQUIRED_ARTIFACTS if not (Path(stage) / a).exists()]
 
-    def commit(self, stage: Path, config_hash: str, extra: dict | None = None) -> Path:
+    def commit(self, stage: Path, config_hash: str, extra: dict | None = None,
+               fit_hash: str | None = None, post_hash: str | None = None) -> Path:
         """Validate, write COMPLETE inside the staging dir, then move it into place atomically."""
         stage = Path(stage)
         missing = self.validate(stage)
@@ -1040,8 +1348,11 @@ class CellStore:
                 f"{self.model}/{self.dataset}: refusing to mark COMPLETE — these required "
                 f"artifacts were not produced: {missing}. The cell stays incomplete so a "
                 "combined table cannot read a failed run as a finished one.")
-        marker = {"config_hash": config_hash, "model": self.model, "dataset": self.dataset,
+        marker = {"config_hash": config_hash, "fit_hash": fit_hash,
+                  "postprocess_hash": post_hash,
+                  "model": self.model, "dataset": self.dataset,
                   "protocol": PHASE1_PROTOCOL_VERSION,
+                  "tunnel_definition": TUNNEL_DEFINITION_VERSION,
                   "completed_utc": datetime.datetime.now(datetime.timezone.utc)
                                    .isoformat(timespec="seconds"),
                   "artifacts": sorted(str(p.relative_to(stage))

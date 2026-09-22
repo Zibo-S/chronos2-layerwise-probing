@@ -54,15 +54,22 @@ ROLLOUT_MODE = "two_pass"          # the released package's own default inferenc
 BACKEND = "torch"                  # xLSTM's `cuda` backend is a different kernel; pick ONE
 
 
-def _late():
+#: THE PHASE-1 GRID — the SAME 13 candidates all three models use, for Q=9 and Q=1 alike.
+#: ``tirex_probes.WD_GRID_TIREX`` stays that LINE's own grid, untouched; Phase 1 asserts the new
+#: grid is a strict superset of it. On the committed Phase-1 cell (tirex x Electricity) TiRex was
+#: the ONE model that did not clip — its optimum is interior at wd=10 — so for TiRex the three
+#: new candidates are expected to stay unselected. That is the point: the same search space for
+#: all three models means a model difference cannot be a grid difference.
+WD_GRID = phase1.PHASE1_WD_GRID
+
+
+def _assert_superset():
+    """The no-regression rule, checked lazily (the legacy grid lives behind a torch import)."""
     from probing.tirex_probes import WD_GRID_TIREX
-    return WD_GRID_TIREX
-
-
-try:
-    WD_GRID = _late()
-except Exception:                                                    # pragma: no cover
-    WD_GRID = (1e-5, 1e-4, 1e-3, 1e-2, 1e-1, 0.3, 1.0, 3.0, 10.0, 30.0)
+    if not phase1.wd_grid_is_superset_of(WD_GRID, WD_GRID_TIREX):
+        raise RuntimeError("the Phase-1 grid must retain every legacy TiRex candidate; "
+                           f"{WD_GRID} is not a superset of {WD_GRID_TIREX}")
+    return True
 
 
 def _spec():
@@ -131,7 +138,9 @@ def fit_layerwise(tag: str, data: dict, *, quantiles, median_idx: int, geom, dev
     from probing.tirex_probes import (constant_forecast_floor, fit_shared_patch_probe,
                                       predict_quantiles)
     spec = _spec()
-    wd_grid = tuple(WD_GRID if wd_grid is None else wd_grid)
+    _assert_superset()
+    wd_grid = phase1.assert_wd_grid(WD_GRID if wd_grid is None else wd_grid, lr,
+                                    null_wd=phase1.PHASE1_WD_NULL)
     grid_max, grid_min = float(max(wd_grid)), float(min(wd_grid))
     q = np.asarray(quantiles, np.float64)
     tr, va, te = data["train"], data["val"], data["test"]
@@ -183,24 +192,13 @@ def fit_layerwise(tag: str, data: dict, *, quantiles, median_idx: int, geom, dev
     # The closed-form no-information floor (best CONSTANT forecast under this objective). Its
     # tau=0.5 form is the per-step train median; for Q>1 the optimum is the per-step train
     # QUANTILE, which is what this computes. No fit, so no optimizer artifact can reach it.
-    res["constant_forecast_floor"] = _constant_floor(tr["targets"], va["targets"],
-                                                     te["targets"], q)
+    res["wd_grid"] = [float(w) for w in wd_grid]
+    res["constant_forecast_floor"] = phase1.constant_forecast_floor(
+        tr["targets"], {"train": tr["targets"], "val": va["targets"], "test": te["targets"]}, q)
     if len(q) == 1:
         res["constant_forecast_floor_q1_reference"] = constant_forecast_floor(
             tr["targets"], te["targets"], va["targets"])
     return res
-
-
-def _constant_floor(ytr, yva, yte, q) -> dict:
-    """Best constant (bias-only) forecast: the per-step TRAIN quantile at each level."""
-    ytr = np.asarray(ytr, np.float64)
-    const = np.quantile(ytr, np.asarray(q, np.float64), axis=0)          # (Q, H)
-    out = {"predictor": "per-step quantiles of the TRAIN targets (the pinball-optimal constant)"}
-    for name, y in (("train_loss", ytr), ("val_loss", yva), ("test_loss", yte)):
-        y = np.asarray(y, np.float64)
-        pred = np.repeat(const[None, :, :], len(y), axis=0)
-        out[name] = float(phase1.mean_pinball_per_window(pred, y, q).mean())
-    return out
 
 
 # --------------------------------------------------------------------------- #

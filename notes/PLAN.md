@@ -1172,3 +1172,158 @@ the full existing suite is unchanged.
 **One fixture bug this surfaced:** contract 54 first asserted that a linear ramp enters at the
 final depth. It does not for TimesFM-3 — with 21 points the second-to-last lands *exactly* on
 the inclusive `(1+tol)*final` boundary. The fixture was wrong, not the criterion.
+
+---
+
+# PHASE 1 RERUN — expanded WD grid + SUSTAINED tunnel, in two runs (2026-09-22)
+
+Two clean, separate configurations, both from ONE driver. The earlier run stays put:
+`results/three_model_final/` is the audit trail and is never written to again (the driver's
+default output root moved off it, so a bare invocation cannot touch it).
+
+| | EXPERIMENT A (headline) | EXPERIMENT B (robustness) |
+|---|---|---|
+| quantiles | **Q=9** [0.1 .. 0.9] | **Q=1**, tau=0.5 |
+| output tree | `results/three_model_phase1_q9_expanded/` | `results/three_model_phase1_q1/` |
+| job | `job_three_model_phase1_q9_expanded.sh` | `job_three_model_phase1_q1.sh` |
+| role | the canonical Phase-1 headline | probe-capacity / objective robustness |
+
+Everything else is IDENTICAL: 14 datasets, the same windows/splits, C=512, H=64, the same
+representation points and final-block references, the same probe architectures, optimizer,
+300 epochs, lr 1e-2, seeds, bootstrap, MASE/MAE/WQL, CKA, effective rank, provenance,
+checkpoints. **Q=1 is NOT a replacement for Q=9 and a Q1/Q9 difference is NOT by itself
+evidence of overfitting.**
+
+## Three changes, and nothing else
+
+### 1. The weight-decay grid — ONE grid, all three models, both Q
+
+    old chronos2   1e-5 1e-4 1e-3 1e-2 1e-1 0.3 1 3                 (max 3)
+    old timesfm3   ... + 10 30                                       (max 30)
+    old tirex      ... + 10 30                                       (max 30)
+    NEW all three  1e-5 1e-4 1e-3 1e-2 1e-1 0.3 1 3 10 30 45 65 90   (max 90)
+
+`probing.phase1.PHASE1_WD_GRID`. The three model lines' OWN grids (`probes.WD_GRID_V2`,
+`WD_GRID_LAST_TOKEN`, `WD_GRID_TIREX`) are **untouched**, so no committed non-Phase-1 result
+moves; Phase 1 asserts the new grid is a strict superset of each.
+
+**Why it grew — measured on the committed Phase-1 cells, not predicted:**
+* `timesfm3 x monash_electricity_hourly`: 16 of 21 depths at the old max 30, validation STILL
+  falling there (L19: 0.12419 at wd=10 -> 0.11677 at 30).
+* `chronos2 x m4_hourly`: 9 of 14 at ITS max 3.0. **The Chronos-2 grid was the NARROWEST of the
+  three and clipped hardest** — the old comment in `phase1_chronos2.py` claiming "the committed
+  runs do not clip" was falsified and has been corrected in place.
+* `tirex x monash_electricity_hourly`: 0 clipped; its optimum is interior at wd=10.
+
+**Why it stops at 90, not 100/300/1000** — the spec guessed "100, 300, 1000"; that is
+mathematically unavailable. AdamW's decay is DECOUPLED: each step multiplies the weight by
+(1 - lr*wd). At lr=1e-2, measured on probe-shaped synthetic features, 300 epochs:
+
+| wd | lr*wd | max\|W\| | val | |
+|---|---|---|---|---|
+| 30 | 0.30 | 3.6e-2 | 0.3820 | regularized |
+| 45 | 0.45 | 2.7e-2 | 0.3670 | regularized |
+| 65 | 0.65 | 2.0e-2 | 0.3597 | regularized |
+| 90 | 0.90 | 1.5e-2 | 0.3568 | **selection ceiling** |
+| 100 | 1.00 | 1.4e-2 | 0.3564 | weight zeroed EVERY step -> bias-only: the NULL, not a regularizer |
+| 300 | 3.00 | inf | nan | \|1 - lr*wd\| > 1 -> diverges |
+
+And the direction is confirmed by the real data: on the committed TimesFM-3 Electricity cell the
+wd=100 null beats wd=30 at only 3 of 21 depths, so **the optimum sits INSIDE (30, 100)** —
+exactly what 45/65/90 covers.
+
+**What a grid-max selection MEANS now.** The val curve is smooth into the null, so the new
+maximum sits within ~1e-3 relative of the no-information floor. "At grid max" therefore has two
+readings, and the code refuses to conflate them: every cell computes the closed-form
+`constant_forecast_floor` (pinball-optimal constant = per-step train quantiles; no fit, so no
+optimizer artifact can reach it) and reports `val_loss / floor`. Ratio ~1 = **this depth's
+optimum IS the floor (a finding)**; ratio well below 1 = the search really was cut off.
+
+### 2. The tunnel — SUSTAINED ENTRY, not first crossing
+
+    E_l             = max_{j >= l} ( R_j / R_L - 1 )        # j over BLOCK DEPTHS only
+    l_tunnel(delta) = min { l : E_l <= delta }
+
+`probing.tunnel.sustained_tunnel_start`. `tunnel_start` (first crossing) is UNCHANGED and still
+called — its value is saved as `first_crossing_<tol>` and is never called the tunnel.
+
+Properties: an isolated early crossing no longer opens a tunnel; the excursion inside the tunnel
+is bounded by tol BY CONSTRUCTION; and the entrance is monotone in the tolerance
+(`depth(10%) <= depth(5%) <= depth(2%)`) as a **theorem**, asserted as a regression guard.
+Boundary handling is byte-identical to first crossing (`v[j] <= (1+tol)*v[last]`, not
+`v[j]/v[last]-1 <= tol`) so `sustained >= first_crossing` holds for EVERY curve — verified over
+120k random curves.
+
+### 3. Tolerances 2% / 5% / 10% (5% headline), 1% saved for free.
+
+## The hash is now TWO halves
+
+`probing.phase1.split_cell_config`: **FIT** (checkpoint, extraction params, wd grid, epochs, lr,
+seed, probe architecture + width, windows, bootstrap B) and **POSTPROCESS** (tunnel definition,
+headline tolerance, tolerance set). `cell_config_hash` = digest of both, so it keeps its old
+meaning — Q1/Q9 can never collide and a narrow-grid q9 cell can never satisfy an expanded-grid
+q9 run. But a changed TUNNEL DEFINITION now reports `stale_postprocess` instead of
+`incompatible`, and `python -m experiments.rebuild_phase1_tunnels` re-derives it from artifacts
+already on disk — **no GPU, no refit**. The driver refuses to proceed and names that tool rather
+than silently refitting or silently keeping stale numbers.
+
+## Compute reuse — the two runs SHARE one feature cache
+
+Extraction and window building never see a quantile vector (verified by contract: no cache
+metadata function takes Q). Both job scripts point at
+`$SCRATCH/chronos2/phase1_shared_cache` and `$SCRATCH/chronos2/phase1_shared_windows`, so the
+three backbones run ONCE for both experiments and the Q1 job is probe-fitting only. Geometry
+(CKA / effective rank) is Q-independent and is cheaply RECOMPUTED from those same cached states
+rather than copied; `make_phase1_q1_q9_comparison` then VERIFIES the two runs' matrices are
+identical element-wise (0.0 expected) instead of assuming it.
+
+## Files
+
+| new | role |
+|---|---|
+| `experiments/rebuild_phase1_tunnels.py` | re-derive tunnels from saved artifacts, no GPU |
+| `experiments/make_phase1_q1_q9_comparison.py` | the cross-run tables + the geometry-identity check |
+| `tests/test_phase1_wd_and_sustained_tunnel.py` | 17 lettered contracts (A-O) |
+| `job_three_model_phase1_q9_expanded.sh`, `job_three_model_phase1_q1.sh` | the two sbatch wrappers |
+| `writing/phase1_q9_q1_methodology.md` | the paper wording (gitignored) |
+
+| modified | what changed |
+|---|---|
+| `probing/tunnel.py` | ADDED `suffix_excursion` / `sustained_tunnel_start` / `assert_tolerance_monotone`; `tunnel_start` untouched |
+| `probing/phase1.py` | `PHASE1_WD_GRID` + guard, `TUNNEL_DEFINITION_VERSION`, sustained `tunnel_record`, `constant_forecast_floor`, `wd_selection_rows`, the hash split, `CellStore.stale_postprocess` |
+| `probing/phase1_{chronos2,timesfm3,tirex}.py` | `WD_GRID` -> the shared grid + superset assertion + guard + the floor |
+| `probing/phase1_cells.py` | `wd_selection.csv` (now REQUIRED), ratio/excursion columns, richer clipping block |
+| `experiments/run_three_model_phase1.py` | new default root, `--tunnel-tols` / `--wd-grid`, two-half hashes, the clipping warning that reads the floor |
+| `experiments/make_phase1_tables.py` | tunnel matrices per tolerance, sensitivity, wd summary |
+| `tests/test_three_model_phase1.py` | 33 and 35 updated — they encoded the old entrance; both statistics now pinned |
+
+## Run order (Narval)
+
+1. login node: `python -m tests.test_three_model_phase1` (57) and
+   `python -m tests.test_phase1_wd_and_sustained_tunnel` (17).
+2. GPU smoke — **`timesfm3 x m5` at Q=9 first**, at the REAL 300 epochs (wd selection depends on
+   the step count, so a shortened smoke measures a different optimization problem). Then a cheap
+   shape/device smoke for the other two models at both Q, where `--probe-epochs 30` IS fine.
+   Exact commands are in the header of `job_three_model_phase1_q1.sh`.
+3. `sbatch job_three_model_phase1_q9_expanded.sh` (fills the shared cache), then
+   `sbatch job_three_model_phase1_q1.sh`. Resume either by resubmitting the identical line.
+4. login node: `python -m experiments.make_phase1_q1_q9_comparison`.
+
+## Open / to check on the first run
+
+- **Is the expanded grid STILL clipped?** Read `combined/wd_selection_summary.csv`. If depths
+  still sit at 90, read `at_grid_max_val_over_floor`: ~1.0 is a finding, well below 1.0 means
+  report it before another rerun (the grid cannot be widened at this lr — 100 IS the floor).
+- Whether any depth selects the grid MINIMUM (1e-5) widely — the grid would then need extending
+  DOWNWARD, which has no stability wall and is cheap.
+- How far the sustained entrance sits behind first crossing per cell
+  (`sustained_minus_first_crossing` in `tunnel_sensitivity.csv`) — a large gap everywhere means
+  the curves are non-monotone and the old headline was fragile.
+- Whether the Q1 and Q9 entrances agree (exact / within 1 / within 2 blocks, per model) —
+  descriptive only; do NOT label a difference "overfitting" without the train/val/test evidence.
+- Wall time is STILL not measured end to end. The expanded grid adds 3 of 13 candidates = ~30%
+  more probe fits per depth. Read `cells.json` after the smoke before trusting `--time=12:00:00`.
+- **Pre-existing, not caused by this work:** `tests/test_q1q9_rerun.py::
+  test_wide_wd_grid_value_and_sharing` fails under a FULL pytest run and passes alone —
+  `tests/test_ft_specialization.py:301` sets `rfs.WD_GRID = (1e-3, 1e-2)` on the shared module
+  and never restores it. Confirmed identical on a pristine `git archive HEAD` tree.

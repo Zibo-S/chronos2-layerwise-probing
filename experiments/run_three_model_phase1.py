@@ -48,13 +48,18 @@ if str(REPO_ROOT) not in sys.path:
 
 from probing import phase1, registry, window_parity as wp, window_reference as wref  # noqa: E402
 from probing.phase1 import (MODELS, PHASE1_BOOT_B, PHASE1_C, PHASE1_H,                # noqa: E402
-                            PHASE1_PROTOCOL_VERSION, PHASE1_TUNNEL_TOL, CellStore,
-                            cell_config_hash, clean_staging, model_spec)
+                            PHASE1_PROTOCOL_VERSION, PHASE1_TUNNEL_TOL, PHASE1_TUNNEL_TOLS,
+                            TUNNEL_DEFINITION_VERSION, CellStore,
+                            cell_config_hash, clean_staging, fit_config_hash, model_spec,
+                            postprocess_config_hash)
 from probing.phase1_cells import save_cell                                            # noqa: E402
 from probing.windows import build_for                                                 # noqa: E402
 
 CREATED_BY = "python -m experiments.run_three_model_phase1"
-DEFAULT_OUT = REPO_ROOT / "results" / "three_model_final"
+#: The EXPANDED-GRID / SUSTAINED-TUNNEL rerun writes here. `results/three_model_final/` holds
+#: the earlier narrow-grid, first-crossing run and is deliberately NOT the default any more: it
+#: is the audit trail, and a bare invocation must not be able to touch it.
+DEFAULT_OUT = REPO_ROOT / "results" / "three_model_phase1_q9_expanded"
 
 
 # --------------------------------------------------------------------------- #
@@ -160,23 +165,40 @@ def cell_config(model: str, tag: str, args, qvec, window_digest: str, reg_hash: 
         "C": PHASE1_C, "H": PHASE1_H, "quantile_set": args.quantile_set,
         "quantiles": [float(x) for x in qvec], "num_quantiles": len(qvec),
         "suite": args.suite, "seed": args.seed, "boot_b": args.boot_b,
-        "tunnel_tol": args.tunnel_tol, "window_digest": window_digest,
+        # POSTPROCESS half of the identity (probing.phase1.POSTPROCESS_KEYS): these are pure
+        # functions of curves already saved in the cell, so changing one re-derives a tunnel
+        # without refitting a probe. Everything else below is FIT half.
+        "tunnel_definition": TUNNEL_DEFINITION_VERSION,
+        "tunnel_tol": args.tunnel_tol,
+        "tunnel_tols": [float(t) for t in args.tunnel_tols],
+        "window_digest": window_digest,
         "registry_hash": reg_hash,
         "probe_epochs": args.probe_epochs, "probe_lr": args.probe_lr,
+        # The probe ARCHITECTURE, explicitly in the hash rather than only implied by
+        # (model, quantile_set): Linear(d, Q*P) for Chronos-2/TiRex, Linear(d, H*Q) for
+        # TimesFM-3. Q=1 and Q=9 therefore differ in the hash twice over.
+        "probe": model_spec(model).probe,
+        "probe_out_features": model_spec(model).probe_out_features // 9 * len(qvec),
         "geometry_splits": list(args.geometry_splits),
         "cka_estimators": ["unbiased", "biased"],
     }
+    # ONE grid for all three models and both quantile sets (phase1.PHASE1_WD_GRID), unless
+    # --wd-grid overrides it. It is in the FIT half of the hash, so an old narrow-grid cell can
+    # never satisfy this run's skip logic.
+    defaults = {"chronos2": c2.WD_GRID, "timesfm3": t3.WD_GRID, "tirex": tx.WD_GRID}
+    grid = [float(w) for w in (args.wd_grid if args.wd_grid else defaults[model])]
+    common["wd_grid"] = grid
     if model == "chronos2":
-        common.update(checkpoint="amazon/chronos-2", wd_grid=list(c2.WD_GRID),
+        common.update(checkpoint="amazon/chronos-2",
                       extract_batch_size=args.chronos_batch_size,
                       readout="forecast_slots_K4")
     elif model == "timesfm3":
-        common.update(checkpoint=args.timesfm_checkpoint, wd_grid=list(t3.WD_GRID),
+        common.update(checkpoint=args.timesfm_checkpoint,
                       null_wd=t3.NULL_WD, extract_batch_size=args.timesfm_batch_size,
                       feature_dtype=args.timesfm_feature_dtype,
                       detrend=not args.timesfm_no_detrend, readout="last_real_context_token")
     else:
-        common.update(checkpoint=args.tirex_checkpoint, wd_grid=list(tx.WD_GRID),
+        common.update(checkpoint=args.tirex_checkpoint,
                       extract_batch_size=args.tirex_batch_size,
                       backend=args.tirex_backend, rollout_mode=args.tirex_rollout_mode,
                       readout="two_forecast_producing_states")
@@ -307,7 +329,7 @@ def run_cell(model: str, tag: str, w: dict, ident: dict, args, qvec, med_idx,
     tp0 = time.time()
     common = dict(quantiles=qvec, median_idx=med_idx, device=args.device,
                   epochs=args.probe_epochs, lr=args.probe_lr, seed=args.seed,
-                  verbose=not args.quiet_probes)
+                  wd_grid=tuple(cfg["wd_grid"]), verbose=not args.quiet_probes)
     if model == "chronos2":
         res = ad.fit_layerwise(tag, data, horizon=PHASE1_H, **common)
     elif model == "timesfm3":
@@ -319,7 +341,8 @@ def run_cell(model: str, tag: str, w: dict, ident: dict, args, qvec, med_idx,
         assert_finite(f"{model}/{tag} {k}", res[k])
 
     # ---- tunnel: VALIDATION only --------------------------------------------- #
-    tun = phase1.tunnel_record(spec, res["val_loss"], res["test_loss"], tol=args.tunnel_tol)
+    tun = phase1.tunnel_record(spec, res["val_loss"], res["test_loss"], tol=args.tunnel_tol,
+                               tols=tuple(args.tunnel_tols))
 
     # ---- raw-unit metrics + native baseline ---------------------------------- #
     tm0 = time.time()
@@ -370,12 +393,7 @@ def run_cell(model: str, tag: str, w: dict, ident: dict, args, qvec, med_idx,
                                          null_floor_reps=args.cka_null_floor_reps)
     timings["geometry_s"] = time.time() - tg0
 
-    if any(res["wd_at_grid_max"]):
-        warnings.append({
-            "kind": "wd_grid_clipped_at_max",
-            "layers": [spec.labels[i] for i in range(spec.n_points) if res["wd_at_grid_max"][i]],
-            "grid_max": float(max(cfg["wd_grid"])),
-            "meaning": "selected weight decay sits at the grid maximum — a clipped search"})
+    warnings.extend(_wd_warnings(spec, res, cfg))
 
     # ---- persist ------------------------------------------------------------- #
     timings["total_s"] = time.time() - t0
@@ -393,12 +411,64 @@ def run_cell(model: str, tag: str, w: dict, ident: dict, args, qvec, med_idx,
         save_probe_artifacts=not args.no_probe_artifacts,
         timings=timings, warnings=warnings)
     final = store.commit(stage, config_hash,
+                         fit_hash=phase1.fit_config_hash(cfg),
+                         post_hash=phase1.postprocess_config_hash(cfg),
                          extra={"elapsed_s": timings["total_s"],
+                                "tunnel_definition": tun["definition"],
                                 "tunnel_layer": tun["headline"]["label"],
-                                "tunnel_relative_depth": tun["headline"]["relative_depth"]})
+                                "tunnel_relative_depth": tun["headline"]["relative_depth"],
+                                "first_crossing_layer": (
+                                    tun.get("first_crossing", {})
+                                    .get(f"first_crossing_{args.tunnel_tol:g}", {})
+                                    .get("label"))})
     footer(model, tag, spec, res, tun, boot, raw, native, geom_blocks, timings["total_s"])
     print(f"  COMPLETE      {final.relative_to(args.output_root)}")
     return {"summary": summary, "path": final, "timings": timings, "warnings": warnings}
+
+
+def _wd_warnings(spec, res, cfg) -> list[dict]:
+    """Grid-edge warnings that distinguish a CUT-OFF search from a reached FLOOR.
+
+    Under the expanded grid the maximum (90 at lr=1e-2) is within ~1e-3 relative of the
+    bias-only no-information floor, so a grid-max selection has two very different readings.
+    The closed-form ``constant_forecast_floor`` separates them, so the warning states which one
+    it is instead of asserting the pessimistic one.
+    """
+    out = []
+    n = spec.n_points
+    floor = (res.get("constant_forecast_floor") or {}).get("val_loss")
+    at_max = [i for i in range(n) if res["wd_at_grid_max"][i]]
+    at_min = [i for i in range(n) if res["wd_at_grid_min"][i]]
+    if at_max:
+        ratios = ({spec.labels[i]: round(float(res["val_loss"][i]) / float(floor), 4)
+                   for i in at_max} if floor else None)
+        near_floor = ([spec.labels[i] for i in at_max
+                       if float(res["val_loss"][i]) >= 0.98 * float(floor)] if floor else [])
+        out.append({
+            "kind": "wd_grid_selected_at_max",
+            "layers": [spec.labels[i] for i in at_max],
+            "n_layers": len(at_max), "fraction": len(at_max) / n,
+            "grid_max": float(max(cfg["wd_grid"])),
+            "lr_times_grid_max": float(cfg["probe_lr"]) * float(max(cfg["wd_grid"])),
+            "val_loss_over_constant_forecast_floor": ratios,
+            "layers_at_the_no_information_floor": near_floor,
+            "meaning": (
+                "the selected weight decay sits at the grid MAXIMUM. Two readings, told apart "
+                "by the ratio above: ~1.0 means this depth's validation optimum IS the "
+                "no-information floor (a FINDING — the probe wants to predict nothing); well "
+                "below 1.0 means the search was genuinely cut off and the grid should be "
+                "widened. The grid cannot be widened past lr*wd = 1 at this lr: that value is "
+                "the floor itself, and beyond it AdamW diverges.")})
+    if at_min:
+        out.append({
+            "kind": "wd_grid_selected_at_min",
+            "layers": [spec.labels[i] for i in at_min],
+            "n_layers": len(at_min), "fraction": len(at_min) / n,
+            "grid_min": float(min(cfg["wd_grid"])),
+            "meaning": ("the selected weight decay sits at the grid MINIMUM — the probe wants "
+                        "less regularization than the grid offers; extend it downward if this "
+                        "is widespread")})
+    return out
 
 
 def _cluster_ids(w, split, res):
@@ -444,6 +514,14 @@ def main(argv=None):
         # here would have quietly run all three backbones under a flag that promises not to.
         models = []
     reg_hash = phase1.registry_hash(args.roster)
+    # Fail in seconds, not after a backbone load: the grid guard runs before any work, and the
+    # tolerance set is checked for the monotonicity the sustained rule guarantees.
+    wd_grid = phase1.assert_wd_grid(args.wd_grid or phase1.PHASE1_WD_GRID, args.probe_lr,
+                                    null_wd=phase1.PHASE1_WD_NULL)
+    if args.tunnel_tol not in set(float(t) for t in args.tunnel_tols):
+        raise SystemExit(f"--tunnel-tol {args.tunnel_tol:g} is not in --tunnel-tols "
+                         f"{list(args.tunnel_tols)}; the headline tolerance must be one of the "
+                         "tolerances actually computed")
 
     removed = clean_staging(out)
     if removed:
@@ -470,7 +548,31 @@ def main(argv=None):
         "quantile_verification": qcheck,
         "median_index": med_idx,
         "tunnel": {"tolerance": args.tunnel_tol, "split": "validation",
-                   "definition": "first_crossing (probing.tunnel.tunnel_start)"},
+                   "definition": TUNNEL_DEFINITION_VERSION,
+                   "criterion": ("min { l in DEPTH AXIS : max_{j >= l} "
+                                 "(L_val(j)/L_val(final block) - 1) <= tol }"),
+                   "implementation": "probing.tunnel.sustained_tunnel_start",
+                   "tolerances": [float(t) for t in args.tunnel_tols],
+                   "reported_tolerances": [float(t) for t in phase1.PHASE1_REPORTED_TOLS],
+                   "caveat": phase1.TUNNEL_DEFINITION_CAVEAT,
+                   "first_crossing_note": ("probing.tunnel.tunnel_start is still computed and "
+                                           "saved, under the name first_crossing_<tol>; it is "
+                                           "a diagnostic and is never called the tunnel")},
+        "weight_decay_grid": {
+            "grid": [float(w) for w in wd_grid],
+            "n_candidates": len(wd_grid),
+            "is_project_default": list(wd_grid) == list(phase1.PHASE1_WD_GRID),
+            "shared_by": "all three models, both quantile sets",
+            "lr": args.probe_lr,
+            "max_lr_times_wd": args.probe_lr * max(wd_grid),
+            "decoupled_limit": phase1.PHASE1_WD_DECOUPLED_LIMIT,
+            "null_wd_never_selectable": phase1.PHASE1_WD_NULL,
+            "ceiling_reason": (
+                "AdamW's decoupled decay multiplies the weight by (1 - lr*wd) each step. At "
+                f"lr={args.probe_lr:g} the candidate wd={phase1.PHASE1_WD_NULL:g} gives "
+                "lr*wd = 1 and zeroes the weight every step (that is the no-information NULL, "
+                "not a stronger regularizer), and anything above it diverges with alternating "
+                "sign. The grid therefore continues log-spaced UP TO the wall, not through it.")},
         "bootstrap_B": args.boot_b, "seed": args.seed,
         "cka_estimators": ["unbiased (headline)", "biased (diagnostic)"],
         "effective_rank": ("probing.spectral_metrics.spectral_metrics: squared singular values "
@@ -547,8 +649,23 @@ def main(argv=None):
         for model in models:
             cfg = cell_config(model, tag, args, qvec, digest, reg_hash)
             chash = cell_config_hash(cfg)
+            fhash, phash = fit_config_hash(cfg), postprocess_config_hash(cfg)
             store = CellStore(out, model, tag)
-            status, reason = store.status(chash)
+            status, reason = store.status(chash, fit_hash=fhash, post_hash=phash)
+            if status == "stale_postprocess" and not args.force_recompute:
+                # The probes are fine; only the TUNNEL DEFINITION moved. Refitting would burn
+                # GPU hours to reproduce identical weights, so the driver refuses and names the
+                # no-GPU repair instead of quietly doing either wrong thing.
+                print(f"\n[REFUSED — no refit needed] {model}/{tag}\n    {reason}\n"
+                      f"  Re-derive it without a GPU:\n"
+                      f"    python -m experiments.rebuild_phase1_tunnels "
+                      f"--output-root {args.output_root}\n"
+                      "  or pass --force-recompute to refit the probes from scratch anyway.")
+                failures.append((model, tag, "stale postprocess (tunnel definition changed)"))
+                _set_cell(cells_state, model, tag, "failed",
+                          reason="stale postprocess — run rebuild_phase1_tunnels")
+                _save_cells_state(out, cells_state)
+                continue
             if status == "complete" and args.resume:
                 print(f"\n[skip] {model}/{tag}: COMPLETE and config hash matches ({reason})")
                 _set_cell(cells_state, model, tag, "complete", config_hash=chash)
@@ -613,8 +730,12 @@ def _print_plan(tags, models, out, args, qvec, reg_hash):
           f"{len(tags) * len(models)} cells)")
     print(f"  output   {out}")
     print(f"  cache    {args.cache_root}")
-    print(f"  Q={len(qvec)} {list(map(float, qvec))}   C={PHASE1_C} H={PHASE1_H}   "
-          f"tunnel tol {args.tunnel_tol}   B={args.boot_b}")
+    print(f"  Q={len(qvec)} {list(map(float, qvec))}   C={PHASE1_C} H={PHASE1_H}   B={args.boot_b}")
+    print(f"  tunnel   {TUNNEL_DEFINITION_VERSION}  headline tol {args.tunnel_tol:g}  "
+          f"all tols {list(args.tunnel_tols)}")
+    grid = args.wd_grid or phase1.PHASE1_WD_GRID
+    print(f"  wd grid  {[float(w) for w in grid]}   lr {args.probe_lr:g}   "
+          f"max lr*wd {args.probe_lr * max(grid):.2f} (< {phase1.PHASE1_WD_DECOUPLED_LIMIT:g})")
     print(f"  registry {reg_hash}")
     print(f"\n  {'#':>3}  {'model':<9} {'dataset':<28} {'m':>4} {'role':<8} status")
     i = 0
@@ -728,7 +849,16 @@ def parse_args(argv=None):
     g = p.add_argument_group("probe protocol")
     g.add_argument("--probe-epochs", type=int, default=300)
     g.add_argument("--probe-lr", type=float, default=1e-2)
-    g.add_argument("--tunnel-tol", type=float, default=PHASE1_TUNNEL_TOL)
+    g.add_argument("--tunnel-tol", type=float, default=PHASE1_TUNNEL_TOL,
+                   help="headline tunnel tolerance (default 0.05 = the 5%% rule)")
+    g.add_argument("--tunnel-tols", type=float, nargs="+", default=list(PHASE1_TUNNEL_TOLS),
+                   help="every tolerance the sustained entrance is saved at; part of the "
+                        "POSTPROCESS half of the cell hash, so changing it never refits a probe")
+    g.add_argument("--wd-grid", type=float, nargs="+", default=None,
+                   help="override the shared weight-decay grid (normally left alone: the "
+                        "default is probing.phase1.PHASE1_WD_GRID, one grid for all three "
+                        "models and both quantile sets). Refused if any candidate has "
+                        "lr*wd >= 1 or equals the null baseline.")
     g.add_argument("--boot-b", type=int, default=PHASE1_BOOT_B)
     g.add_argument("--seed", type=int, default=0)
     g.add_argument("--quiet-probes", action="store_true")

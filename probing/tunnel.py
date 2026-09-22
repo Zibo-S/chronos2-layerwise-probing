@@ -21,6 +21,17 @@ saturation violation inside the tunnel. Under first-crossing it is NOT bounded b
 split — it is informative on BOTH the validation curve (does the plateau hold after entrance?)
 and the test curve (does the val-defined plateau hold out of sample?).
 
+TWO CRITERIA LIVE HERE, and which one a caller uses is part of that experiment's identity:
+  * ``tunnel_start``            FIRST-CROSSING (above). The criterion every COMMITTED Chronos-2 /
+                                TimesFM-3 / TiRex result was computed under; unchanged, so no
+                                published number moves.
+  * ``sustained_tunnel_start``  SUSTAINED ENTRY. The PHASE-1 HEADLINE from 2026-09-22: the
+                                earliest layer after which the excursion never again exceeds tol,
+                                i.e. M is bounded by tol BY DEFINITION inside the tunnel. An
+                                isolated early dip no longer opens one.
+Phase 1 reports both — the sustained entrance as "the tunnel", the first-crossing value beside it
+under the explicitly diagnostic name ``first_crossing_<tol>``.
+
 Tunnel-effect statistics (all on TEST loss, tunnel boundary frozen from validation):
     D(dataset; l_s)  = (L_test(last) - L_test(l_s)) / L_test(l_s)     # >0: last layer worse
     D_ID(s)          = D on source s's own test set at its own l_s
@@ -130,6 +141,84 @@ def tunnel_start(val_losses, tol=TUNNEL_TOL):
         if v[l] <= thr:
             return int(l)
     return int(v.size - 1)   # unreachable: v[last] <= (1+tol)*v[last] always holds
+
+
+# --------------------------------------------------------------------------- #
+# SUSTAINED-ENTRY criterion (Phase-1 headline from 2026-09-22 onward)
+# --------------------------------------------------------------------------- #
+# ``tunnel_start`` above is FIRST-CROSSING: the earliest layer that dips inside the band, even
+# if later layers climb back out. That makes an isolated early dip on a non-monotone curve read
+# as a tunnel entrance. The sustained rule below answers the stricter question the Phase-1
+# headline now asks -- "after which depth does the representation STAY recoverable?" -- and is
+# defined directly in terms of the suffix excursion that ``max_excursion`` already computes:
+#
+#     E_l = max_{j >= l} ( L(j) / L(last) - 1 )          (the worst violation from l onward)
+#     l_tunnel(tol) = min { l : E_l <= tol }
+#
+# Both functions stay: the committed Chronos-2 / TimesFM-3 / TiRex lines keep calling
+# ``tunnel_start`` and their published numbers do not move. Phase 1 calls
+# ``sustained_tunnel_start`` and reports the first-crossing value beside it, under a name that
+# says what it is.
+SUSTAINED_TUNNEL_DEFINITION = "sustained_suffix_v1"
+
+
+def suffix_excursion(losses):
+    """The full E_l curve: ``E[l] = max_{j >= l} (loss[j]/loss[last] - 1)``, one entry per layer.
+
+    NON-INCREASING in l by construction (the max is taken over a shrinking suffix), which is
+    what makes ``sustained_tunnel_start`` well defined and makes its entrance MONOTONE in the
+    tolerance: a larger tol can only admit an earlier (or equal) layer. ``E[last] == 0``, so a
+    non-negative tolerance is always satisfied somewhere and the scan can never come up empty.
+
+    ``max_excursion(losses, l) == suffix_excursion(losses)[l]`` exactly -- this is the same
+    statistic, computed for every l at once rather than for one boundary.
+    """
+    v = _validate_curve(losses)
+    r = v / v[-1] - 1.0
+    return np.maximum.accumulate(r[::-1])[::-1]
+
+
+def sustained_tunnel_start(val_losses, tol=TUNNEL_TOL):
+    """Tunnel boundary = SUSTAINED ENTRY: the earliest layer l such that l AND EVERY LATER LAYER
+    stay within ``tol`` of the last layer's loss.
+
+        l_tunnel(tol) = min { l : max_{j >= l} (val[j]/val[last] - 1) <= tol }
+
+    VALIDATION losses only. Strictly stronger than :func:`tunnel_start`: an isolated early dip
+    that a later hump climbs back out of does NOT open a tunnel, so the returned layer is always
+    >= the first-crossing layer. Inside the returned tunnel ``max_excursion`` is bounded by
+    ``tol`` by definition -- which is precisely what first-crossing could not promise.
+    """
+    tol = float(tol)
+    if tol < 0:
+        raise ValueError(f"tunnel tolerance must be >= 0, got {tol}")
+    v = _validate_curve(val_losses)
+    # The SAME comparison ``tunnel_start`` makes -- ``v[j] <= (1 + tol) * v[last]`` -- and
+    # deliberately NOT ``v[j]/v[last] - 1 <= tol``. The two are the same statement in exact
+    # arithmetic but differ in float rounding exactly ON the boundary (1.05/1.0 - 1 is
+    # 0.050000000000000044 > 0.05, while 1.05 <= 1.05 * 1.0 holds). Sharing the comparison is
+    # what guarantees the invariant ``sustained >= first_crossing`` for EVERY curve, including
+    # the boundary ones, and keeps the inclusive-at-(1+tol) rule test 34 pins.
+    out = np.flatnonzero(v > (1.0 + tol) * v[-1])
+    return int(out[-1] + 1) if out.size else 0
+
+
+def assert_tolerance_monotone(entrances):
+    """``entrances`` = {tol: layer}. Larger tolerance must give an earlier-or-equal entrance.
+
+    A THEOREM under :func:`sustained_tunnel_start` (E_l is non-increasing in l, so the admissible
+    set only grows with tol), so a violation is an implementation bug, not a property of the
+    data. Asserted anyway, because that is exactly the bug worth catching.
+    """
+    items = sorted(((float(t), int(l)) for t, l in entrances.items()), reverse=True)
+    for (t_hi, l_hi), (t_lo, l_lo) in zip(items, items[1:]):
+        if l_hi > l_lo:
+            raise RuntimeError(
+                f"tunnel entrance is not monotone in the tolerance: tol={t_hi:g} gives layer "
+                f"{l_hi} but the STRICTER tol={t_lo:g} gives the earlier layer {l_lo}. Under "
+                "the sustained rule this cannot happen for any curve -- it is an implementation "
+                f"bug. Full map: {dict(sorted(entrances.items()))}")
+    return True
 
 
 def max_excursion(losses, l_start):

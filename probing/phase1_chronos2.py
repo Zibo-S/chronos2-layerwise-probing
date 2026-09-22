@@ -55,14 +55,19 @@ __all__ = ["MODEL", "EPOCHS", "LR", "WD_GRID", "POINT_KEYS", "extract", "fit_lay
 MODEL = "chronos2"
 EPOCHS = 300
 LR = 1e-2
-#: The Chronos-2 line's own shared grid (``probes.WD_GRID_V2``), untouched. It is deliberately
-#: NOT the TimesFM-3 / TiRex grid: those were extended to 10/30 after MEASURING grid-max
-#: clipping on their own much larger probes (737k and a rank-deficient recurrent state). The
-#: Chronos-2 shared-slot probe is 768*144 + 144 = 110,736 parameters on 4*1394 = 5576 slot rows,
-#: the most favourable ratio of the three, and the committed runs do not clip. The driver reports
-#: clipping per (dataset, depth) regardless, so if it does clip here that is a finding to act on,
-#: not something to paper over.
-WD_GRID = WD_GRID_V2
+#: THE PHASE-1 GRID — ``phase1.PHASE1_WD_GRID``, the SAME 13 candidates all three models use,
+#: for Q=9 and Q=1 alike, so no cross-model or cross-Q difference can be a difference in the
+#: search space. ``probes.WD_GRID_V2`` (imported above and asserted to be a subset) remains the
+#: Chronos-2 LINE's own grid and is untouched, so every committed non-Phase-1 Chronos-2 result
+#: keeps its exact protocol.
+#:
+#: An earlier version of this comment claimed "the committed runs do not clip" here. THAT WAS
+#: FALSIFIED by the first Phase-1 run: chronos2 x m4_hourly selected the old maximum 3.0 at 9 of
+#: 14 depths (Emb, L5-L9, L11, L12, L12+LN), with validation still improving at the ceiling.
+#: The old Chronos-2 grid was in fact the NARROWEST of the three and clipped hardest.
+WD_GRID = phase1.PHASE1_WD_GRID
+assert phase1.wd_grid_is_superset_of(WD_GRID, WD_GRID_V2), \
+    "the Phase-1 grid must retain every legacy Chronos-2 candidate"
 
 #: Feature-dict keys of the 14 representation points, in depth order. Keys 0..12 are the
 #: block-hook states (L0 = Emb, L1..L12 = block outputs); key 13 = NUM_LAYERS is the
@@ -171,6 +176,9 @@ def fit_layerwise(tag: str, data: dict, *, quantiles, median_idx: int, device: s
     device = device or ("cuda" if torch.cuda.is_available() else "cpu")
     q = validate_quantiles(quantiles)
     Q = len(q)
+    # probes.fit_shared_forecast_probe_explicit_val has no lr*wd guard of its own (the TimesFM-3
+    # and TiRex fitters do), so Phase 1 applies the shared one here, before any fitting.
+    wd_grid = phase1.assert_wd_grid(wd_grid, lr, null_wd=phase1.PHASE1_WD_NULL)
     tr, va, te = data["train"], data["val"], data["test"]
 
     fitted = fit_shared_forecast_probe_explicit_val(
@@ -219,6 +227,12 @@ def fit_layerwise(tag: str, data: dict, *, quantiles, median_idx: int, device: s
     res["val_window_loss"] = np.stack(res["val_window_loss"])
     res["test_window_loss"] = np.stack(res["test_window_loss"])
     res["probe_description"] = f"Linear(768, {Q}*{OUTPUT_PATCH_SIZE}) shared across K=4 slots"
+    res["wd_grid"] = [float(w) for w in wd_grid]
+    # The closed-form no-information floor. No fit, so no weight decay can reach or distort it;
+    # it is what makes a grid-maximum selection readable as "this depth's optimum IS the floor"
+    # rather than "the search was cut off".
+    res["constant_forecast_floor"] = phase1.constant_forecast_floor(
+        tr["Y"], {"train": tr["Y"], "val": va["Y"], "test": te["Y"]}, q)
     return res
 
 

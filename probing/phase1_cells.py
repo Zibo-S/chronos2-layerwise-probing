@@ -9,7 +9,11 @@ THE DURABILITY RULE. ``results/three_model_final/`` must contain enough to regen
 Phase-1 figure WITHOUT re-running a foundation model. That means, per cell:
 
     layer_metrics.csv        per-depth train/val/test loss + MASE/MAE/WQL + CIs + hyperparams
-    tunnel.json              the validation-defined entrance at every tolerance
+                             + val/test ratio to the final block and the suffix excursion
+    tunnel.json              the validation-defined SUSTAINED entrance at every tolerance, with
+                             the first-crossing statistic beside it as a named diagnostic
+    wd_selection.csv         per depth: selected wd, the grid, min/max flags and EVERY
+                             candidate's validation loss -> "is the grid still clipped?"
     bootstrap_inputs.npz     the PER-WINDOW metric arrays and the cluster ids -> any CI can be
                              recomputed, at any B, without the model
     predictions_{val,test}.npz   the full (n, Q, H) forecasts, the targets, the raw contexts and
@@ -55,6 +59,17 @@ def layer_metric_rows(model: str, tag: str, spec, res: dict, boot: dict, tun: di
     ``is_reference_point`` marks the final BLOCK, which is what "final-depth probe loss" means.
     """
     ent = tun["headline"]["index"]
+    # Per-tolerance entrance indices, sustained AND first-crossing, so a figure can mark either
+    # without re-deriving a criterion. The keys are exactly the ones tunnel.json carries.
+    ent_by_tol = {e["tolerance"]: e["index"] for e in tun["by_tolerance"].values()}
+    fc_by_tol = {e["tolerance"]: e["index"] for e in tun.get("first_crossing", {}).values()}
+    # R_l / R_L per DEPTH (spec section 9). Indexed by depth-axis position, so a head-input
+    # diagnostic simply has no ratio -- it has no final-block reference to be a ratio against.
+    dep = tun["depth_axis_indices"]
+    val_ratio = dict(zip(dep, tun.get("val_ratio_by_depth", [])))
+    test_ratio = dict(zip(dep, tun.get("test_ratio_by_depth", [])))
+    val_exc = dict(zip(dep, tun.get("val_suffix_excursion_by_depth", [])))
+    test_exc = dict(zip(dep, tun.get("test_suffix_excursion_by_depth", [])))
     rows = []
     for i, p in enumerate(spec.points):
         r = {"model": model, "dataset": tag, "display_name": registry.display_name(tag),
@@ -70,10 +85,20 @@ def layer_metric_rows(model: str, tag: str, spec, res: dict, boot: dict, tun: di
              "train_loss": res["train_loss"][i],
              "val_loss": res["val_loss"][i],
              "test_loss": res["test_loss"][i],
+             # R_l / R_L on each split, and the suffix excursion the criterion actually reads.
+             # VALIDATION selects; the TEST twin is descriptive and never enters a selection.
+             "val_ratio_to_final": val_ratio.get(i, ""),
+             "test_ratio_to_final": test_ratio.get(i, ""),
+             "val_suffix_excursion": val_exc.get(i, ""),
+             "test_suffix_excursion": test_exc.get(i, ""),
              "weight_decay": res["wd"][i],
              "wd_at_grid_max": res["wd_at_grid_max"][i],
              "wd_at_grid_min": res["wd_at_grid_min"][i],
              "n_probe_params": res["n_params"][i]}
+        for t, idx in ent_by_tol.items():
+            r[f"is_tunnel_entrance_{t:g}"] = bool(i == idx)
+        for t, idx in fc_by_tol.items():
+            r[f"is_first_crossing_{t:g}"] = bool(i == idx)
         for name, key in (("test_loss", "loss"), ("test_mase", "mase"),
                           ("test_mae", "mae"), ("test_wql", "wql")):
             b = boot.get(key)
@@ -197,16 +222,18 @@ def save_cell(stage: Path, *, model: str, tag: str, spec, cfg: dict, config_hash
                       "n_params": res["n_params"][i],
                       "val_loss_by_wd": res["selection"][i]}
                      for i in range(spec.n_points)],
-        "grid_clipping": {
-            "n_layers_at_grid_max": int(sum(res["wd_at_grid_max"])),
-            "n_layers_at_grid_min": int(sum(res["wd_at_grid_min"])),
-            "layers_at_grid_max": [spec.labels[i] for i in range(spec.n_points)
-                                   if res["wd_at_grid_max"][i]],
-            "meaning": ("a selected weight decay sitting at the grid MAXIMUM is a clipped "
-                        "search, not a converged selection; it is reported as a decision to "
-                        "make, never silently accepted")},
+        "grid_clipping": _grid_clipping(spec, res, cfg),
         "null_baseline": res.get("null_baseline"),
         "constant_forecast_floor": res.get("constant_forecast_floor")})
+
+    # ---- weight-decay selection table ------------------------------------ #
+    # Its own artifact, and a REQUIRED one: "is the expanded grid still clipped?" is the first
+    # question this rerun exists to answer, and it must be answerable from a CSV rather than by
+    # parsing nested JSON. One row per probed point, every candidate's validation loss on it.
+    wd_rows = phase1.wd_selection_rows(model, tag, spec, res, cfg.get("wd_grid") or [],
+                                       lr=cfg.get("probe_lr"),
+                                       floor=res.get("constant_forecast_floor"))
+    phase1.write_csv(stage / "wd_selection.csv", wd_rows)
 
     # ---- geometry --------------------------------------------------------- #
     er_rows = effective_rank_rows(model, tag, geom_blocks)
@@ -331,11 +358,26 @@ def save_cell(stage: Path, *, model: str, tag: str, spec, cfg: dict, config_hash
                           "test": res["test_loss"]},
         "per_quantile_test_loss": res.get("per_quantile_test"),
         "tunnel": tun["headline"],
+        "tunnel_definition": tun["definition"],
+        "tunnel_definition_caveat": tun.get("definition_caveat"),
         "tunnel_all_tolerances": {k: {"tolerance": v["tolerance"], "label": v["label"],
                                       "index": v["index"],
                                       "depth_axis_index": v["depth_axis_index"],
                                       "relative_depth": v["relative_depth"]}
                                   for k, v in tun["by_tolerance"].items()},
+        # The OLD first-crossing statistic, under a name that says what it is. It is NOT the
+        # tunnel and no table may label it one.
+        "first_crossing_diagnostic": {k: {"tolerance": v["tolerance"], "label": v["label"],
+                                          "index": v["index"],
+                                          "depth_axis_index": v["depth_axis_index"],
+                                          "relative_depth": v["relative_depth"]}
+                                      for k, v in tun.get("first_crossing", {}).items()},
+        "generalization_at_entrance": tun.get("generalization_at_entrance"),
+        "val_ratio_by_depth": tun.get("val_ratio_by_depth"),
+        "test_ratio_by_depth": tun.get("test_ratio_by_depth"),
+        "wd_grid": cfg.get("wd_grid"),
+        "wd_selection": _grid_clipping(spec, res, cfg),
+        "constant_forecast_floor": res.get("constant_forecast_floor"),
         "bootstrap": {k: {kk: vv for kk, vv in v.items() if kk != "boot"}
                       for k, v in boot.items()},
         "native_baseline": _native_summary(native),
@@ -362,6 +404,43 @@ def save_cell(stage: Path, *, model: str, tag: str, spec, cfg: dict, config_hash
     }
     phase1.atomic_write_json(stage / "summary.json", summary)
     return summary
+
+
+def _grid_clipping(spec, res: dict, cfg: dict) -> dict:
+    """Is the selected weight decay AT a grid edge, and does that edge still mean anything?
+
+    Under the EXPANDED grid the maximum (90 at lr=1e-2) sits within ~1e-3 relative of the
+    bias-only floor, so "at the grid maximum" no longer automatically means "the search was cut
+    off". The two readings are told apart by the closed-form ``constant_forecast_floor``, which
+    is carried here so the distinction is a measurement, not a hope.
+    """
+    n = spec.n_points
+    floor = (res.get("constant_forecast_floor") or {}).get("val_loss")
+    at_max = [spec.labels[i] for i in range(n) if res["wd_at_grid_max"][i]]
+    out = {
+        "n_layers_at_grid_max": int(sum(res["wd_at_grid_max"])),
+        "n_layers_at_grid_min": int(sum(res["wd_at_grid_min"])),
+        "fraction_at_grid_max": float(sum(res["wd_at_grid_max"])) / n,
+        "fraction_at_grid_min": float(sum(res["wd_at_grid_min"])) / n,
+        "layers_at_grid_max": at_max,
+        "layers_at_grid_min": [spec.labels[i] for i in range(n) if res["wd_at_grid_min"][i]],
+        "median_selected_wd": float(np.median(np.asarray(res["wd"], np.float64))),
+        "selected_wd_by_layer": {spec.labels[i]: float(res["wd"][i]) for i in range(n)},
+        "grid_max": float(max(cfg.get("wd_grid") or [float("nan")])),
+        "grid_min": float(min(cfg.get("wd_grid") or [float("nan")])),
+        "lr": cfg.get("probe_lr"),
+        "meaning": ("a selected weight decay at the grid MAXIMUM is reported as a decision to "
+                    "make, never silently accepted. Read it together with "
+                    "val_loss_over_constant_forecast_floor below: a ratio near 1 means the "
+                    "depth's validation optimum IS the no-information floor (a finding), a "
+                    "ratio well below 1 means the search really was cut off (widen the grid)")}
+    if floor:
+        out["constant_forecast_floor_val_loss"] = float(floor)
+        out["val_loss_over_constant_forecast_floor"] = {
+            spec.labels[i]: float(res["val_loss"][i]) / float(floor) for i in range(n)}
+        out["at_grid_max_val_over_floor"] = {
+            lab: float(res["val_loss"][spec.labels.index(lab)]) / float(floor) for lab in at_max}
+    return out
 
 
 def _slug(label: str) -> str:

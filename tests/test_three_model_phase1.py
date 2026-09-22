@@ -869,18 +869,24 @@ def test_32_tunnel_calls_the_shared_criterion():
 
 
 def test_33_tunnel_is_validation_only():
+    """The entrance depends only on the validation curve -- and, under the SUSTAINED rule, the
+    isolated dip at index 3 does not open a tunnel while the hump at 4..9 is still outside the
+    band. The old first-crossing answer (3) survives as the named diagnostic."""
     spec = model_spec("tirex")
     val = np.array([9, 8, 7, 1.02, 1.5, 1.4, 1.3, 1.2, 1.15, 1.1, 1.05, 1.02, 1.0, 1.0])
     for test in (np.linspace(5, 1, 14), np.linspace(1, 5, 14), np.ones(14)):
         r = phase1.tunnel_record(spec, val, test)
-        assert r["headline"]["index"] == 3, (r["headline"]["index"], test[:3])
+        assert r["headline"]["index"] == 10, (r["headline"]["index"], test[:3])
+        assert r["first_crossing"]["first_crossing_0.05"]["index"] == 3, r["first_crossing"]
         assert r["split_used"] == "validation" and r["test_never_used_for_selection"]
+        assert r["definition"] == phase1.TUNNEL_DEFINITION_VERSION == "sustained_suffix_v1"
     # the driver must not pass test losses into the selection
     import inspect
     from experiments import run_three_model_phase1 as drv
     src = inspect.getsource(drv.run_cell)
     assert 'tunnel_record(spec, res["val_loss"], res["test_loss"]' in src
-    print(" 33  the entrance depends ONLY on the validation curve (3 different test curves) OK")
+    print(" 33  the entrance depends ONLY on the validation curve (3 different test curves); "
+          "the isolated dip does NOT open a sustained tunnel  OK")
 
 
 def test_34_five_percent_criterion_unchanged():
@@ -918,10 +924,14 @@ def test_35_known_curve_gives_expected_entrance():
             assert h["label"] == p.label and h["point_type"] == phase1.BLOCK_DEPTH
             assert abs(h["relative_depth"] - p.block_index / spec.num_blocks) < 1e-12
             assert r["reference_point"] == spec.reference_label
-        # U-shaped: entrance at the first dip even with a later hump
+        # U-shaped: the first dip is an ISOLATED crossing -- the later hump climbs back out, so
+        # the SUSTAINED rule opens no tunnel until the final depth. First crossing still says 1,
+        # under its own name. This is the whole behavioural difference, pinned.
         v = np.full(n, 3.0)
         v[dep[0]], v[dep[1]], v[dep[-1]] = 5.0, 0.5, 1.0
-        assert phase1.tunnel_record(spec, v)["headline"]["depth_axis_index"] == 1
+        r = phase1.tunnel_record(spec, v)
+        assert r["headline"]["depth_axis_index"] == nd - 1, (model, r["headline"])
+        assert r["first_crossing"]["first_crossing_0.05"]["depth_axis_index"] == 1
         # monotone-decreasing: entrance only at the final depth
         v = np.full(n, 99.0)
         v[dep] = np.linspace(10, 1, nd)
