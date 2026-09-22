@@ -1,0 +1,55 @@
+{
+  "protocol": "phase1/v1",
+  "model": "timesfm3",
+  "dataset": "monash_traffic",
+  "C": 512,
+  "H": 64,
+  "quantile_set": "q9",
+  "quantiles": [
+    0.1,
+    0.2,
+    0.3,
+    0.4,
+    0.5,
+    0.6,
+    0.7,
+    0.8,
+    0.9
+  ],
+  "num_quantiles": 9,
+  "suite": "paper14",
+  "seed": 0,
+  "boot_b": 5000,
+  "tunnel_tol": 0.05,
+  "window_digest": "sha256:038eaf0f24540d708ec5b35b530b87723fc196518b80c2e441e2127aac813817",
+  "registry_hash": "sha256:b3041cc47f0851c4f83a0187aec1403952c43195f4404485a6782fc2908c18bd",
+  "probe_epochs": 300,
+  "probe_lr": 0.01,
+  "geometry_splits": [
+    "test",
+    "train"
+  ],
+  "cka_estimators": [
+    "unbiased",
+    "biased"
+  ],
+  "checkpoint": "google/timesfm-3.0-pytorch",
+  "wd_grid": [
+    1e-05,
+    0.0001,
+    0.001,
+    0.01,
+    0.1,
+    0.3,
+    1.0,
+    3.0,
+    10.0,
+    30.0
+  ],
+  "null_wd": 100.0,
+  "extract_batch_size": 64,
+  "feature_dtype": "float32",
+  "detrend": true,
+  "readout": "last_real_context_token",
+  "config_hash": "sha256:2499b063f04b85b3180fbfa71d597efc8f0867054573c9c0e5501d8584fd8e76"
+}
