@@ -148,155 +148,52 @@ def windows_for(tag: str, suite: str, args):
 # window parity with the committed Chronos-2 run
 # --------------------------------------------------------------------------- #
 
-def chronos_reference(tag: str, root=CHRONOS_REF_ROOT):
-    """The committed Chronos-2 artifacts for ``tag``: window counts + per-window test series ids.
+# The implementation now lives in probing/window_parity.py so the TiRex line and the Phase-1
+# orchestrator call the SAME comparison rather than re-typing it (a re-typed comparison is a
+# comparison that can drift). These thin wrappers keep this module's public names, and thread in
+# the legacy Chronos-2-relative KIND string, which is a decoration of THIS driver's record and
+# deliberately not something the shared module invents.
+from probing.window_parity import (CHRONOS_REF_ROOT as _WP_ROOT,  # noqa: E402
+                                   assert_window_parity as _wp_assert,
+                                   chronos_reference as _wp_chronos_reference,
+                                   window_identity as _wp_identity,
+                                   window_reference_for as _wp_reference_for)
 
-    configs/native_head_adapter__<tag>__config.json  -> n_train / n_val / n_test / C / H / kind
-    bootstrap_inputs/native_head_adapter__<tag>.npz  -> series_test, one id per test window
-    Returns None when the dataset is not part of that committed run (e.g. KDD / pedestrian).
-    """
-    cfg = Path(root) / "configs" / f"native_head_adapter__{tag}__config.json"
-    npz = Path(root) / "bootstrap_inputs" / f"native_head_adapter__{tag}.npz"
-    if not (cfg.exists() and npz.exists()):
-        return None
-    c = json.loads(cfg.read_text())
-    with np.load(npz, allow_pickle=False) as z:
-        sid = np.asarray(z["series_test"], np.int64)
-    return {"config": c, "series_test": sid,
-            "paths": {"config": str(cfg.relative_to(REPO_ROOT)),
-                      "bootstrap_inputs": str(npz.relative_to(REPO_ROOT))}}
+assert _WP_ROOT == CHRONOS_REF_ROOT, "the shared parity module points at a different committed run"
+
+
+def chronos_reference(tag: str, root=CHRONOS_REF_ROOT):
+    """The committed Chronos-2 artifacts for ``tag`` (see probing.window_parity)."""
+    return _wp_chronos_reference(tag, root)
 
 
 def window_reference_for(tag, root=None):
-    """The reference this dataset is checked against, or None.
-
-    Committed Chronos-2 artifacts win over written references, so the original seven keep being
-    compared against exactly what they always were.
-    """
-    return wref.resolve_reference(tag, chronos_reference, root)
+    """The reference this dataset is checked against, or None (see probing.window_parity)."""
+    return _wp_reference_for(tag, root)
 
 
 def window_identity(tag, w):
-    """The reportable identity of one dataset's windows (counts + the first few identifiers)."""
-    sid = np.asarray(w["series_test"], np.int64)
-    origins = (w["meta"].get("origins", {}) or {}).get("test")
-    ids = ([f"s{int(a)}@t{int(b)}" for a, b in zip(sid[:6], origins[:6])] if origins
-           else [f"s{int(a)}" for a in sid[:6]])
-    return {"dataset": tag, "short": registry.display_name(tag),
-            "kind": KIND.get(tag, "not_applicable"), "role": registry.role(tag),
-            "seasonal_m": registry.seasonal_m(tag), "builder": registry.builder(tag),
-            "split_mode": w["meta"].get("split_mode"),
-            "n_train_windows": int(len(w["X_train"])),
-            "n_val_windows": int(len(w["X_val"])) if "X_val" in w else None,
-            "n_test_windows": int(len(sid)),
-            "n_test_series": int(len(np.unique(sid))),
-            "cluster_unit": w["meta"].get("cluster_unit", "series"),
-            "first_test_identifiers": ids,
-            "test_series_first6": [int(x) for x in sid[:6]]}
+    """This driver's identity record: the shared one plus the legacy PT-ID/PT-OOD KIND label."""
+    return _wp_identity(tag, w, {"kind": KIND.get(tag, "not_applicable")})
 
 
 def assert_window_parity(tag, w, ref, *, strict=True, reference_mode="require",
                          created_by="python -m experiments.run_timesfm3_last_token_probing",
                          reference_root=None, force_reference=False):
-    """Every model must receive the SAME x[1:512] -> x[513:576] windows.
-
-    Checks, against the reference: C, H, seasonal m, the train/val/test window COUNTS, and --
-    the decisive one -- the per-window test series/cluster ids ELEMENT-WISE (plus, for written
-    references, a digest of the test contexts themselves). Raises on any mismatch unless
-    ``strict=False`` (then the failures are reported and carried in the record).
-
-    ``reference_mode`` decides what a MISSING reference means. It used to mean "carry on with
-    parity_ok=None", which reads like a pass; a dataset added after the committed Chronos-2 run
-    could therefore be probed by a second model with nothing checking the windows at all.
-      require       -- abort, naming the command that would create the reference (default);
-      create        -- write the reference from THESE windows, then proceed;
-      allow-missing -- the old permissive behavior, now opt-in and never for reported numbers.
-    """
-    ident = window_identity(tag, w)
-    if ref is None:
-        if reference_mode == "require":
-            raise wref.MissingReferenceError(wref.missing_reference_message(tag, created_by))
-        if reference_mode == "create":
-            rec = wref.write_reference(tag, w, created_by=created_by, root=reference_root,
-                                       force=force_reference)
-            print(f"  [window reference CREATED] {rec['paths']['json']}\n"
-                  f"      digest {rec['window_digest']}  -- every later run of any model line "
-                  f"is now checked against these windows")
-            ident.update(chronos_parity="reference_created", parity_ok=None,
-                         reference_kind="window_reference", reference_created=True,
-                         window_reference=rec["paths"])
-            return ident
-        if reference_mode == "allow-missing":
-            ident.update(chronos_parity="NO REFERENCE (unchecked)", parity_ok=None,
-                         reference_kind=None,
-                         parity_warning="windows are UNVERIFIED against any other model; this "
-                                        "run must not be used for a cross-model claim")
-            print(f"  [WARNING] {tag}: no window reference and --reference-mode allow-missing; "
-                  f"cross-model window parity is UNCHECKED for this dataset")
-            return ident
-        raise ValueError(f"unknown reference mode {reference_mode!r}; "
-                         f"known: {wref.REFERENCE_MODES}")
-
-    if ref.get("kind") == "window_reference":
-        fails = wref.compare_to_reference(tag, w, ref)
-        ident.update(chronos_parity="match" if not fails else "MISMATCH",
-                     parity_ok=not fails, parity_failures=fails,
-                     reference_kind="window_reference", window_reference=ref["paths"])
-        if fails and strict:
-            raise RuntimeError(
-                f"WINDOW PARITY FAILED for {tag}: these windows differ from the reference "
-                f"every other run was checked against.\n    " + "\n    ".join(fails) +
-                f"\n  Reference: {ref['paths']['json']}.\n"
-                "  Fix the window construction -- do NOT proceed with mismatched windows.")
-        return ident
-    c, m = ref["config"], w["meta"]
-    sid = np.asarray(w["series_test"], np.int64)
-    rsid = ref["series_test"]
-    fails = []
-    for name, got, want in (("C", m.get("C"), c["C"]), ("H", m.get("H"), c["H"]),
-                            ("seasonal_m", m.get("m_season"), c["seasonal_m"]),
-                            ("n_train", int(len(w["X_train"])), c["n_train"]),
-                            ("n_test", int(len(sid)), c["n_test"])) + (
-                            (("kind", KIND.get(tag), c["kind"]),) if tag in KIND else ()):
-        if got != want:
-            fails.append(f"{name}: TimesFM={got!r} vs Chronos-2={want!r}")
-    if "X_val" in w and int(len(w["X_val"])) != c["n_val"]:
-        fails.append(f"n_val: TimesFM={len(w['X_val'])} vs Chronos-2={c['n_val']}")
-    if sid.shape != rsid.shape:
-        fails.append(f"series_test shape: {sid.shape} vs {rsid.shape}")
-    elif not np.array_equal(sid, rsid):
-        d = int((sid != rsid).sum())
-        first = int(np.flatnonzero(sid != rsid)[0])
-        fails.append(f"series_test differs in {d}/{len(sid)} windows (first at index {first}: "
-                     f"{int(sid[first])} vs {int(rsid[first])})")
-    ident.update(chronos_parity="match" if not fails else "MISMATCH",
-                 parity_ok=not fails, parity_failures=fails,
-                 reference_kind="committed_chronos2", chronos_reference=ref["paths"],
-                 chronos_counts={"n_train": c["n_train"], "n_val": c["n_val"],
-                                 "n_test": c["n_test"], "dataset_set": c["dataset_set"]})
-    if fails and strict:
-        raise RuntimeError(
-            f"WINDOW PARITY FAILED for {tag}: TimesFM-3 is not being evaluated on the same "
-            f"windows as Chronos-2.\n    " + "\n    ".join(fails) +
-            f"\n  Reference: {ref['paths']['config']} + {ref['paths']['bootstrap_inputs']}.\n"
-            "  Fix the window construction -- do NOT proceed with mismatched windows.")
-    return ident
+    """Every model must receive the SAME x[1:512] -> x[513:576] windows (probing.window_parity)."""
+    return _wp_assert(tag, w, ref, strict=strict, reference_mode=reference_mode,
+                      created_by=created_by, reference_root=reference_root,
+                      force_reference=force_reference,
+                      extra_ident={"kind": KIND.get(tag, "not_applicable")},
+                      model_label="TimesFM-3")
 
 
 def parity_for(tag, w, args, created_by, strict=None):
-    """THE parity entry point every model driver calls.
-
-    One function so the reference lookup, the reference-mode policy and the failure wording can
-    never drift between the Chronos-2, TimesFM-3 and TiRex lines. ``getattr`` defaults mean a
-    driver that has not yet grown the CLI flags still gets the SAFE behavior (``require``)
-    rather than the permissive one.
-    """
-    return assert_window_parity(
-        tag, w, window_reference_for(tag),
-        strict=(not getattr(args, "allow_window_mismatch", False)) if strict is None else strict,
-        reference_mode=getattr(args, "reference_mode", "require"),
-        created_by=created_by,
-        force_reference=getattr(args, "force_reference", False))
+    """THE parity entry point (probing.window_parity.parity_for), with this line's KIND label."""
+    from probing.window_parity import parity_for as _wp_parity_for
+    return _wp_parity_for(tag, w, args, created_by, strict=strict,
+                          extra_ident={"kind": KIND.get(tag, "not_applicable")},
+                          model_label="TimesFM-3")
 
 
 def add_reference_args(group):

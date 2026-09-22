@@ -287,6 +287,7 @@ def last_token_layerwise(train_feats, train_targets, train_valid,
                          wd_grid=WD_GRID_LAST_TOKEN, weight_decay: float = 1e-3,
                          null_wd: float = WD_NULL_BASELINE, device=None,
                          batch_size: int = 0, layers=None, collect_history: bool = False,
+                         collect_probe: bool = False,
                          verbose: bool = True, model_for_grad_check=None):
     """One independent probe per representation point. Returns ({layer: test Q9 loss}, diag).
 
@@ -304,6 +305,12 @@ def last_token_layerwise(train_feats, train_targets, train_valid,
     CARVE (``val_feats`` omitted) -- the legacy auto-split sets (e.g. extended_v1), where there
     is no dedicated val split: select on the seed-based 80/20 carve of TRAIN WINDOWS (scaler and
     probe fit on the 80% only), then REFIT scaler + probe on all valid train windows.
+
+    ``collect_probe=True`` ADDITIONALLY records, per layer, the frozen probe parameters
+    (weight / bias / scaler) and the FULL (n, Q, H) validation and test predictions plus the
+    per-window validation loss. It is off by default and changes nothing that is computed --
+    it only stops a caller (the Phase-1 pipeline) from having to re-implement this fit loop in
+    order to save predictions it can re-plot later without a GPU.
 
     Either way ``diag["val_loss"]`` is the curve the 5% tunnel entrance is computed from and it
     never sees test; ``diag["val_source"]`` records which protocol ran. Test scoring is
@@ -367,6 +374,7 @@ def last_token_layerwise(train_feats, train_targets, train_valid,
                   "n_test_rows": int(te_rows.size), "test_rows": te_rows,
                   "val_source": val_source, "val_rows": va_rows,
                   "selection_train_windows": sel_tr, "validation_windows": va_rows,
+                  "probe": {}, "test_pred": {}, "val_pred": {}, "val_window_loss": {},
                   "layers": layers, "layer_names": [LAYER_NAMES[i] for i in layers],
                   "quantiles": q_np.tolist(), "num_quantiles": Q}
 
@@ -486,6 +494,25 @@ def last_token_layerwise(train_feats, train_targets, train_valid,
             diag["test_median_pred"][i] = pred[:, med_idx, :].cpu().numpy(
                 ).astype(np.float32)
             diag["test_per_quantile"][i] = per_quantile_loss(pred, yte, q)
+            if collect_probe:
+                # The frozen probe and its full predictions. Saved so every Phase-1 figure --
+                # calibration, per-quantile, per-window distributions -- can be regenerated
+                # WITHOUT re-running the backbone. The val prediction is produced with the same
+                # frozen (scaler, linear) pair that produced the test one.
+                diag["test_pred"][i] = pred.cpu().numpy().astype(np.float32)
+                Xva_f = torch.as_tensor(
+                    sc.transform(np.asarray(val_feats[i][va_rows], np.float32)),
+                    dtype=torch.float32, device=device)
+                vpred = reshape_prediction(lin(Xva_f), H, Q)
+                diag["val_pred"][i] = vpred.cpu().numpy().astype(np.float32)
+                diag["val_window_loss"][i] = pinball_loss_per_window(
+                    vpred, yva_sel, q).cpu().numpy().astype(np.float64)
+                diag["probe"][i] = {
+                    "weight": lin.weight.detach().cpu().numpy().astype(np.float32),
+                    "bias": lin.bias.detach().cpu().numpy().astype(np.float32),
+                    "scaler_mean": np.asarray(sc.mean_, np.float64),
+                    "scaler_scale": np.asarray(sc.scale_, np.float64)}
+                del Xva_f, vpred
             if null_m is not None:
                 # same scaler the null was TRAINED with (sc_sel); in the explicit-val protocol
                 # that IS sc, so this is one transform, not two

@@ -55,7 +55,8 @@ from probing.tunnel import TUNNEL_TOL, tunnel_start
 
 __all__ = ["TAU", "QUANTILES_Q1", "WD_GRID_TIREX", "WD_DECOUPLED_LIMIT", "assert_wd_grid",
            "EPOCHS", "LR", "make_shared_patch_probe",
-           "probe_forward", "pinball_tau_half", "tau_half_is_half_mae", "fit_shared_patch_probe",
+           "probe_forward", "pinball", "pinball_tau_half", "tau_half_is_half_mae",
+           "fit_shared_patch_probe", "predict_quantiles",
            "layerwise_probe", "native_median_reference", "tunnel_entrance", "tunnel_entrances",
            "per_patch_losses", "representation_norms", "constant_forecast_floor", "predict",
            "per_window_loss"]
@@ -112,28 +113,57 @@ def assert_wd_grid(wd_grid, lr: float = LR) -> tuple:
 # the probe
 # --------------------------------------------------------------------------- #
 def make_shared_patch_probe(d: int = MODEL_DIMS, out_patch: int = 32, device="cpu",
-                            seed: int = SEED, bias: bool = True) -> torch.nn.Linear:
-    """ONE ``Linear(d, out_patch)``. Bias ON: the existing project convention is a biased linear
-    probe with the bias excluded from weight decay (probes._fit_quantile_linear)."""
+                            seed: int = SEED, bias: bool = True,
+                            num_quantiles: int = 1) -> torch.nn.Linear:
+    """ONE ``Linear(d, num_quantiles * out_patch)``. Bias ON: the existing project convention is
+    a biased linear probe with the bias excluded from weight decay (probes._fit_quantile_linear).
+
+    ``num_quantiles`` defaults to 1, which reproduces the validated Q=1 ``Linear(512, 32)``
+    EXACTLY -- same shape, same seed, same init. Q=9 gives ``Linear(512, 288)``, matching the
+    native ``output_patch_embedding``'s own 288 = 9 x 32 output width."""
     torch.manual_seed(seed)
-    return torch.nn.Linear(d, out_patch, bias=bias).to(device)
+    return torch.nn.Linear(d, int(num_quantiles) * out_patch, bias=bias).to(device)
 
 
-def probe_forward(probe: torch.nn.Linear, X: torch.Tensor) -> torch.Tensor:
-    """(B, K, d) -> (B, 1, K*out_patch). ONE weight tensor, applied to every position.
+def probe_forward(probe: torch.nn.Linear, X: torch.Tensor,
+                  num_quantiles: int = 1) -> torch.Tensor:
+    """(B, K, d) -> (B, Q, K*out_patch). ONE weight tensor, applied to every position.
 
-    The (B, 1, H) layout is ``probes._check_pred_shape``'s (B, Q, H) contract at Q=1, so the
-    shared project loss functions apply without a TiRex-specific variant."""
+    The flat per-token output is read QUANTILE-MAJOR -- ``unflatten(-1, (Q, P))`` -- which is
+    TiRex's own native layout in ``_forecast_quantiles`` (and the opposite of TimesFM-3's
+    horizon-major head). The K predicted patches are then laid end to end along the horizon,
+    exactly as the native path concatenates its output patches.
+
+    At ``num_quantiles=1`` this is BIT-IDENTICAL to the original ``reshape(B, 1, -1)``: the
+    view/permute/reshape chain visits (k, p) in the same order. A contract test pins that.
+
+    The (B, Q, H) layout is ``probes._check_pred_shape``'s contract, so the shared project loss
+    functions apply without a TiRex-specific variant."""
     if X.ndim != 3 or X.shape[-1] != probe.in_features:
         raise ValueError(f"probe input must be (B, K, {probe.in_features}), got {tuple(X.shape)}")
-    per_patch = probe(X)                                     # (B, K, out_patch)
-    return per_patch.reshape(X.shape[0], 1, -1)              # (B, 1, K*out_patch) = (B, 1, H)
+    Q = int(num_quantiles)
+    out_patch, rem = divmod(probe.out_features, Q)
+    if rem:
+        raise ValueError(f"probe out_features {probe.out_features} is not divisible by "
+                         f"num_quantiles {Q}; the head cannot emit whole output patches")
+    B, K = X.shape[0], X.shape[1]
+    per_patch = probe(X).view(B, K, Q, out_patch)            # quantile-major, the native layout
+    return per_patch.permute(0, 2, 1, 3).reshape(B, Q, K * out_patch)   # (B, Q, H)
 
 
 def pinball_tau_half(pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
     """The training objective and the reported loss: mean pinball at tau=0.5.
     ``pred`` (B, 1, H), ``target`` (B, H). Delegates to the project-wide implementation."""
     q = torch.as_tensor([TAU], dtype=torch.float32, device=pred.device)
+    return mean_pinball_loss(pred, target, q)
+
+
+def pinball(pred: torch.Tensor, target: torch.Tensor, q: torch.Tensor) -> torch.Tensor:
+    """Mean pinball over (B, Q, H) -- the general-Q objective and reported loss.
+
+    Delegates to the project-wide ``probes.mean_pinball_loss``. At q = [0.5] it IS
+    ``pinball_tau_half``, so the validated Q=1 line is a special case of this call and not a
+    second implementation."""
     return mean_pinball_loss(pred, target, q)
 
 
@@ -159,15 +189,21 @@ def _stack(F: np.ndarray) -> np.ndarray:
     return A.reshape(A.shape[0] * A.shape[1], A.shape[2])
 
 
-def _fit_one(Xtr, ytr, weight_decay, epochs, lr, device, out_patch, init_seed):
+def _fit_one(Xtr, ytr, weight_decay, epochs, lr, device, out_patch, init_seed, q=None):
     """One full-batch AdamW fit. Mirrors probes._fit_quantile_linear: re-seeded init, decay on
-    the WEIGHT only, deterministic, eval() on return."""
-    probe = make_shared_patch_probe(Xtr.shape[-1], out_patch, device=device, seed=init_seed)
+    the WEIGHT only, deterministic, eval() on return.
+
+    ``q`` defaults to the Q=1 median vector, which reproduces the validated fit exactly."""
+    if q is None:
+        q = torch.as_tensor([TAU], dtype=torch.float32, device=device)
+    Q = int(q.numel())
+    probe = make_shared_patch_probe(Xtr.shape[-1], out_patch, device=device, seed=init_seed,
+                                    num_quantiles=Q)
     opt = torch.optim.AdamW([{"params": [probe.weight], "weight_decay": weight_decay},
                              {"params": [probe.bias], "weight_decay": 0.0}], lr=lr)
     probe.train()
     for _ in range(epochs):
-        loss = pinball_tau_half(probe_forward(probe, Xtr), ytr)
+        loss = pinball(probe_forward(probe, Xtr, Q), ytr, q)
         opt.zero_grad(set_to_none=True)
         loss.backward()
         opt.step()
@@ -176,7 +212,8 @@ def _fit_one(Xtr, ytr, weight_decay, epochs, lr, device, out_patch, init_seed):
 
 
 def fit_shared_patch_probe(Ftr, ytr, Fva, yva, *, out_patch=32, wd_grid=WD_GRID_TIREX,
-                           epochs=EPOCHS, lr=LR, device="cpu", init_seed=SEED):
+                           epochs=EPOCHS, lr=LR, device="cpu", init_seed=SEED,
+                           quantiles=QUANTILES_Q1):
     """Fit ONE shared patch probe at one depth, selecting weight decay on an EXPLICIT val split.
 
     Ftr/Fva : (n, K, d) readout features.   ytr/yva : (n, H) targets in normalized space.
@@ -187,6 +224,9 @@ def fit_shared_patch_probe(Ftr, ytr, Fva, yva, *, out_patch=32, wd_grid=WD_GRID_
     ``fit_quantile_probe_explicit_val`` contract.
     """
     wd_grid = assert_wd_grid(wd_grid, lr)
+    q_np = validate_quantiles(quantiles)
+    Q = len(q_np)
+    q = torch.as_tensor(q_np, dtype=torch.float32, device=device)
     Ftr, Fva = np.asarray(Ftr, np.float32), np.asarray(Fva, np.float32)
     ytr_a, yva_a = np.asarray(ytr, np.float32), np.asarray(yva, np.float32)
     K, d = Ftr.shape[1], Ftr.shape[2]
@@ -208,17 +248,18 @@ def fit_shared_patch_probe(Ftr, ytr, Fva, yva, *, out_patch=32, wd_grid=WD_GRID_
 
     best, sel = None, {}
     for cand in wd_grid:
-        m = _fit_one(Xtr, ytr_t, cand, epochs, lr, device, out_patch, init_seed)
+        m = _fit_one(Xtr, ytr_t, cand, epochs, lr, device, out_patch, init_seed, q)
         with torch.no_grad():
-            v = float(pinball_tau_half(probe_forward(m, Xva), yva_t))
+            v = float(pinball(probe_forward(m, Xva, Q), yva_t, q))
         sel[float(cand)] = v
         if best is None or v < best[1]:
             best = (cand, v, m)
     wd, val_loss, probe = best
     with torch.no_grad():
-        train_loss = float(pinball_tau_half(probe_forward(probe, Xtr), ytr_t))
+        train_loss = float(pinball(probe_forward(probe, Xtr, Q), ytr_t, q))
     return {"probe": probe, "scaler": scaler, "wd": float(wd), "K": int(K),
             "out_patch": int(out_patch), "in_features": int(d),
+            "num_quantiles": int(Q), "quantiles": [float(x) for x in q_np],
             "n_params": int(sum(p.numel() for p in probe.parameters())),
             "train_loss": train_loss, "val_loss": float(val_loss),
             "selection": {"val_loss_by_wd": sel, "chosen_wd": float(wd),
@@ -226,14 +267,31 @@ def fit_shared_patch_probe(Ftr, ytr, Fva, yva, *, out_patch=32, wd_grid=WD_GRID_
                           "at_grid_min": float(wd) == float(min(wd_grid))}}
 
 
-def predict(fit: dict, F, device="cpu") -> np.ndarray:
-    """Apply a FROZEN fitted probe to (n, K, d) features -> (n, H) normalized forecast."""
+def predict_quantiles(fit: dict, F, device="cpu") -> np.ndarray:
+    """Apply a FROZEN fitted probe to (n, K, d) features -> (n, Q, H) normalized forecast.
+
+    THE one place a TiRex probe forecast comes from; ``predict`` is the Q=1 view of it."""
     F = np.asarray(F, np.float32)
     K, d = fit["K"], fit["in_features"]
+    Q = int(fit.get("num_quantiles", 1))
     X = torch.as_tensor(fit["scaler"].transform(_stack(F)).reshape(F.shape[0], K, d),
                         dtype=torch.float32, device=device)
     with torch.no_grad():
-        return probe_forward(fit["probe"], X).squeeze(1).cpu().numpy()
+        return probe_forward(fit["probe"], X, Q).cpu().numpy()
+
+
+def predict(fit: dict, F, device="cpu") -> np.ndarray:
+    """Apply a FROZEN fitted probe to (n, K, d) features -> (n, H) normalized forecast.
+
+    Q=1 only, by design: with several quantiles there is no single "the" forecast to squeeze
+    out, so asking for one is a caller bug. Use ``predict_quantiles`` and select the median
+    column explicitly."""
+    Q = int(fit.get("num_quantiles", 1))
+    if Q != 1:
+        raise ValueError(f"predict() returns a single (n, H) forecast and this probe emits "
+                         f"Q={Q} quantiles; call predict_quantiles() and select the median "
+                         "column explicitly")
+    return predict_quantiles(fit, F, device=device).squeeze(1)
 
 
 def per_window_loss(pred_norm, target_norm, sl: slice | None = None) -> np.ndarray:

@@ -1036,3 +1036,139 @@ Also recorded deliberately: `uber_tlc_hourly` x chronos2 is `pretraining_exposed
 **`source_family`** scope, not `exact_dataset` — Table 6 lists "Taxi" (NYC TLC), and Uber TLC is
 the same source family, not a verbatim entry. That is a downgrade from the old flat `pt_id`
 label and is exactly what the 2-D schema exists to express.
+
+---
+
+# PHASE 1 FROZEN — 14 datasets x 3 models = 42 cells (implemented 2026-09-21)
+
+The only two Phase-1 questions:
+
+> 1. At what depth does forecasting become RECOVERABLE?
+> 2. How does that functional transition compare with representation GEOMETRY?
+
+Four measurements and nothing else: layerwise **Q=9** forecasting probes, the **5% VALIDATION**
+tunnel entrance, **unbiased linear CKA** (biased kept as a diagnostic), **entropy effective
+rank**. NO alignment, NO adapters, NO truncation — those are later phases and nothing in the
+Phase-1 code anticipates them.
+
+## Files (new unless marked)
+
+| file | role |
+|---|---|
+| `probing/phase1.py` | the contract: canonical quantiles + cross-model verification, common loss, per-model representation-point table, tunnel record, geometry block, cluster CIs, cell config hash, atomic `CellStore`, manifest/snapshot helpers |
+| `probing/phase1_metrics.py` | raw-unit MASE / MAE / WQL, identical for all three models |
+| `probing/phase1_cells.py` | the cell artifact contract (pure numpy in, files out — testable with no model) |
+| `probing/phase1_{chronos2,timesfm3,tirex}.py` | the three adapters |
+| `probing/window_parity.py` | the parity check, PROMOTED out of the TimesFM driver so all lines call one copy |
+| `experiments/run_three_model_phase1.py` | the orchestrator |
+| `experiments/make_phase1_tables.py` | combined tables, rebuilt from cell artifacts ONLY |
+| `tests/test_three_model_phase1.py` | 49 model-free contracts + 3 delegated model-backed |
+| `job_three_model_phase1.sh` | SLURM, 1 GPU, 12 h, resumable |
+| MODIFIED `probing/tirex_probes.py` | generalized to Q>=1; Q=1 is BIT-identical (contract 26) |
+| MODIFIED `probing/timesfm3_last_token_probes.py` | additive `collect_probe=` to capture the frozen probe + full predictions |
+| MODIFIED `experiments/run_timesfm3_last_token_probing.py` | parity delegated to `probing/window_parity.py`; its own tests unchanged and passing |
+
+## The protocol
+
+C=512, H=64, **Q=9 = [0.1 .. 0.9]** — read from each model's OWN module and compared
+element-wise at startup (`assert_canonical_quantiles`); the run ABORTS if they ever disagree.
+Reported loss = **mean pinball over (batch, quantiles, horizon)** for all three, computed from
+the one saved `(n, Q, H)` prediction tensor. Tunnel = `probing.tunnel.tunnel_start`, tol 0.05,
+**validation only**; 0.01/0.02/0.05/0.10 all saved so no re-run is ever needed for another
+tolerance.
+
+| | readout | probe | DEPTH AXIS | also probed (not a depth) |
+|---|---|---|---|---|
+| Chronos-2 | K=4 native forecast slots | ONE shared `Linear(768, 9*16)` | 13: Emb, L1..**L12** | `L12+LN` |
+| TimesFM-3 | last REAL context token (15) | `Linear(1280, 64*9)` per depth | 21: Emb, L1..**L20** | — |
+| TiRex | `two_pass`, token 63 of each pass | ONE shared `Linear(512, 9*32)` | 13: Emb, L1..**L12** | `L12+RMS` |
+
+**Correction made while implementing:** Chronos-2's final point was briefly labelled `L12+RMS`.
+It is a **LayerNorm** (`encoder.final_layer_norm`), and `L12+LN` is the spelling the committed
+Chronos-2 fslot line already uses. TiRex is the model with an RMSNorm.
+
+## Three things a reader of the results must carry (in every `summary.json`)
+
+1. **Absolute Q=9 loss is NOT cross-model comparable.** Each model is probed where its own head
+   reads, in its OWN normalized target space (Chronos-2 arcsinh; TimesFM-3 detrend+RevIN; TiRex
+   per-pass loc/scale). What IS comparable: the tunnel entrance (a within-model ratio against
+   that model's own final depth) and MASE (raw units, one shared in-context denominator).
+2. **The three lines keep their own TRAINING objectives** (Chronos-2 sums over quantiles;
+   the others average). Measured, not assumed, to change nothing: the two differ by exactly
+   2Q, so the wd argmin and the tunnel ratio are invariant (contracts 16, 49), and AdamW is
+   invariant to a constant loss rescale — 18x moves the fitted weights by **1.4e-7 relative**
+   (contract 48).
+3. **`not_listed` is not OOD.** No Phase-1 artifact contains a global PT-ID/PT-OOD field;
+   contract 13 proves it by AST over every Phase-1 module AND by scanning a real written cell
+   plus all combined tables.
+
+## Resumability
+
+A cell is built in `<model>/<dataset>.building-<pid>/` and `os.replace`d into place only after
+every required artifact validates and `COMPLETE` is written inside the staging dir. So a
+preempted/timed-out/failed cell leaves NO partial cell — only a staging dir the next run
+deletes. `sbatch job_three_model_phase1.sh` twice = resume (verified: 6/6 built, then 6/6
+skipped). A cell whose config hash DIFFERS is **refused**, naming `--force-recompute` or a new
+`--output-root`. Built windows are cached to `$SCRATCH` so a resume does not rebuild them.
+
+## Bugs this work surfaced
+
+- `--audit-only` set `args.models = []`, but the driver's filter reads an empty list as "no
+  filter" — it would have loaded all three backbones under a flag that promises not to. Now an
+  explicit `if args.audit_only: models = []`.
+- Mixed `int`/`"final"` feature keys broke `fit_shared_forecast_probe_explicit_val`'s
+  `sorted(train_feats)`. Chronos-2 now uses integer key 13 = `NUM_LAYERS`, which is also the
+  committed `run_ptood_probing_ftok` convention.
+
+## Open before/at the first GPU run
+
+- **Wall time is NOT measured.** 12 h requested; the estimate must come from the STEP-3 smokes
+  (read `cells.json`). Window building dominates a cold run.
+- The seven NEW datasets have **no window reference** — STEP 2 of the job header creates them
+  deliberately, and they must be inspected and committed before the full run.
+- **9 of 42 provenance cells are UNVERIFIED** (`registry.unverified_provenance()`); usable as
+  working assumptions, not citable.
+- Watch for weight-decay grid-max clipping per (model, dataset, depth) — reported per cell as a
+  decision to make, never silently accepted.
+- Durable results ~2 GB (probe weights dominate; `--no-probe-artifacts` drops ~1 GB).
+
+
+## Depth-axis correction — a final normalization is NOT a model depth (2026-09-21)
+
+**The rule.** The main depth axis is **Emb, L1..L_N** — block outputs only. The final depth,
+and therefore the tunnel's reference and the meaning of "final-depth probe loss", is the final
+**BLOCK** output: **L12** (Chronos-2), **L20** (TimesFM-3), **L12** (TiRex). A final
+normalization adds no block and no residual-stream step, so counting it as a depth would put a
+15th point on a 14-point axis, let a norm define the final-depth loss, and shift every
+normalized depth.
+
+`L12+LN` (Chronos-2, `encoder.final_layer_norm`) and `L12+RMS` (TiRex) are still **probed,
+scored, CKA'd, rank'd and saved** — they are what the native head literally reads and will be
+wanted for the native-head/alignment section — but as **`point_type = head_input_diagnostic`**.
+TimesFM-3 has none: its head reads L20 directly, so L20 is both.
+
+**Enforced structurally, in four places:**
+
+| | before | now |
+|---|---|---|
+| tunnel | scanned all points, reference = last point | `tunnel_record` scans `spec.depth_indices` only; reference `spec.reference_index` = final block; excluded points and their losses recorded beside the result |
+| normalized depth | norm shared `relative_depth = 1.0` with the last block | `relative_depth` / `relative_position` are **`None`** off the depth axis; final block is exactly 1.0 |
+| geometry | one CKA matrix over all points | `cka_<est>_<variant>_<split>.npy` is the **depth axis only**; the full matrix is a separate `__with_head_input.npy`. CKA is pairwise, so the main matrix IS the submatrix — computed once, cannot disagree. Effective rank keeps the point (cheap diagnostic) but never marks it headline |
+| serialization | — | `point_type` + `include_in_main_depth_axis` on every point, row and record; `plot_data.csv` is depth-axis only and diagnostics go to `plot_data_head_input.csv`, so a main figure would have to open a differently-named file to get one |
+
+`ModelSpec.last_index` (last probed point) is **gone**, replaced by `reference_index` (final
+block) and `native_readout_index` (what the head reads). "The head reads this" and "this is a
+model depth" are now two separate, separately-named claims — conflating them is what put a
+normalization on the depth axis.
+
+**Contracts 53-57** pin it: closed `point_type` vocabulary and per-model assignment; a
+head-input loss scaled by 1e-6 or 1e6 moves neither the entrance nor the reference at **any**
+tolerance; normalized depth is defined over block depths only; the main CKA matrix equals the
+submatrix of the with-head-input one and contains no diagnostic row/column; and every written
+artifact carries `point_type` with `plot_data.csv` provably free of head-input rows. Contracts
+35/40/41/42/47/50 were updated to depth-axis coordinates. **54/54 model-free contracts pass**;
+the full existing suite is unchanged.
+
+**One fixture bug this surfaced:** contract 54 first asserted that a linear ramp enters at the
+final depth. It does not for TimesFM-3 — with 21 points the second-to-last lands *exactly* on
+the inclusive `(1+tol)*final` boundary. The fixture was wrong, not the criterion.
