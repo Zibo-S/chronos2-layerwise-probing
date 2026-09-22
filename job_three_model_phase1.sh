@@ -7,7 +7,7 @@
 #SBATCH --mem=48G                    # dominated by build_windows on the big rosters:
                                      # wiki_daily_100k loads ~2.2 GB of float64 raw series
                                      # BEFORE the deterministic cap can reduce it
-#SBATCH --time=12:00:00              # see "WALL TIME" below -- 5 h is NOT enough for 42 cells
+#SBATCH --time=2:00:00              # see "WALL TIME" below -- 5 h is NOT enough for 42 cells
 #SBATCH --output=results/three_model_final/logs/%x-%j.out
 #SBATCH --error=results/three_model_final/logs/%x-%j.err
 

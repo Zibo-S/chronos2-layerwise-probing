@@ -1,0 +1,650 @@
+{
+  "model": "timesfm3",
+  "dataset": "boom_hourly",
+  "probe": "Linear(1280, 64*9)",
+  "quantiles": [
+    0.1,
+    0.2,
+    0.3,
+    0.4,
+    0.5,
+    0.6,
+    0.7,
+    0.8,
+    0.9
+  ],
+  "median_index": 4,
+  "epochs": 300,
+  "lr": 0.01,
+  "wd_grid": [
+    1e-05,
+    0.0001,
+    0.001,
+    0.01,
+    0.1,
+    0.3,
+    1.0,
+    3.0,
+    10.0,
+    30.0
+  ],
+  "seed": 0,
+  "by_layer": [
+    {
+      "layer": "Emb",
+      "weight_decay": 10.0,
+      "at_grid_max": false,
+      "at_grid_min": false,
+      "n_params": 737856,
+      "val_loss_by_wd": {
+        "1e-05": 0.1813550442457199,
+        "0.0001": 0.18234218657016754,
+        "0.001": 0.18093788623809814,
+        "0.01": 0.182222381234169,
+        "0.1": 0.18133999407291412,
+        "0.3": 0.18044424057006836,
+        "1.0": 0.17923466861248016,
+        "3.0": 0.17755217850208282,
+        "10.0": 0.17729519307613373,
+        "30.0": 0.17871667444705963
+      }
+    },
+    {
+      "layer": "L1",
+      "weight_decay": 10.0,
+      "at_grid_max": false,
+      "at_grid_min": false,
+      "n_params": 737856,
+      "val_loss_by_wd": {
+        "1e-05": 0.2003471851348877,
+        "0.0001": 0.20033009350299835,
+        "0.001": 0.20074675977230072,
+        "0.01": 0.20029854774475098,
+        "0.1": 0.19718985259532928,
+        "0.3": 0.1923404037952423,
+        "1.0": 0.18349669873714447,
+        "3.0": 0.1771405190229416,
+        "10.0": 0.17345330119132996,
+        "30.0": 0.17768554389476776
+      }
+    },
+    {
+      "layer": "L2",
+      "weight_decay": 10.0,
+      "at_grid_max": false,
+      "at_grid_min": false,
+      "n_params": 737856,
+      "val_loss_by_wd": {
+        "1e-05": 0.2324559986591339,
+        "0.0001": 0.23210453987121582,
+        "0.001": 0.23178014159202576,
+        "0.01": 0.2315288931131363,
+        "0.1": 0.22531527280807495,
+        "0.3": 0.21503198146820068,
+        "1.0": 0.196284681558609,
+        "3.0": 0.18215173482894897,
+        "10.0": 0.17488807439804077,
+        "30.0": 0.17782838642597198
+      }
+    },
+    {
+      "layer": "L3",
+      "weight_decay": 30.0,
+      "at_grid_max": true,
+      "at_grid_min": false,
+      "n_params": 737856,
+      "val_loss_by_wd": {
+        "1e-05": 0.2664605677127838,
+        "0.0001": 0.26576927304267883,
+        "0.001": 0.2660503685474396,
+        "0.01": 0.26524198055267334,
+        "0.1": 0.25763756036758423,
+        "0.3": 0.24370300769805908,
+        "1.0": 0.21776290237903595,
+        "3.0": 0.19582127034664154,
+        "10.0": 0.18256184458732605,
+        "30.0": 0.18167857825756073
+      }
+    },
+    {
+      "layer": "L4",
+      "weight_decay": 30.0,
+      "at_grid_max": true,
+      "at_grid_min": false,
+      "n_params": 737856,
+      "val_loss_by_wd": {
+        "1e-05": 0.2898048460483551,
+        "0.0001": 0.29012906551361084,
+        "0.001": 0.2895408570766449,
+        "0.01": 0.28863605856895447,
+        "0.1": 0.27942079305648804,
+        "0.3": 0.2622095048427582,
+        "1.0": 0.23073641955852509,
+        "3.0": 0.20400841534137726,
+        "10.0": 0.18783435225486755,
+        "30.0": 0.18369559943675995
+      }
+    },
+    {
+      "layer": "L5",
+      "weight_decay": 30.0,
+      "at_grid_max": true,
+      "at_grid_min": false,
+      "n_params": 737856,
+      "val_loss_by_wd": {
+        "1e-05": 0.31846240162849426,
+        "0.0001": 0.3180091083049774,
+        "0.001": 0.3174114227294922,
+        "0.01": 0.31643664836883545,
+        "0.1": 0.3048602044582367,
+        "0.3": 0.28459659218788147,
+        "1.0": 0.24618922173976898,
+        "3.0": 0.2135782390832901,
+        "10.0": 0.19144444167613983,
+        "30.0": 0.18446597456932068
+      }
+    },
+    {
+      "layer": "L6",
+      "weight_decay": 30.0,
+      "at_grid_max": true,
+      "at_grid_min": false,
+      "n_params": 737856,
+      "val_loss_by_wd": {
+        "1e-05": 0.35541313886642456,
+        "0.0001": 0.3551526367664337,
+        "0.001": 0.35576167702674866,
+        "0.01": 0.35365432500839233,
+        "0.1": 0.3394075036048889,
+        "0.3": 0.3153797686100006,
+        "1.0": 0.26746657490730286,
+        "3.0": 0.2252061665058136,
+        "10.0": 0.197993665933609,
+        "30.0": 0.18784424662590027
+      }
+    },
+    {
+      "layer": "L7",
+      "weight_decay": 30.0,
+      "at_grid_max": true,
+      "at_grid_min": false,
+      "n_params": 737856,
+      "val_loss_by_wd": {
+        "1e-05": 0.36820948123931885,
+        "0.0001": 0.3684989809989929,
+        "0.001": 0.36849963665008545,
+        "0.01": 0.36662861704826355,
+        "0.1": 0.35141217708587646,
+        "0.3": 0.32548999786376953,
+        "1.0": 0.27406129240989685,
+        "3.0": 0.22887247800827026,
+        "10.0": 0.1998092383146286,
+        "30.0": 0.1884952336549759
+      }
+    },
+    {
+      "layer": "L8",
+      "weight_decay": 30.0,
+      "at_grid_max": true,
+      "at_grid_min": false,
+      "n_params": 737856,
+      "val_loss_by_wd": {
+        "1e-05": 0.3840227425098419,
+        "0.0001": 0.3842998743057251,
+        "0.001": 0.3838340640068054,
+        "0.01": 0.38170620799064636,
+        "0.1": 0.36435773968696594,
+        "0.3": 0.3349357545375824,
+        "1.0": 0.27613410353660583,
+        "3.0": 0.22571279108524323,
+        "10.0": 0.196448415517807,
+        "30.0": 0.18631039559841156
+      }
+    },
+    {
+      "layer": "L9",
+      "weight_decay": 30.0,
+      "at_grid_max": true,
+      "at_grid_min": false,
+      "n_params": 737856,
+      "val_loss_by_wd": {
+        "1e-05": 0.37590062618255615,
+        "0.0001": 0.37515464425086975,
+        "0.001": 0.3750423789024353,
+        "0.01": 0.3738993704319,
+        "0.1": 0.35788556933403015,
+        "0.3": 0.32968953251838684,
+        "1.0": 0.2754703760147095,
+        "3.0": 0.22890649735927582,
+        "10.0": 0.19896948337554932,
+        "30.0": 0.18801407516002655
+      }
+    },
+    {
+      "layer": "L10",
+      "weight_decay": 30.0,
+      "at_grid_max": true,
+      "at_grid_min": false,
+      "n_params": 737856,
+      "val_loss_by_wd": {
+        "1e-05": 0.38817429542541504,
+        "0.0001": 0.3878639340400696,
+        "0.001": 0.3877502381801605,
+        "0.01": 0.3858673572540283,
+        "0.1": 0.3683147132396698,
+        "0.3": 0.3370642066001892,
+        "1.0": 0.27835527062416077,
+        "3.0": 0.2293296456336975,
+        "10.0": 0.1985318660736084,
+        "30.0": 0.18669761717319489
+      }
+    },
+    {
+      "layer": "L11",
+      "weight_decay": 30.0,
+      "at_grid_max": true,
+      "at_grid_min": false,
+      "n_params": 737856,
+      "val_loss_by_wd": {
+        "1e-05": 0.3900803327560425,
+        "0.0001": 0.39021429419517517,
+        "0.001": 0.39014965295791626,
+        "0.01": 0.38812997937202454,
+        "0.1": 0.3702070116996765,
+        "0.3": 0.3409895896911621,
+        "1.0": 0.2828127443790436,
+        "3.0": 0.23274748027324677,
+        "10.0": 0.2006295919418335,
+        "30.0": 0.1886478215456009
+      }
+    },
+    {
+      "layer": "L12",
+      "weight_decay": 30.0,
+      "at_grid_max": true,
+      "at_grid_min": false,
+      "n_params": 737856,
+      "val_loss_by_wd": {
+        "1e-05": 0.39743730425834656,
+        "0.0001": 0.39737895131111145,
+        "0.001": 0.39753249287605286,
+        "0.01": 0.3956434726715088,
+        "0.1": 0.3789640963077545,
+        "0.3": 0.3493061065673828,
+        "1.0": 0.2903783917427063,
+        "3.0": 0.2384006530046463,
+        "10.0": 0.2031242400407791,
+        "30.0": 0.18930798768997192
+      }
+    },
+    {
+      "layer": "L13",
+      "weight_decay": 30.0,
+      "at_grid_max": true,
+      "at_grid_min": false,
+      "n_params": 737856,
+      "val_loss_by_wd": {
+        "1e-05": 0.39741620421409607,
+        "0.0001": 0.3974427878856659,
+        "0.001": 0.39719823002815247,
+        "0.01": 0.3956995904445648,
+        "0.1": 0.3773737847805023,
+        "0.3": 0.34648969769477844,
+        "1.0": 0.2844843864440918,
+        "3.0": 0.2319643199443817,
+        "10.0": 0.19902245700359344,
+        "30.0": 0.18685533106327057
+      }
+    },
+    {
+      "layer": "L14",
+      "weight_decay": 30.0,
+      "at_grid_max": true,
+      "at_grid_min": false,
+      "n_params": 737856,
+      "val_loss_by_wd": {
+        "1e-05": 0.40237048268318176,
+        "0.0001": 0.40204736590385437,
+        "0.001": 0.40209248661994934,
+        "0.01": 0.3999383747577667,
+        "0.1": 0.3814079165458679,
+        "0.3": 0.35011258721351624,
+        "1.0": 0.28839170932769775,
+        "3.0": 0.234303280711174,
+        "10.0": 0.19944149255752563,
+        "30.0": 0.18684913218021393
+      }
+    },
+    {
+      "layer": "L15",
+      "weight_decay": 30.0,
+      "at_grid_max": true,
+      "at_grid_min": false,
+      "n_params": 737856,
+      "val_loss_by_wd": {
+        "1e-05": 0.39814603328704834,
+        "0.0001": 0.3979351222515106,
+        "0.001": 0.39764851331710815,
+        "0.01": 0.39592066407203674,
+        "0.1": 0.3774764835834503,
+        "0.3": 0.3457027077674866,
+        "1.0": 0.28374460339546204,
+        "3.0": 0.22972232103347778,
+        "10.0": 0.19636951386928558,
+        "30.0": 0.18445582687854767
+      }
+    },
+    {
+      "layer": "L16",
+      "weight_decay": 30.0,
+      "at_grid_max": true,
+      "at_grid_min": false,
+      "n_params": 737856,
+      "val_loss_by_wd": {
+        "1e-05": 0.38210228085517883,
+        "0.0001": 0.38273900747299194,
+        "0.001": 0.38191887736320496,
+        "0.01": 0.38046109676361084,
+        "0.1": 0.3634702265262604,
+        "0.3": 0.33453723788261414,
+        "1.0": 0.27762019634246826,
+        "3.0": 0.22813603281974792,
+        "10.0": 0.1951846182346344,
+        "30.0": 0.18209902942180634
+      }
+    },
+    {
+      "layer": "L17",
+      "weight_decay": 30.0,
+      "at_grid_max": true,
+      "at_grid_min": false,
+      "n_params": 737856,
+      "val_loss_by_wd": {
+        "1e-05": 0.3483441174030304,
+        "0.0001": 0.34902268648147583,
+        "0.001": 0.34824252128601074,
+        "0.01": 0.3469034731388092,
+        "0.1": 0.33338990807533264,
+        "0.3": 0.3100541830062866,
+        "1.0": 0.2636757791042328,
+        "3.0": 0.22172604501247406,
+        "10.0": 0.1905585676431656,
+        "30.0": 0.1786675751209259
+      }
+    },
+    {
+      "layer": "L18",
+      "weight_decay": 30.0,
+      "at_grid_max": true,
+      "at_grid_min": false,
+      "n_params": 737856,
+      "val_loss_by_wd": {
+        "1e-05": 0.3378628194332123,
+        "0.0001": 0.3375876545906067,
+        "0.001": 0.33803117275238037,
+        "0.01": 0.3365509510040283,
+        "0.1": 0.3232038617134094,
+        "0.3": 0.2985730767250061,
+        "1.0": 0.2536604404449463,
+        "3.0": 0.214677095413208,
+        "10.0": 0.18891119956970215,
+        "30.0": 0.17890706658363342
+      }
+    },
+    {
+      "layer": "L19",
+      "weight_decay": 30.0,
+      "at_grid_max": true,
+      "at_grid_min": false,
+      "n_params": 737856,
+      "val_loss_by_wd": {
+        "1e-05": 0.3259546756744385,
+        "0.0001": 0.32579711079597473,
+        "0.001": 0.32548725605010986,
+        "0.01": 0.32457810640335083,
+        "0.1": 0.3127839267253876,
+        "0.3": 0.29205045104026794,
+        "1.0": 0.2514471411705017,
+        "3.0": 0.2134481519460678,
+        "10.0": 0.1903432160615921,
+        "30.0": 0.18461738526821136
+      }
+    },
+    {
+      "layer": "L20",
+      "weight_decay": 30.0,
+      "at_grid_max": true,
+      "at_grid_min": false,
+      "n_params": 737856,
+      "val_loss_by_wd": {
+        "1e-05": 0.2941439747810364,
+        "0.0001": 0.29389676451683044,
+        "0.001": 0.29384493827819824,
+        "0.01": 0.2929568886756897,
+        "0.1": 0.2838543951511383,
+        "0.3": 0.26819536089897156,
+        "1.0": 0.23713654279708862,
+        "3.0": 0.20946994423866272,
+        "10.0": 0.19412188231945038,
+        "30.0": 0.19227200746536255
+      }
+    }
+  ],
+  "grid_clipping": {
+    "n_layers_at_grid_max": 18,
+    "n_layers_at_grid_min": 0,
+    "layers_at_grid_max": [
+      "L3",
+      "L4",
+      "L5",
+      "L6",
+      "L7",
+      "L8",
+      "L9",
+      "L10",
+      "L11",
+      "L12",
+      "L13",
+      "L14",
+      "L15",
+      "L16",
+      "L17",
+      "L18",
+      "L19",
+      "L20"
+    ],
+    "meaning": "a selected weight decay sitting at the grid MAXIMUM is a clipped search, not a converged selection; it is reported as a decision to make, never silently accepted"
+  },
+  "null_baseline": {
+    "Emb": {
+      "wd": 100.0,
+      "val_loss": 0.19777022302150726,
+      "selected": false,
+      "max_abs_weight": 0.012709837406873703,
+      "note": "extreme decay: weight zeroed each step, so this is ~ a bias-only (marginal-quantile) fit -- the no-information floor, never a candidate",
+      "test_q9": 0.2399507462978363,
+      "test_median_loss": 0.28224384784698486
+    },
+    "L1": {
+      "wd": 100.0,
+      "val_loss": 0.20947925746440887,
+      "selected": false,
+      "max_abs_weight": 0.013214720413088799,
+      "note": "extreme decay: weight zeroed each step, so this is ~ a bias-only (marginal-quantile) fit -- the no-information floor, never a candidate",
+      "test_q9": 0.2487715184688568,
+      "test_median_loss": 0.2926904559135437
+    },
+    "L2": {
+      "wd": 100.0,
+      "val_loss": 0.20431281626224518,
+      "selected": false,
+      "max_abs_weight": 0.013190994039177895,
+      "note": "extreme decay: weight zeroed each step, so this is ~ a bias-only (marginal-quantile) fit -- the no-information floor, never a candidate",
+      "test_q9": 0.2466016709804535,
+      "test_median_loss": 0.29159465432167053
+    },
+    "L3": {
+      "wd": 100.0,
+      "val_loss": 0.20077654719352722,
+      "selected": false,
+      "max_abs_weight": 0.013463295064866543,
+      "note": "extreme decay: weight zeroed each step, so this is ~ a bias-only (marginal-quantile) fit -- the no-information floor, never a candidate",
+      "test_q9": 0.24358709156513214,
+      "test_median_loss": 0.2882607579231262
+    },
+    "L4": {
+      "wd": 100.0,
+      "val_loss": 0.19819115102291107,
+      "selected": false,
+      "max_abs_weight": 0.012941117398440838,
+      "note": "extreme decay: weight zeroed each step, so this is ~ a bias-only (marginal-quantile) fit -- the no-information floor, never a candidate",
+      "test_q9": 0.24151253700256348,
+      "test_median_loss": 0.2872981131076813
+    },
+    "L5": {
+      "wd": 100.0,
+      "val_loss": 0.1962372064590454,
+      "selected": false,
+      "max_abs_weight": 0.012588007375597954,
+      "note": "extreme decay: weight zeroed each step, so this is ~ a bias-only (marginal-quantile) fit -- the no-information floor, never a candidate",
+      "test_q9": 0.23924307525157928,
+      "test_median_loss": 0.28229957818984985
+    },
+    "L6": {
+      "wd": 100.0,
+      "val_loss": 0.19552013278007507,
+      "selected": false,
+      "max_abs_weight": 0.01249189954251051,
+      "note": "extreme decay: weight zeroed each step, so this is ~ a bias-only (marginal-quantile) fit -- the no-information floor, never a candidate",
+      "test_q9": 0.23960596323013306,
+      "test_median_loss": 0.2835983335971832
+    },
+    "L7": {
+      "wd": 100.0,
+      "val_loss": 0.1952393800020218,
+      "selected": false,
+      "max_abs_weight": 0.012632839381694794,
+      "note": "extreme decay: weight zeroed each step, so this is ~ a bias-only (marginal-quantile) fit -- the no-information floor, never a candidate",
+      "test_q9": 0.23961490392684937,
+      "test_median_loss": 0.2820267081260681
+    },
+    "L8": {
+      "wd": 100.0,
+      "val_loss": 0.19373849034309387,
+      "selected": false,
+      "max_abs_weight": 0.012738130055367947,
+      "note": "extreme decay: weight zeroed each step, so this is ~ a bias-only (marginal-quantile) fit -- the no-information floor, never a candidate",
+      "test_q9": 0.23934544622898102,
+      "test_median_loss": 0.2833101153373718
+    },
+    "L9": {
+      "wd": 100.0,
+      "val_loss": 0.19517725706100464,
+      "selected": false,
+      "max_abs_weight": 0.01244713831692934,
+      "note": "extreme decay: weight zeroed each step, so this is ~ a bias-only (marginal-quantile) fit -- the no-information floor, never a candidate",
+      "test_q9": 0.24056373536586761,
+      "test_median_loss": 0.28366535902023315
+    },
+    "L10": {
+      "wd": 100.0,
+      "val_loss": 0.19241836667060852,
+      "selected": false,
+      "max_abs_weight": 0.01216176338493824,
+      "note": "extreme decay: weight zeroed each step, so this is ~ a bias-only (marginal-quantile) fit -- the no-information floor, never a candidate",
+      "test_q9": 0.23743098974227905,
+      "test_median_loss": 0.27858829498291016
+    },
+    "L11": {
+      "wd": 100.0,
+      "val_loss": 0.19352257251739502,
+      "selected": false,
+      "max_abs_weight": 0.01300753839313984,
+      "note": "extreme decay: weight zeroed each step, so this is ~ a bias-only (marginal-quantile) fit -- the no-information floor, never a candidate",
+      "test_q9": 0.23812051117420197,
+      "test_median_loss": 0.2806774973869324
+    },
+    "L12": {
+      "wd": 100.0,
+      "val_loss": 0.19372659921646118,
+      "selected": false,
+      "max_abs_weight": 0.01252766139805317,
+      "note": "extreme decay: weight zeroed each step, so this is ~ a bias-only (marginal-quantile) fit -- the no-information floor, never a candidate",
+      "test_q9": 0.2381855547428131,
+      "test_median_loss": 0.28110578656196594
+    },
+    "L13": {
+      "wd": 100.0,
+      "val_loss": 0.19191378355026245,
+      "selected": false,
+      "max_abs_weight": 0.012706531211733818,
+      "note": "extreme decay: weight zeroed each step, so this is ~ a bias-only (marginal-quantile) fit -- the no-information floor, never a candidate",
+      "test_q9": 0.2368568778038025,
+      "test_median_loss": 0.27943164110183716
+    },
+    "L14": {
+      "wd": 100.0,
+      "val_loss": 0.19206039607524872,
+      "selected": false,
+      "max_abs_weight": 0.012952681630849838,
+      "note": "extreme decay: weight zeroed each step, so this is ~ a bias-only (marginal-quantile) fit -- the no-information floor, never a candidate",
+      "test_q9": 0.23624850809574127,
+      "test_median_loss": 0.2784390151500702
+    },
+    "L15": {
+      "wd": 100.0,
+      "val_loss": 0.1911294311285019,
+      "selected": false,
+      "max_abs_weight": 0.012125007808208466,
+      "note": "extreme decay: weight zeroed each step, so this is ~ a bias-only (marginal-quantile) fit -- the no-information floor, never a candidate",
+      "test_q9": 0.2374236285686493,
+      "test_median_loss": 0.28147175908088684
+    },
+    "L16": {
+      "wd": 100.0,
+      "val_loss": 0.18730582296848297,
+      "selected": false,
+      "max_abs_weight": 0.012514953501522541,
+      "note": "extreme decay: weight zeroed each step, so this is ~ a bias-only (marginal-quantile) fit -- the no-information floor, never a candidate",
+      "test_q9": 0.23317427933216095,
+      "test_median_loss": 0.2737189829349518
+    },
+    "L17": {
+      "wd": 100.0,
+      "val_loss": 0.1841966211795807,
+      "selected": false,
+      "max_abs_weight": 0.011874011717736721,
+      "note": "extreme decay: weight zeroed each step, so this is ~ a bias-only (marginal-quantile) fit -- the no-information floor, never a candidate",
+      "test_q9": 0.22970156371593475,
+      "test_median_loss": 0.2708345353603363
+    },
+    "L18": {
+      "wd": 100.0,
+      "val_loss": 0.18494781851768494,
+      "selected": false,
+      "max_abs_weight": 0.012078392319381237,
+      "note": "extreme decay: weight zeroed each step, so this is ~ a bias-only (marginal-quantile) fit -- the no-information floor, never a candidate",
+      "test_q9": 0.2303222417831421,
+      "test_median_loss": 0.27107149362564087
+    },
+    "L19": {
+      "wd": 100.0,
+      "val_loss": 0.19627177715301514,
+      "selected": false,
+      "max_abs_weight": 0.01285536214709282,
+      "note": "extreme decay: weight zeroed each step, so this is ~ a bias-only (marginal-quantile) fit -- the no-information floor, never a candidate",
+      "test_q9": 0.23880411684513092,
+      "test_median_loss": 0.2789280414581299
+    },
+    "L20": {
+      "wd": 100.0,
+      "val_loss": 0.20916864275932312,
+      "selected": false,
+      "max_abs_weight": 0.01417267881333828,
+      "note": "extreme decay: weight zeroed each step, so this is ~ a bias-only (marginal-quantile) fit -- the no-information floor, never a candidate",
+      "test_q9": 0.24925154447555542,
+      "test_median_loss": 0.2871975302696228
+    }
+  },
+  "constant_forecast_floor": null
+}
