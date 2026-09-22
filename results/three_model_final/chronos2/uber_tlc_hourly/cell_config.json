@@ -1,0 +1,50 @@
+{
+  "protocol": "phase1/v1",
+  "model": "chronos2",
+  "dataset": "uber_tlc_hourly",
+  "C": 512,
+  "H": 64,
+  "quantile_set": "q9",
+  "quantiles": [
+    0.1,
+    0.2,
+    0.3,
+    0.4,
+    0.5,
+    0.6,
+    0.7,
+    0.8,
+    0.9
+  ],
+  "num_quantiles": 9,
+  "suite": "paper14",
+  "seed": 0,
+  "boot_b": 5000,
+  "tunnel_tol": 0.05,
+  "window_digest": "sha256:80d43a522c99132981130b9ec59ce6a82f96b1c4486e3f69d95673ff440cf75d",
+  "registry_hash": "sha256:b3041cc47f0851c4f83a0187aec1403952c43195f4404485a6782fc2908c18bd",
+  "probe_epochs": 300,
+  "probe_lr": 0.01,
+  "geometry_splits": [
+    "test",
+    "train"
+  ],
+  "cka_estimators": [
+    "unbiased",
+    "biased"
+  ],
+  "checkpoint": "amazon/chronos-2",
+  "wd_grid": [
+    1e-05,
+    0.0001,
+    0.001,
+    0.01,
+    0.1,
+    0.3,
+    1.0,
+    3.0
+  ],
+  "extract_batch_size": 128,
+  "readout": "forecast_slots_K4",
+  "config_hash": "sha256:dd49eba8c7095235e56aca37a920bea4d19b0662238e4629e1152d9ec09c85d4"
+}
