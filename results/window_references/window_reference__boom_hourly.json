@@ -1,0 +1,30 @@
+{
+  "schema": "window_reference/v1",
+  "dataset": "boom_hourly",
+  "display_name": "BOOM",
+  "builder": "rolling_cluster",
+  "cluster_unit": "metric_query",
+  "split_mode": "rolling_origin_within_series_ood",
+  "C": 512,
+  "H": 64,
+  "seed": 0,
+  "seasonal_m": 24,
+  "n_train": 1394,
+  "n_val": 354,
+  "n_test": 354,
+  "n_test_units": 354,
+  "series_cap": {
+    "applied": false,
+    "max_series": null,
+    "n_eligible_before": 354,
+    "n_eligible_after": 354,
+    "rng_stream": 6165221,
+    "seed": 0,
+    "selection": "seeded uniform sample without replacement over the sorted eligible series ids",
+    "reason": "no cap declared for this dataset"
+  },
+  "window_digest": "sha256:eb756813903574e81bb0a26f65e0b03d20c34377bbd3f6f7c00c33aa385a1b19",
+  "created_by": "python -m experiments.window_smoke14",
+  "created_utc": "2026-09-21T20:00:37+00:00",
+  "git_commit": "b9dc0cf603011b282038ee354e5fd6d44ddf5db7"
+}

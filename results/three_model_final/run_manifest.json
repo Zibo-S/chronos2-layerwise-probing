@@ -1,0 +1,198 @@
+{
+  "schema": "phase1_run_manifest/v1",
+  "protocol": "phase1/v1",
+  "phase": "Phase 1 \u2014 recoverability depth + representation geometry",
+  "questions": [
+    "At what depth does forecasting become recoverable?",
+    "How does that functional transition compare with representation geometry?"
+  ],
+  "measurements": [
+    "layerwise Q=9 forecasting probes",
+    "5% forecasting-tunnel entrance",
+    "unbiased linear CKA",
+    "entropy effective rank"
+  ],
+  "not_in_phase_1": [
+    "alignment",
+    "adapters",
+    "truncation"
+  ],
+  "started_utc": "2026-09-22T01:06:46+00:00",
+  "command_line": "/home/eserebri/repos/chronos2-layerwise-probing/experiments/run_three_model_phase1.py --audit-only",
+  "output_root": "/home/eserebri/repos/chronos2-layerwise-probing/results/three_model_final",
+  "cache_root": "/scratch/eserebri/chronos2/three_model_final_cache",
+  "roster": "paper14",
+  "datasets": [
+    "monash_electricity_hourly",
+    "m4_hourly",
+    "uber_tlc_hourly",
+    "wind_farms_hourly",
+    "sg_carpark",
+    "coastal_ts",
+    "boom_hourly",
+    "LOOP_SEATTLE_5T",
+    "electricity_15min",
+    "SZ_TAXI_15T",
+    "monash_london_smart_meters",
+    "m5",
+    "wiki_daily_100k",
+    "monash_traffic"
+  ],
+  "models": [],
+  "n_cells": 0,
+  "C": 512,
+  "H": 64,
+  "quantile_set": "q9",
+  "quantiles": [
+    0.1,
+    0.2,
+    0.3,
+    0.4,
+    0.5,
+    0.6,
+    0.7,
+    0.8,
+    0.9
+  ],
+  "num_quantiles": 9,
+  "quantile_verification": {
+    "canonical": [
+      0.1,
+      0.2,
+      0.3,
+      0.4,
+      0.5,
+      0.6,
+      0.7,
+      0.8,
+      0.9
+    ],
+    "median_index": 4,
+    "verified_against": {
+      "chronos2": [
+        0.10000000149011612,
+        0.20000000298023224,
+        0.30000001192092896,
+        0.4000000059604645,
+        0.5,
+        0.6000000238418579,
+        0.699999988079071,
+        0.800000011920929,
+        0.8999999761581421
+      ],
+      "timesfm3": [
+        0.10000000149011612,
+        0.20000000298023224,
+        0.30000001192092896,
+        0.4000000059604645,
+        0.5,
+        0.6000000238418579,
+        0.699999988079071,
+        0.800000011920929,
+        0.8999999761581421
+      ],
+      "tirex": [
+        0.1,
+        0.2,
+        0.3,
+        0.4,
+        0.5,
+        0.6,
+        0.7,
+        0.8,
+        0.9
+      ]
+    },
+    "note": "each vector was read from that model line's own module, not re-typed here"
+  },
+  "median_index": 4,
+  "tunnel": {
+    "tolerance": 0.05,
+    "split": "validation",
+    "definition": "first_crossing (probing.tunnel.tunnel_start)"
+  },
+  "bootstrap_B": 5000,
+  "seed": 0,
+  "cka_estimators": [
+    "unbiased (headline)",
+    "biased (diagnostic)"
+  ],
+  "effective_rank": "probing.spectral_metrics.spectral_metrics: squared singular values of the observation-centred matrix, natural-log spectral entropy, exp(H)",
+  "geometry_splits": [
+    "test",
+    "train"
+  ],
+  "registry_hash": "sha256:b3041cc47f0851c4f83a0187aec1403952c43195f4404485a6782fc2908c18bd",
+  "mase_definition": "MASE is normalized by the seasonal-naive error computed over the 512-step context window using the dataset-specific seasonal period.",
+  "seasonal_m_by_dataset": {
+    "monash_electricity_hourly": 24,
+    "m4_hourly": 24,
+    "uber_tlc_hourly": 24,
+    "wind_farms_hourly": 24,
+    "sg_carpark": 24,
+    "coastal_ts": 24,
+    "boom_hourly": 24,
+    "LOOP_SEATTLE_5T": 288,
+    "electricity_15min": 96,
+    "SZ_TAXI_15T": 96,
+    "monash_london_smart_meters": 48,
+    "m5": 7,
+    "wiki_daily_100k": 7,
+    "monash_traffic": 24
+  },
+  "model_specs": {},
+  "tirex": {
+    "rollout_mode": "two_pass",
+    "backend": "torch",
+    "batch_size": 256,
+    "batch_size_note": "part of the cache key: bfloat16 sLSTM makes the representation mildly batch-size dependent"
+  },
+  "timesfm3": {
+    "checkpoint": "google/timesfm-3.0-pytorch",
+    "feature_dtype": "float32",
+    "batch_size": 64
+  },
+  "chronos2": {
+    "checkpoint": "amazon/chronos-2",
+    "batch_size": 128
+  },
+  "probe": {
+    "epochs": 300,
+    "lr": 0.01,
+    "optimizer": "AdamW, full batch, weight decay on the WEIGHT only",
+    "selection": "weight decay chosen on the DEDICATED validation split, no refit"
+  },
+  "environment": {
+    "timestamp_utc": "2026-09-22T01:06:46+00:00",
+    "hostname": "nc10121",
+    "platform": "Linux-5.14.0-687.42.1.el9_8.x86_64-x86_64-AMD_EPYC_7532_32-Core_Processor-with-glibc2.37",
+    "python": "3.11.4",
+    "torch": "2.12.1",
+    "numpy": "1.26.4",
+    "sklearn": "1.7.1+computecanada",
+    "timesfm": "3.0.2",
+    "tirex-ts": "1.4.2",
+    "chronos": "2.3.1",
+    "datasets": "5.0.0+computecanada",
+    "gpu": null,
+    "cuda": null,
+    "device_requested": null,
+    "slurm_job_id": "3622184",
+    "slurm_nodelist": "nc10121",
+    "cpus_per_task": "8",
+    "omp_num_threads": "2",
+    "hf_home": "/scratch/eserebri/chronos2/hf_cache",
+    "command_line": "/home/eserebri/repos/chronos2-layerwise-probing/experiments/run_three_model_phase1.py --audit-only",
+    "git": {
+      "commit": "8cbff64fff115e588cabf1795a5de3ae0a8af1b3",
+      "branch": "tirex-experiment",
+      "dirty": true,
+      "dirty_files": [
+        "results/three_model_final/",
+        "results/window_references/"
+      ]
+    }
+  },
+  "cross_model_loss_caveat": "Each model is probed where its OWN head reads, in its OWN normalized target space (Chronos-2: context-standardized + arcsinh at the K=4 forecast slots; TimesFM-3: detrend + RevIN at the last real context token; TiRex: per-pass loc/scale at the two native forecast-producing states). The absolute Q=9 mean pinball loss is therefore NOT comparable ACROSS models. Cross-model comparison is valid for (a) the tunnel entrance, which is a within-model ratio against that model's own final depth, and (b) MASE, which is in raw units under one shared in-context seasonal-naive denominator.",
+  "geometry_caveat": "Unbiased linear CKA is the Phase-1 headline. The biased estimator is saved as a diagnostic but its finite-sample floor differs across the three models because the number of readout rows per window and the representation dimension differ (Chronos-2: 4 rows per window at d=768; TimesFM-3: 1 at d=1280; TiRex headline pos0: 1 at d=512). Absolute biased CKA must NEVER be compared across models. The measured per-(n, d, estimator) null floor is saved beside every matrix and nothing is subtracted from the matrices."
+}

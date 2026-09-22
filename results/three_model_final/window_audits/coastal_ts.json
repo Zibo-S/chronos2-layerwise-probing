@@ -1,0 +1,56 @@
+{
+  "dataset": "coastal_ts",
+  "short": "Coastal T-S",
+  "role": "primary",
+  "seasonal_m": 24,
+  "builder": "rolling_cluster",
+  "split_mode": "rolling_origin_within_series_ood",
+  "n_train_windows": 1394,
+  "n_val_windows": 48,
+  "n_test_windows": 48,
+  "n_test_series": 24,
+  "cluster_unit": "station",
+  "first_test_identifiers": [
+    "s0",
+    "s0",
+    "s1",
+    "s1",
+    "s2",
+    "s2"
+  ],
+  "test_series_first6": [
+    0,
+    0,
+    1,
+    1,
+    2,
+    2
+  ],
+  "chronos_parity": "match",
+  "parity_ok": true,
+  "parity_failures": [],
+  "reference_kind": "committed_chronos2",
+  "chronos_reference": {
+    "config": "results/ext_v5_native_head_adapter/configs/native_head_adapter__coastal_ts__config.json",
+    "bootstrap_inputs": "results/ext_v5_native_head_adapter/bootstrap_inputs/native_head_adapter__coastal_ts.npz"
+  },
+  "chronos_counts": {
+    "n_train": 1394,
+    "n_val": 48,
+    "n_test": 48,
+    "dataset_set": "extended_v3_rolling"
+  },
+  "window_digest": "sha256:5262c19d9f3768ecbce0ebc175f563263f8fef2545933189fd03984e796c112c",
+  "series_cap": {
+    "applied": false,
+    "max_series": null,
+    "n_eligible_before": 48,
+    "n_eligible_after": 48,
+    "rng_stream": 6165221,
+    "seed": 0,
+    "selection": "seeded uniform sample without replacement over the sorted eligible series ids",
+    "reason": "no cap declared for this dataset"
+  },
+  "valtest_budget": null,
+  "note": "all three models are evaluated on THESE windows; the digest covers the test contexts themselves, not just their identifiers"
+}

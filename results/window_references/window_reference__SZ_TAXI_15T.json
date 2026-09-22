@@ -1,0 +1,30 @@
+{
+  "schema": "window_reference/v1",
+  "dataset": "SZ_TAXI_15T",
+  "display_name": "SZ Taxi",
+  "builder": "rolling_within_series",
+  "cluster_unit": "series",
+  "split_mode": "rolling_origin_within_series",
+  "C": 512,
+  "H": 64,
+  "seed": 0,
+  "seasonal_m": 96,
+  "n_train": 1394,
+  "n_val": 156,
+  "n_test": 156,
+  "n_test_units": 156,
+  "series_cap": {
+    "applied": false,
+    "max_series": null,
+    "n_eligible_before": 156,
+    "n_eligible_after": 156,
+    "rng_stream": 6165221,
+    "seed": 0,
+    "selection": "seeded uniform sample without replacement over the sorted eligible series ids",
+    "reason": "no cap declared for this dataset"
+  },
+  "window_digest": "sha256:e7dbdeae77a6f2f9bf621e96a9045afd29159a36f6c5035f6f4f34ed880cda77",
+  "created_by": "python -m experiments.window_smoke14",
+  "created_utc": "2026-09-21T20:05:10+00:00",
+  "git_commit": "b9dc0cf603011b282038ee354e5fd6d44ddf5db7"
+}

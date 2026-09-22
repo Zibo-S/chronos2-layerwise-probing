@@ -1,0 +1,30 @@
+{
+  "schema": "window_reference/v1",
+  "dataset": "coastal_ts",
+  "display_name": "Coastal T-S",
+  "builder": "rolling_cluster",
+  "cluster_unit": "station",
+  "split_mode": "rolling_origin_within_series_ood",
+  "C": 512,
+  "H": 64,
+  "seed": 0,
+  "seasonal_m": 24,
+  "n_train": 1394,
+  "n_val": 48,
+  "n_test": 48,
+  "n_test_units": 24,
+  "series_cap": {
+    "applied": false,
+    "max_series": null,
+    "n_eligible_before": 48,
+    "n_eligible_after": 48,
+    "rng_stream": 6165221,
+    "seed": 0,
+    "selection": "seeded uniform sample without replacement over the sorted eligible series ids",
+    "reason": "no cap declared for this dataset"
+  },
+  "window_digest": "sha256:5262c19d9f3768ecbce0ebc175f563263f8fef2545933189fd03984e796c112c",
+  "created_by": "python -m experiments.window_smoke14",
+  "created_utc": "2026-09-21T20:00:29+00:00",
+  "git_commit": "b9dc0cf603011b282038ee354e5fd6d44ddf5db7"
+}

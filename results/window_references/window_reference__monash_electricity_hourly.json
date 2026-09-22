@@ -1,0 +1,30 @@
+{
+  "schema": "window_reference/v1",
+  "dataset": "monash_electricity_hourly",
+  "display_name": "Electricity",
+  "builder": "rolling_within_series",
+  "cluster_unit": "series",
+  "split_mode": "rolling_origin_within_series",
+  "C": 512,
+  "H": 64,
+  "seed": 0,
+  "seasonal_m": 24,
+  "n_train": 1394,
+  "n_val": 262,
+  "n_test": 262,
+  "n_test_units": 262,
+  "series_cap": {
+    "applied": false,
+    "max_series": null,
+    "n_eligible_before": 321,
+    "n_eligible_after": 321,
+    "rng_stream": 6165221,
+    "seed": 0,
+    "selection": "seeded uniform sample without replacement over the sorted eligible series ids",
+    "reason": "no cap declared for this dataset"
+  },
+  "window_digest": "sha256:adce7921407c90694f539e6d871e907e8a99b6430307b66e0d9f199bb906e5f0",
+  "created_by": "python -m experiments.window_smoke14",
+  "created_utc": "2026-09-21T20:00:12+00:00",
+  "git_commit": "b9dc0cf603011b282038ee354e5fd6d44ddf5db7"
+}

@@ -1,0 +1,30 @@
+{
+  "schema": "window_reference/v1",
+  "dataset": "m4_hourly",
+  "display_name": "M4",
+  "builder": "rolling_within_series",
+  "cluster_unit": "series",
+  "split_mode": "rolling_origin_within_series",
+  "C": 512,
+  "H": 64,
+  "seed": 0,
+  "seasonal_m": 24,
+  "n_train": 1394,
+  "n_val": 262,
+  "n_test": 262,
+  "n_test_units": 262,
+  "series_cap": {
+    "applied": false,
+    "max_series": null,
+    "n_eligible_before": 414,
+    "n_eligible_after": 414,
+    "rng_stream": 6165221,
+    "seed": 0,
+    "selection": "seeded uniform sample without replacement over the sorted eligible series ids",
+    "reason": "no cap declared for this dataset"
+  },
+  "window_digest": "sha256:6394d28b53bf6a76d61c3b0cfb788a44d7dd3b948988788e482e0ee96d96af72",
+  "created_by": "python -m experiments.window_smoke14",
+  "created_utc": "2026-09-21T19:59:42+00:00",
+  "git_commit": "b9dc0cf603011b282038ee354e5fd6d44ddf5db7"
+}

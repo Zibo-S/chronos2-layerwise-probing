@@ -1,0 +1,30 @@
+{
+  "schema": "window_reference/v1",
+  "dataset": "LOOP_SEATTLE_5T",
+  "display_name": "Loop Seattle",
+  "builder": "rolling_within_series",
+  "cluster_unit": "series",
+  "split_mode": "rolling_origin_within_series",
+  "C": 512,
+  "H": 64,
+  "seed": 0,
+  "seasonal_m": 288,
+  "n_train": 1394,
+  "n_val": 262,
+  "n_test": 262,
+  "n_test_units": 262,
+  "series_cap": {
+    "applied": false,
+    "max_series": null,
+    "n_eligible_before": 323,
+    "n_eligible_after": 323,
+    "rng_stream": 6165221,
+    "seed": 0,
+    "selection": "seeded uniform sample without replacement over the sorted eligible series ids",
+    "reason": "no cap declared for this dataset"
+  },
+  "window_digest": "sha256:37084be3b4c193a6a6da18402b8ac7baf99cdcfbda23594415eba375fcca7220",
+  "created_by": "python -m experiments.window_smoke14",
+  "created_utc": "2026-09-21T20:02:37+00:00",
+  "git_commit": "b9dc0cf603011b282038ee354e5fd6d44ddf5db7"
+}
