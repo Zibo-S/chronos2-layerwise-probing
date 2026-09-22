@@ -138,9 +138,15 @@ def predict_quantiles(fitted_point: dict, feats, H: int, quantiles, device) -> n
     ``probes.predict_shared_forecast_probe``'s own loss divided by 2Q.
     """
     Q, P = len(quantiles), int(fitted_point["output_patch_size"])
-    lin = fitted_point["linear"].to(device).eval()
+    lin = fitted_point["linear"].eval()
+    # Defensive prediction-device matching: put the input where the weights ALREADY are, rather
+    # than trusting the passed ``device``. fit_shared_forecast_probe_explicit_val resolves a None
+    # device to cuda internally, so a caller that also passes None here would otherwise build the
+    # input on cpu and hit a CPU/CUDA addmm mismatch. The ``device`` argument is retained for
+    # signature stability but the fitted weights' device is authoritative.
+    dev = next(lin.parameters()).device
     X = torch.as_tensor(_slot_transform(fitted_point["scaler"], np.asarray(feats, np.float32)),
-                        dtype=torch.float32, device=device)
+                        dtype=torch.float32, device=dev)
     with torch.no_grad():
         return _apply_shared_head(lin, X, Q, P, H).cpu().numpy().astype(np.float32)
 
@@ -159,6 +165,10 @@ def fit_layerwise(tag: str, data: dict, *, quantiles, median_idx: int, device: s
     weights, and the test split is read exactly once, after everything is frozen.
     """
     spec = _spec()
+    # Resolve the device ONCE, concretely, so the fit and every predict call agree. Mirrors the
+    # idiom in probes.fit_shared_forecast_probe_explicit_val (which resolves None -> cuda
+    # internally); resolving here keeps the two from desyncing when --device is left unset.
+    device = device or ("cuda" if torch.cuda.is_available() else "cpu")
     q = validate_quantiles(quantiles)
     Q = len(q)
     tr, va, te = data["train"], data["val"], data["test"]
@@ -258,19 +268,31 @@ def native_reference(tag: str, w: dict, data: dict, quantiles, median_idx: int,
     X = np.asarray(te["X"], np.float32)
     H = int(te["Y"].shape[1])
     q = np.asarray(quantiles, np.float64)
-    chunks = []
+    # Chronos2Pipeline.predict_quantiles returns (quantiles, mean): quantiles is a LIST with one
+    # entry per input series, each of shape (n_variates, H, Q). Probing is univariate, so every
+    # entry must be (1, H, Q) -- assert that per-series shape EXPLICITLY (or the (H, Q) it squeezes
+    # to) rather than reshaping, so an unexpected variate count fails loudly instead of being
+    # silently coerced. Pass numpy rows (list(X[...])) so the pipeline places them on its device.
+    per_series = []
+    Qn = len(q)
     with torch.no_grad():
         for s in range(0, len(X), batch_size):
-            ctx = [torch.as_tensor(row, dtype=torch.float32) for row in X[s:s + batch_size]]
-            out = pipeline.predict_quantiles(ctx, prediction_length=H,
-                                             quantile_levels=[float(v) for v in q])
-            arr = out[0] if isinstance(out, tuple) else out
-            chunks.append(np.asarray(arr.cpu() if hasattr(arr, "cpu") else arr, np.float64))
-    raw = np.concatenate(chunks, axis=0)
-    # predict_quantiles returns (n, H, Q); the project's prediction layout is (n, Q, H).
-    if raw.shape[1:] != (H, len(q)):
-        raise RuntimeError(f"native forecast is {raw.shape}, expected (n, {H}, {len(q)})")
-    qraw = np.ascontiguousarray(raw.transpose(0, 2, 1))
+            quantiles_out, _mean = pipeline.predict_quantiles(
+                list(X[s:s + batch_size]), prediction_length=H,
+                quantile_levels=[float(v) for v in q])
+            for qt in quantiles_out:
+                a = np.asarray(qt.cpu() if hasattr(qt, "cpu") else qt, np.float64)
+                if a.shape == (1, H, Qn):
+                    a = a[0]
+                elif a.shape != (H, Qn):
+                    raise RuntimeError(
+                        f"native per-series forecast is {a.shape}, expected (1, {H}, {Qn}) or "
+                        f"({H}, {Qn}) -- univariate Chronos-2 output; refusing to reshape it")
+                per_series.append(a)
+    raw = np.stack(per_series, axis=0)                    # (n, H, Q)
+    if raw.shape != (len(X), H, Qn):
+        raise RuntimeError(f"native forecast is {raw.shape}, expected ({len(X)}, {H}, {Qn})")
+    qraw = np.ascontiguousarray(raw.transpose(0, 2, 1))   # (n, Q, H) -- the project's layout
 
     mu = np.asarray(X, np.float64).mean(axis=1)
     sd = np.maximum(np.asarray(X, np.float64).std(axis=1), 1e-6)

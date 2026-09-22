@@ -174,8 +174,11 @@ python -m experiments.run_three_model_phase1 \
     --cache-root  "$PHASE1_CACHE" \
     --quantile-set q9 \
     --suite paper14 \
+    --device cuda \
     --resume \
     "$@"
+# --device cuda is explicit (not left to auto-detect) so every model's probe fit AND predict run
+# on the same concrete device; extra args in "$@" (e.g. --audit-only --device cpu) still override.
 
 echo "=================================================================================="
 echo "PHASE 1 finished $(date -Is)"

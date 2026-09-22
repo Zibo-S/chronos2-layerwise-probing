@@ -100,9 +100,11 @@ def extract(tag: str, w: dict, *, model, geom, cache_dir, checkpoint, backend=BA
             tag, split, X, model, geom, cache_dir=cache_dir, checkpoint=checkpoint,
             backend=backend, seed=seed, batch_size=batch_size, verbose=verbose, mode=mode)
         y_raw = _raw_future(w, split)
-        t = build_targets(X, y_raw, model, geom, mode=mode)
+        # build_targets returns a (targets, loc, scale) TUPLE (its established contract, shared
+        # with run_tirex_probing); destructure it -- indexing it like a dict raises TypeError.
+        tgt, loc, scale = build_targets(X, y_raw, model, geom, mode=mode)
         out[split] = {"feats": feats, "native": native, "X": X, "y_raw": y_raw,
-                      "targets": t["targets"], "loc": t["loc"], "scale": t["scale"],
+                      "targets": tgt, "loc": loc, "scale": scale,
                       "series": np.asarray(w[Sk], np.int64)}
         ex["cache_hits"][split] = bool(hit)
         ex["feature_shapes"][split] = list(np.shape(feats[_spec().labels[-1]]))

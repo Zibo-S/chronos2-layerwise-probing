@@ -4,8 +4,10 @@ Every contract the specification asks for before a single GPU-hour is spent, num
 failure names the requirement it broke. Model-free by default: it runs on a login node in a few
 seconds and needs no checkpoint, no dataset and no feature cache.
 
-    python -m tests.test_three_model_phase1                # 47 model-free contracts (~15 s)
+    python -m tests.test_three_model_phase1                # 57 model-free contracts (~15 s)
     python -m tests.test_three_model_phase1 --with-model   # + 28/30/31, inside an salloc
+
+(21b is CUDA-gated: it SKIPS on a CPU-only login node and runs on an accelerator.)
 
 The model-backed contracts (TiRex device handling, CPU/CUDA mixing, the native-head
 reconstruction) are delegated VERBATIM to ``tests.test_tirex_probing --with-model`` rather than
@@ -506,6 +508,92 @@ def test_21_chronos_prediction_target_alignment():
           "validated scorer  OK")
 
 
+def test_21a_chronos_native_reference_consumes_list_tensor_api():
+    """native_reference must consume Chronos2Pipeline's ACTUAL return: (quantiles, mean), where
+    quantiles is a LIST with one (n_variates, H, Q) tensor per series. The per-series shape is
+    asserted EXPLICITLY -- a non-univariate output is refused, never reshaped away.
+
+    The fake pipeline reproduces that API exactly (a list of CUDA-style tensors + a mean list), so
+    a regression to the old ``np.asarray(list_of_tensors)`` / stacked-array assumption is caught
+    here with no GPU and no checkpoint.
+    """
+    import probing.extraction as extraction
+    import probing.phase1_chronos2 as ad
+    H, n = 64, 10
+    q = np.asarray(PHASE1_QUANTILES, np.float64)
+    rng = np.random.default_rng(0)
+    X = rng.normal(size=(n, 512)).astype(np.float32)
+    Y = rng.normal(size=(n, H)).astype(np.float32)                     # arcsinh-space labels
+    mu = X.astype(np.float64).mean(1)
+    sd = np.maximum(X.astype(np.float64).std(1), 1e-6)
+    y_raw = mu[:, None] + sd[:, None] * np.sinh(Y.astype(np.float64))
+    data = {"test": {"X": X, "Y": Y, "y_raw": y_raw}}
+
+    class _FakePipe:
+        """Mirrors Chronos2Pipeline.predict_quantiles: returns (quantiles, mean) where quantiles
+        is a LIST of (n_variates, prediction_length, len(levels)) tensors, one per input series."""
+        def __init__(self, n_variates=1):
+            self.nv = n_variates
+
+        def predict_quantiles(self, inputs, prediction_length, quantile_levels):
+            b = len(list(inputs))
+            Qn = len(quantile_levels)
+            ql = [torch.randn(self.nv, prediction_length, Qn) for _ in range(b)]
+            mn = [t[:, :, Qn // 2] for t in ql]                        # (n_variates, H)
+            return ql, mn
+
+    saved = extraction.get_pipeline
+    try:
+        extraction.get_pipeline = lambda: (_FakePipe(1), None)
+        out = ad.native_reference("m4_hourly", None, data, q, 4, batch_size=4)
+        assert out["available"] is True
+        for k in ("loss", "mase", "mae"):
+            assert np.isfinite(out[k]), k
+        assert out["loss_window"].shape == (n,) and out["mase_window"].shape == (n,)
+        # a per-series forecast that is NOT (1, H, Q) or (H, Q) must RAISE, never be reshaped
+        extraction.get_pipeline = lambda: (_FakePipe(2), None)         # two variates
+        raised = False
+        try:
+            ad.native_reference("m4_hourly", None, data, q, 4, batch_size=4)
+        except (RuntimeError, ValueError):
+            raised = True
+        assert raised, "a non-univariate per-series native forecast must be refused, not coerced"
+    finally:
+        extraction.get_pipeline = saved
+    print(" 21a Chronos native_reference consumes (list[tensor], mean); a wrong per-series shape "
+          "is refused  OK")
+
+
+def test_21b_chronos_fit_predict_device_consistency():
+    """The reported GPU failure, as a contract. With --device unset the probe fit auto-resolves to
+    cuda while an unfixed predict built its input on cpu -> a CPU/CUDA addmm mismatch. fit_layerwise
+    must resolve the device once (concrete), and predict_quantiles must place the input on the
+    fitted weights' device (defensive). CUDA-gated: it SKIPS where no accelerator is present."""
+    if not torch.cuda.is_available():
+        print(" 21b Chronos fit->predict device consistency                 SKIPPED (no CUDA)")
+        return
+    import probing.phase1_chronos2 as ad
+    ftr, Ytr = _chronos_fixture(n=24, seed=0)
+    fva, Yva = _chronos_fixture(n=12, seed=1)
+    fte, Yte = _chronos_fixture(n=12, seed=2)
+    data = {"train": {"feats": ftr, "Y": Ytr}, "val": {"feats": fva, "Y": Yva},
+            "test": {"feats": fte, "Y": Yte}}
+    # device=None is the exact failure mode: it must NOT raise a CPU/CUDA addmm mismatch.
+    res = ad.fit_layerwise("m4_hourly", data, quantiles=PHASE1_QUANTILES, median_idx=4,
+                           device=None, epochs=2, wd_grid=(1e-3,), verbose=False)
+    for k in ("train_loss", "val_loss", "test_loss"):
+        assert np.all(np.isfinite(res[k])), k
+    # defensive matching: with weights on cuda, predict follows the WEIGHTS regardless of the arg
+    fitted = ad.fit_shared_forecast_probe_explicit_val(
+        ftr, Ytr, fva, Yva, quantiles=PHASE1_QUANTILES, epochs=1, wd_grid=(1e-3,), device="cuda")
+    key = ad.POINT_KEYS[0]
+    assert next(fitted[key]["linear"].parameters()).is_cuda
+    for arg in ("cpu", None, "cuda"):
+        p = ad.predict_quantiles(fitted[key], fte[key], 64, PHASE1_QUANTILES, arg)
+        assert p.shape == (12, 9, 64) and np.all(np.isfinite(p)), arg
+    print(" 21b Chronos fit(device=None)->predict holds on CUDA; predict follows the weights   OK")
+
+
 # =========================================================================== #
 # TIMESFM-3 (22-24)
 # =========================================================================== #
@@ -642,6 +730,76 @@ def test_27_tirex_native_state_indexing():
     assert spec.labels == list(REP_NAMES), (spec.labels, REP_NAMES)
     print(f" 27  TiRex readout index derived as {g.readout_indices[0]} "
           f"(= n_context_tokens - 1), 14 depths        OK")
+
+
+def _returns_tuple_of_len(fn, expected_len):
+    """Assert (via AST) that a function's every top-level return is a tuple of the given arity.
+    Ties a test fake to the REAL package API so the fake cannot silently drift from it."""
+    import ast
+    import inspect
+    import textwrap
+    tree = ast.parse(textwrap.dedent(inspect.getsource(fn)))
+    fdef = next(n for n in ast.walk(tree)
+                if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)))
+    returns = [n for n in ast.walk(fdef) if isinstance(n, ast.Return) and n.value is not None]
+    assert returns, f"{fn.__name__} has no value-returning statement"
+    assert all(isinstance(r.value, ast.Tuple) and len(r.value.elts) == expected_len
+               for r in returns), \
+        f"{fn.__name__} must return a {expected_len}-tuple on every path"
+
+
+def test_28a_tirex_extract_consumes_build_targets_tuple():
+    """phase1_tirex.extract must DESTRUCTURE build_targets' (targets, loc, scale) tuple -- the old
+    adapter indexed it like a dict and raised ``TypeError: tuple indices must be integers ...``.
+
+    This runs the REAL build_targets against the faithful STUB tokenizer (the same fixture the
+    TiRex suite re-checks against the live checkpoint under --with-model), so the tuple return is
+    genuinely exercised end-to-end; only cached_features (the GPU forward) is faked, and its
+    return arity is pinned to the real function so the fake cannot drift.
+    """
+    import probing.phase1_tirex as ad
+    import probing.tirex_model as tm
+    from tests.test_tirex_probing import GEOM, STUB
+    spec = model_spec("tirex")
+    K = GEOM.n_forecast_patches
+
+    # pin the faked / consumed APIs to reality: build_targets -> 3-tuple, cached_features -> 4-tuple
+    _returns_tuple_of_len(tm.build_targets, 3)
+    _returns_tuple_of_len(tm.cached_features, 4)
+
+    def fake_cached_features(tag, split, X, model, geom, *, cache_dir, checkpoint, backend,
+                             points=None, seed=0, batch_size=64, verbose=False, mode="two_pass"):
+        nn = np.asarray(X).shape[0]
+        feats = {lab: np.zeros((nn, K, 512), np.float32) for lab in spec.labels}
+        native = np.zeros((nn, GEOM.H, GEOM.num_quantiles), np.float32)
+        return feats, native, {"batch_size": batch_size, "mode": mode}, True   # real 4-tuple
+
+    counts = {"train": 8, "val": 5, "test": 6}
+    rng = np.random.default_rng(0)
+    w = {"meta": {"sigma_eps": 1e-6}}
+    for sp, cnt in counts.items():
+        w[f"X_{sp}"] = rng.normal(size=(cnt, GEOM.C)).astype(np.float32)
+        w[f"Y_{sp}_traj"] = rng.normal(size=(cnt, GEOM.H)).astype(np.float32)
+        w[f"series_{sp}"] = np.arange(cnt, dtype=np.int64)
+
+    saved = tm.cached_features
+    try:
+        tm.cached_features = fake_cached_features            # extract re-imports this at call time
+        data, ex = ad.extract("m4_hourly", w, model=STUB, geom=GEOM, cache_dir="/tmp/none",
+                              checkpoint="NX-AI/TiRex", batch_size=4)
+    finally:
+        tm.cached_features = saved
+
+    for sp, cnt in counts.items():
+        d = data[sp]
+        assert set(d) >= {"feats", "native", "X", "y_raw", "targets", "loc", "scale", "series"}
+        assert d["targets"].shape == (cnt, GEOM.H), (sp, d["targets"].shape)
+        assert d["loc"].shape == (cnt, K) and d["scale"].shape == (cnt, K), sp
+        assert np.all(np.isfinite(d["targets"])), sp
+    assert ex["rollout_mode"] == ad.ROLLOUT_MODE
+    assert ex["feature_shapes"]["test"] == [counts["test"], K, 512]
+    print(" 28a TiRex extract destructures build_targets' 3-tuple (real fn + faithful stub); "
+          "cached_features arity pinned  OK")
 
 
 def test_29_batch_size_is_in_the_cache_key():
