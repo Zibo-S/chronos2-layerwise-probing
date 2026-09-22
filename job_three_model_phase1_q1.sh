@@ -3,7 +3,7 @@
 #SBATCH --gres=gpu:1                 # ONE GPU, Narval A100-40GB. NOT an H100/Fir request.
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=48G                    # build_windows dominates (wiki_daily_100k ~2.2 GB raw)
-#SBATCH --time=12:00:00              # resubmit the SAME line to resume
+#SBATCH --time=06:00:00              # resubmit the SAME line to resume
 #SBATCH --output=results/three_model_phase1_q1/logs/%x-%j.out
 #SBATCH --error=results/three_model_phase1_q1/logs/%x-%j.err
 

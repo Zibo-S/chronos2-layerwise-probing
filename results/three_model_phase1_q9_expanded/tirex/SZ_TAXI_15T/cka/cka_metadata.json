@@ -1,0 +1,1386 @@
+{
+  "model": "tirex",
+  "dataset": "SZ_TAXI_15T",
+  "blocks": [
+    {
+      "variant": "pos0",
+      "split": "test",
+      "labels": [
+        "Emb",
+        "L1",
+        "L2",
+        "L3",
+        "L4",
+        "L5",
+        "L6",
+        "L7",
+        "L8",
+        "L9",
+        "L10",
+        "L11",
+        "L12"
+      ],
+      "all_labels": [
+        "Emb",
+        "L1",
+        "L2",
+        "L3",
+        "L4",
+        "L5",
+        "L6",
+        "L7",
+        "L8",
+        "L9",
+        "L10",
+        "L11",
+        "L12",
+        "L12+RMS"
+      ],
+      "point_types": [
+        "block_depth",
+        "block_depth",
+        "block_depth",
+        "block_depth",
+        "block_depth",
+        "block_depth",
+        "block_depth",
+        "block_depth",
+        "block_depth",
+        "block_depth",
+        "block_depth",
+        "block_depth",
+        "block_depth",
+        "head_input_diagnostic"
+      ],
+      "depth_axis_indices": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12
+      ],
+      "head_input_indices": [
+        13
+      ],
+      "head_input_labels": [
+        "L12+RMS"
+      ],
+      "n_rows": 156,
+      "feature_dim": 512,
+      "estimators": [
+        "unbiased",
+        "biased"
+      ],
+      "row_construction": "readout positions [0] stacked row-major over depths Emb..L12+RMS",
+      "cka_null_floor": {
+        "unbiased": {
+          "estimator": "unbiased",
+          "n": 156,
+          "d": 512,
+          "n_repeats": 3,
+          "mean": 0.0026543856211357106,
+          "std": 0.0040406099991680275,
+          "values": [
+            0.0018051569510738215,
+            -0.001814761556976754,
+            0.007972761469310063
+          ],
+          "seed": 0,
+          "meaning": "biased-linear-CKA value for two INDEPENDENT Gaussian representations of this shape; the true CKA there is 0, so this is the estimator's own upward bias floor at this (n, d). NOT subtracted from the reported matrix",
+          "min_offdiagonal_cka": 0.11442063195630212,
+          "mean_offdiagonal_cka": 0.75723751513821,
+          "mean_offdiagonal_above_null_floor": 0.7545831295170743
+        },
+        "biased": {
+          "estimator": "biased",
+          "n": 156,
+          "d": 512,
+          "n_repeats": 3,
+          "mean": 0.7669487536631682,
+          "std": 0.0007622144419604527,
+          "values": [
+            0.7679912567239756,
+            0.7666648769617906,
+            0.7661901273037386
+          ],
+          "seed": 0,
+          "meaning": "biased-linear-CKA value for two INDEPENDENT Gaussian representations of this shape; the true CKA there is 0, so this is the estimator's own upward bias floor at this (n, d). NOT subtracted from the reported matrix",
+          "min_offdiagonal_cka": 0.1479796196366688,
+          "mean_offdiagonal_cka": 0.7739052779271742,
+          "mean_offdiagonal_above_null_floor": 0.006956524264006059
+        }
+      },
+      "headline_estimator": "unbiased",
+      "cka_axis": "block_depth only (a final normalization is not a model depth)",
+      "geometry_caveat": "Unbiased linear CKA is the Phase-1 headline. The biased estimator is saved as a diagnostic but its finite-sample floor differs across the three models because the number of readout rows per window and the representation dimension differ (Chronos-2: 4 rows per window at d=768; TimesFM-3: 1 at d=1280; TiRex headline pos0: 1 at d=512). Absolute biased CKA must NEVER be compared across models. The measured per-(n, d, estimator) null floor is saved beside every matrix and nothing is subtracted from the matrices.",
+      "head_input_caveat": "A final normalization (Chronos-2 L12+LN, TiRex L12+RMS) is NOT an additional model depth. It is probed and saved as a head-input diagnostic for the later native-head/alignment work, but it is excluded from the tunnel criterion, from the normalized depth axis and from the main cross-model depth curves and heatmaps. The final depth \u2014 and therefore the final-depth probe loss and the tunnel's reference \u2014 is the final BLOCK output.",
+      "cka_with_head_input_labels": [
+        "Emb",
+        "L1",
+        "L2",
+        "L3",
+        "L4",
+        "L5",
+        "L6",
+        "L7",
+        "L8",
+        "L9",
+        "L10",
+        "L11",
+        "L12",
+        "L12+RMS"
+      ],
+      "is_headline": true,
+      "degeneracy": {
+        "constant_across_windows_by_point": {
+          "Emb": [
+            false,
+            true
+          ],
+          "L1": [
+            false,
+            false
+          ],
+          "L2": [
+            false,
+            false
+          ],
+          "L3": [
+            false,
+            false
+          ],
+          "L4": [
+            false,
+            false
+          ],
+          "L5": [
+            false,
+            false
+          ],
+          "L6": [
+            false,
+            false
+          ],
+          "L7": [
+            false,
+            false
+          ],
+          "L8": [
+            false,
+            false
+          ],
+          "L9": [
+            false,
+            false
+          ],
+          "L10": [
+            false,
+            false
+          ],
+          "L11": [
+            false,
+            false
+          ],
+          "L12": [
+            false,
+            false
+          ],
+          "L12+RMS": [
+            false,
+            false
+          ]
+        },
+        "affected": [
+          {
+            "point": "Emb",
+            "position": 1
+          }
+        ],
+        "n_affected": 1,
+        "expected": [
+          {
+            "point": "Emb",
+            "position": 1
+          }
+        ],
+        "note": "Which (representation point, readout position) pairs are CONSTANT across windows."
+      },
+      "degeneracy_caveat": "At the Emb depth ONLY, readout position 1 (the first masked-future token) is bit-identical across windows: its patch-embedding input is (values=0, mask=0) before any recurrence, so the embedding is a pure bias. This is why the HEADLINE geometry is `pos0` (position 0 only, at every depth) and why the `all_positions_from_L1` companion starts at L1: a 2n-row matrix at Emb would be n varying rows plus n copies of one point, which deflates its spectrum and distorts its CKA row relative to every other depth. Neither produced curve contains that matrix. The degeneracy is still measured and reported every run.",
+      "effective_rank_summary": {
+        "layer_names": [
+          "Emb",
+          "L1",
+          "L2",
+          "L3",
+          "L4",
+          "L5",
+          "L6",
+          "L7",
+          "L8",
+          "L9",
+          "L10",
+          "L11",
+          "L12",
+          "L12+RMS"
+        ],
+        "point_types": [
+          "block_depth",
+          "block_depth",
+          "block_depth",
+          "block_depth",
+          "block_depth",
+          "block_depth",
+          "block_depth",
+          "block_depth",
+          "block_depth",
+          "block_depth",
+          "block_depth",
+          "block_depth",
+          "block_depth",
+          "head_input_diagnostic"
+        ],
+        "effective_rank": [
+          21.093104242974775,
+          24.06790952810526,
+          25.10300156145226,
+          27.951713627056506,
+          31.18998879968124,
+          34.001781026026826,
+          36.51191989806414,
+          37.93098967037571,
+          38.099631675886556,
+          40.674833300604604,
+          41.968339223567064,
+          41.65848449467989,
+          10.154180773478059,
+          8.470268022368636
+        ]
+      }
+    },
+    {
+      "variant": "all_positions_from_L1",
+      "split": "test",
+      "labels": [
+        "L1",
+        "L2",
+        "L3",
+        "L4",
+        "L5",
+        "L6",
+        "L7",
+        "L8",
+        "L9",
+        "L10",
+        "L11",
+        "L12"
+      ],
+      "all_labels": [
+        "L1",
+        "L2",
+        "L3",
+        "L4",
+        "L5",
+        "L6",
+        "L7",
+        "L8",
+        "L9",
+        "L10",
+        "L11",
+        "L12",
+        "L12+RMS"
+      ],
+      "point_types": [
+        "block_depth",
+        "block_depth",
+        "block_depth",
+        "block_depth",
+        "block_depth",
+        "block_depth",
+        "block_depth",
+        "block_depth",
+        "block_depth",
+        "block_depth",
+        "block_depth",
+        "block_depth",
+        "head_input_diagnostic"
+      ],
+      "depth_axis_indices": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11
+      ],
+      "head_input_indices": [
+        12
+      ],
+      "head_input_labels": [
+        "L12+RMS"
+      ],
+      "n_rows": 312,
+      "feature_dim": 512,
+      "estimators": [
+        "unbiased",
+        "biased"
+      ],
+      "row_construction": "readout positions [0, 1] stacked row-major over depths L1..L12+RMS",
+      "cka_null_floor": {
+        "unbiased": {
+          "estimator": "unbiased",
+          "n": 312,
+          "d": 512,
+          "n_repeats": 3,
+          "mean": 7.208191525463874e-05,
+          "std": 0.0028189390021468325,
+          "values": [
+            0.004013698617568653,
+            -0.0013816490956850014,
+            -0.0024158037761197355
+          ],
+          "seed": 0,
+          "meaning": "biased-linear-CKA value for two INDEPENDENT Gaussian representations of this shape; the true CKA there is 0, so this is the estimator's own upward bias floor at this (n, d). NOT subtracted from the reported matrix",
+          "min_offdiagonal_cka": 0.08177345341191047,
+          "mean_offdiagonal_cka": 0.7492767682556353,
+          "mean_offdiagonal_above_null_floor": 0.7492046863403806
+        },
+        "biased": {
+          "estimator": "biased",
+          "n": 312,
+          "d": 512,
+          "n_repeats": 3,
+          "mean": 0.6212328093132958,
+          "std": 0.0017651624187365695,
+          "values": [
+            0.6236205803798008,
+            0.6194083608987611,
+            0.6206694866613255
+          ],
+          "seed": 0,
+          "meaning": "biased-linear-CKA value for two INDEPENDENT Gaussian representations of this shape; the true CKA there is 0, so this is the estimator's own upward bias floor at this (n, d). NOT subtracted from the reported matrix",
+          "min_offdiagonal_cka": 0.0942097354124194,
+          "mean_offdiagonal_cka": 0.755063759911308,
+          "mean_offdiagonal_above_null_floor": 0.1338309505980122
+        }
+      },
+      "headline_estimator": "unbiased",
+      "cka_axis": "block_depth only (a final normalization is not a model depth)",
+      "geometry_caveat": "Unbiased linear CKA is the Phase-1 headline. The biased estimator is saved as a diagnostic but its finite-sample floor differs across the three models because the number of readout rows per window and the representation dimension differ (Chronos-2: 4 rows per window at d=768; TimesFM-3: 1 at d=1280; TiRex headline pos0: 1 at d=512). Absolute biased CKA must NEVER be compared across models. The measured per-(n, d, estimator) null floor is saved beside every matrix and nothing is subtracted from the matrices.",
+      "head_input_caveat": "A final normalization (Chronos-2 L12+LN, TiRex L12+RMS) is NOT an additional model depth. It is probed and saved as a head-input diagnostic for the later native-head/alignment work, but it is excluded from the tunnel criterion, from the normalized depth axis and from the main cross-model depth curves and heatmaps. The final depth \u2014 and therefore the final-depth probe loss and the tunnel's reference \u2014 is the final BLOCK output.",
+      "cka_with_head_input_labels": [
+        "L1",
+        "L2",
+        "L3",
+        "L4",
+        "L5",
+        "L6",
+        "L7",
+        "L8",
+        "L9",
+        "L10",
+        "L11",
+        "L12",
+        "L12+RMS"
+      ],
+      "is_headline": false,
+      "degeneracy": {
+        "constant_across_windows_by_point": {
+          "Emb": [
+            false,
+            true
+          ],
+          "L1": [
+            false,
+            false
+          ],
+          "L2": [
+            false,
+            false
+          ],
+          "L3": [
+            false,
+            false
+          ],
+          "L4": [
+            false,
+            false
+          ],
+          "L5": [
+            false,
+            false
+          ],
+          "L6": [
+            false,
+            false
+          ],
+          "L7": [
+            false,
+            false
+          ],
+          "L8": [
+            false,
+            false
+          ],
+          "L9": [
+            false,
+            false
+          ],
+          "L10": [
+            false,
+            false
+          ],
+          "L11": [
+            false,
+            false
+          ],
+          "L12": [
+            false,
+            false
+          ],
+          "L12+RMS": [
+            false,
+            false
+          ]
+        },
+        "affected": [
+          {
+            "point": "Emb",
+            "position": 1
+          }
+        ],
+        "n_affected": 1,
+        "expected": [
+          {
+            "point": "Emb",
+            "position": 1
+          }
+        ],
+        "note": "Which (representation point, readout position) pairs are CONSTANT across windows."
+      },
+      "degeneracy_caveat": "At the Emb depth ONLY, readout position 1 (the first masked-future token) is bit-identical across windows: its patch-embedding input is (values=0, mask=0) before any recurrence, so the embedding is a pure bias. This is why the HEADLINE geometry is `pos0` (position 0 only, at every depth) and why the `all_positions_from_L1` companion starts at L1: a 2n-row matrix at Emb would be n varying rows plus n copies of one point, which deflates its spectrum and distorts its CKA row relative to every other depth. Neither produced curve contains that matrix. The degeneracy is still measured and reported every run.",
+      "effective_rank_summary": {
+        "layer_names": [
+          "L1",
+          "L2",
+          "L3",
+          "L4",
+          "L5",
+          "L6",
+          "L7",
+          "L8",
+          "L9",
+          "L10",
+          "L11",
+          "L12",
+          "L12+RMS"
+        ],
+        "point_types": [
+          "block_depth",
+          "block_depth",
+          "block_depth",
+          "block_depth",
+          "block_depth",
+          "block_depth",
+          "block_depth",
+          "block_depth",
+          "block_depth",
+          "block_depth",
+          "block_depth",
+          "block_depth",
+          "head_input_diagnostic"
+        ],
+        "effective_rank": [
+          13.710477768249202,
+          17.09010459816099,
+          20.481308484730604,
+          25.293660859784787,
+          30.121362367408768,
+          35.30507377798432,
+          39.80014725523761,
+          42.13085939353832,
+          46.885995117903676,
+          50.26798863589486,
+          50.533939004461274,
+          11.726884429565471,
+          9.648780645782452
+        ]
+      }
+    },
+    {
+      "variant": "pos0",
+      "split": "train",
+      "labels": [
+        "Emb",
+        "L1",
+        "L2",
+        "L3",
+        "L4",
+        "L5",
+        "L6",
+        "L7",
+        "L8",
+        "L9",
+        "L10",
+        "L11",
+        "L12"
+      ],
+      "all_labels": [
+        "Emb",
+        "L1",
+        "L2",
+        "L3",
+        "L4",
+        "L5",
+        "L6",
+        "L7",
+        "L8",
+        "L9",
+        "L10",
+        "L11",
+        "L12",
+        "L12+RMS"
+      ],
+      "point_types": [
+        "block_depth",
+        "block_depth",
+        "block_depth",
+        "block_depth",
+        "block_depth",
+        "block_depth",
+        "block_depth",
+        "block_depth",
+        "block_depth",
+        "block_depth",
+        "block_depth",
+        "block_depth",
+        "block_depth",
+        "head_input_diagnostic"
+      ],
+      "depth_axis_indices": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12
+      ],
+      "head_input_indices": [
+        13
+      ],
+      "head_input_labels": [
+        "L12+RMS"
+      ],
+      "n_rows": 1394,
+      "feature_dim": 512,
+      "estimators": [
+        "unbiased",
+        "biased"
+      ],
+      "row_construction": "readout positions [0] stacked row-major over depths Emb..L12+RMS",
+      "cka_null_floor": {
+        "unbiased": {
+          "estimator": "unbiased",
+          "n": 1394,
+          "d": 512,
+          "n_repeats": 3,
+          "mean": 0.0009208223113989269,
+          "std": 0.0005456137502421613,
+          "values": [
+            0.0007664406123020761,
+            0.0003432870617898876,
+            0.001652739260104817
+          ],
+          "seed": 0,
+          "meaning": "biased-linear-CKA value for two INDEPENDENT Gaussian representations of this shape; the true CKA there is 0, so this is the estimator's own upward bias floor at this (n, d). NOT subtracted from the reported matrix",
+          "min_offdiagonal_cka": 0.15208012937832338,
+          "mean_offdiagonal_cka": 0.7528162139773381,
+          "mean_offdiagonal_above_null_floor": 0.7518953916659392
+        },
+        "biased": {
+          "estimator": "biased",
+          "n": 1394,
+          "d": 512,
+          "n_repeats": 3,
+          "mean": 0.2692442783018815,
+          "std": 0.0006315292890945907,
+          "values": [
+            0.2691538728388249,
+            0.26851999158990614,
+            0.2700589704769135
+          ],
+          "seed": 0,
+          "meaning": "biased-linear-CKA value for two INDEPENDENT Gaussian representations of this shape; the true CKA there is 0, so this is the estimator's own upward bias floor at this (n, d). NOT subtracted from the reported matrix",
+          "min_offdiagonal_cka": 0.15375947172520557,
+          "mean_offdiagonal_cka": 0.7546950768933807,
+          "mean_offdiagonal_above_null_floor": 0.48545079859149914
+        }
+      },
+      "headline_estimator": "unbiased",
+      "cka_axis": "block_depth only (a final normalization is not a model depth)",
+      "geometry_caveat": "Unbiased linear CKA is the Phase-1 headline. The biased estimator is saved as a diagnostic but its finite-sample floor differs across the three models because the number of readout rows per window and the representation dimension differ (Chronos-2: 4 rows per window at d=768; TimesFM-3: 1 at d=1280; TiRex headline pos0: 1 at d=512). Absolute biased CKA must NEVER be compared across models. The measured per-(n, d, estimator) null floor is saved beside every matrix and nothing is subtracted from the matrices.",
+      "head_input_caveat": "A final normalization (Chronos-2 L12+LN, TiRex L12+RMS) is NOT an additional model depth. It is probed and saved as a head-input diagnostic for the later native-head/alignment work, but it is excluded from the tunnel criterion, from the normalized depth axis and from the main cross-model depth curves and heatmaps. The final depth \u2014 and therefore the final-depth probe loss and the tunnel's reference \u2014 is the final BLOCK output.",
+      "cka_with_head_input_labels": [
+        "Emb",
+        "L1",
+        "L2",
+        "L3",
+        "L4",
+        "L5",
+        "L6",
+        "L7",
+        "L8",
+        "L9",
+        "L10",
+        "L11",
+        "L12",
+        "L12+RMS"
+      ],
+      "is_headline": true,
+      "degeneracy": {
+        "constant_across_windows_by_point": {
+          "Emb": [
+            false,
+            true
+          ],
+          "L1": [
+            false,
+            false
+          ],
+          "L2": [
+            false,
+            false
+          ],
+          "L3": [
+            false,
+            false
+          ],
+          "L4": [
+            false,
+            false
+          ],
+          "L5": [
+            false,
+            false
+          ],
+          "L6": [
+            false,
+            false
+          ],
+          "L7": [
+            false,
+            false
+          ],
+          "L8": [
+            false,
+            false
+          ],
+          "L9": [
+            false,
+            false
+          ],
+          "L10": [
+            false,
+            false
+          ],
+          "L11": [
+            false,
+            false
+          ],
+          "L12": [
+            false,
+            false
+          ],
+          "L12+RMS": [
+            false,
+            false
+          ]
+        },
+        "affected": [
+          {
+            "point": "Emb",
+            "position": 1
+          }
+        ],
+        "n_affected": 1,
+        "expected": [
+          {
+            "point": "Emb",
+            "position": 1
+          }
+        ],
+        "note": "Which (representation point, readout position) pairs are CONSTANT across windows."
+      },
+      "degeneracy_caveat": "At the Emb depth ONLY, readout position 1 (the first masked-future token) is bit-identical across windows: its patch-embedding input is (values=0, mask=0) before any recurrence, so the embedding is a pure bias. This is why the HEADLINE geometry is `pos0` (position 0 only, at every depth) and why the `all_positions_from_L1` companion starts at L1: a 2n-row matrix at Emb would be n varying rows plus n copies of one point, which deflates its spectrum and distorts its CKA row relative to every other depth. Neither produced curve contains that matrix. The degeneracy is still measured and reported every run.",
+      "effective_rank_summary": {
+        "layer_names": [
+          "Emb",
+          "L1",
+          "L2",
+          "L3",
+          "L4",
+          "L5",
+          "L6",
+          "L7",
+          "L8",
+          "L9",
+          "L10",
+          "L11",
+          "L12",
+          "L12+RMS"
+        ],
+        "point_types": [
+          "block_depth",
+          "block_depth",
+          "block_depth",
+          "block_depth",
+          "block_depth",
+          "block_depth",
+          "block_depth",
+          "block_depth",
+          "block_depth",
+          "block_depth",
+          "block_depth",
+          "block_depth",
+          "block_depth",
+          "head_input_diagnostic"
+        ],
+        "effective_rank": [
+          23.462066476263924,
+          30.314662631635155,
+          33.967354411839125,
+          39.631245732135426,
+          46.72396329670408,
+          54.33363318000648,
+          61.729895132740154,
+          65.27046405581301,
+          68.90501910838503,
+          75.51410868861831,
+          77.67583371855312,
+          72.31017599641875,
+          7.336983380082544,
+          8.608577624637398
+        ]
+      }
+    },
+    {
+      "variant": "all_positions_from_L1",
+      "split": "train",
+      "labels": [
+        "L1",
+        "L2",
+        "L3",
+        "L4",
+        "L5",
+        "L6",
+        "L7",
+        "L8",
+        "L9",
+        "L10",
+        "L11",
+        "L12"
+      ],
+      "all_labels": [
+        "L1",
+        "L2",
+        "L3",
+        "L4",
+        "L5",
+        "L6",
+        "L7",
+        "L8",
+        "L9",
+        "L10",
+        "L11",
+        "L12",
+        "L12+RMS"
+      ],
+      "point_types": [
+        "block_depth",
+        "block_depth",
+        "block_depth",
+        "block_depth",
+        "block_depth",
+        "block_depth",
+        "block_depth",
+        "block_depth",
+        "block_depth",
+        "block_depth",
+        "block_depth",
+        "block_depth",
+        "head_input_diagnostic"
+      ],
+      "depth_axis_indices": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11
+      ],
+      "head_input_indices": [
+        12
+      ],
+      "head_input_labels": [
+        "L12+RMS"
+      ],
+      "n_rows": 2788,
+      "feature_dim": 512,
+      "estimators": [
+        "unbiased",
+        "biased"
+      ],
+      "row_construction": "readout positions [0, 1] stacked row-major over depths L1..L12+RMS",
+      "cka_null_floor": {
+        "unbiased": {
+          "estimator": "unbiased",
+          "n": 2788,
+          "d": 512,
+          "n_repeats": 3,
+          "mean": 0.0006391908949593246,
+          "std": 0.0004081319647584255,
+          "values": [
+            0.00043527052761483564,
+            0.0012087726284161417,
+            0.0002735295288469965
+          ],
+          "seed": 0,
+          "meaning": "biased-linear-CKA value for two INDEPENDENT Gaussian representations of this shape; the true CKA there is 0, so this is the estimator's own upward bias floor at this (n, d). NOT subtracted from the reported matrix",
+          "min_offdiagonal_cka": 0.08191036276482794,
+          "mean_offdiagonal_cka": 0.7420885478462922,
+          "mean_offdiagonal_above_null_floor": 0.7414493569513328
+        },
+        "biased": {
+          "estimator": "biased",
+          "n": 2788,
+          "d": 512,
+          "n_repeats": 3,
+          "mean": 0.15569405319525098,
+          "std": 0.0003439107225723347,
+          "values": [
+            0.1555066082511015,
+            0.15617644026866592,
+            0.15539911106598553
+          ],
+          "seed": 0,
+          "meaning": "biased-linear-CKA value for two INDEPENDENT Gaussian representations of this shape; the true CKA there is 0, so this is the estimator's own upward bias floor at this (n, d). NOT subtracted from the reported matrix",
+          "min_offdiagonal_cka": 0.08283935840579816,
+          "mean_offdiagonal_cka": 0.7426732293950683,
+          "mean_offdiagonal_above_null_floor": 0.5869791761998173
+        }
+      },
+      "headline_estimator": "unbiased",
+      "cka_axis": "block_depth only (a final normalization is not a model depth)",
+      "geometry_caveat": "Unbiased linear CKA is the Phase-1 headline. The biased estimator is saved as a diagnostic but its finite-sample floor differs across the three models because the number of readout rows per window and the representation dimension differ (Chronos-2: 4 rows per window at d=768; TimesFM-3: 1 at d=1280; TiRex headline pos0: 1 at d=512). Absolute biased CKA must NEVER be compared across models. The measured per-(n, d, estimator) null floor is saved beside every matrix and nothing is subtracted from the matrices.",
+      "head_input_caveat": "A final normalization (Chronos-2 L12+LN, TiRex L12+RMS) is NOT an additional model depth. It is probed and saved as a head-input diagnostic for the later native-head/alignment work, but it is excluded from the tunnel criterion, from the normalized depth axis and from the main cross-model depth curves and heatmaps. The final depth \u2014 and therefore the final-depth probe loss and the tunnel's reference \u2014 is the final BLOCK output.",
+      "cka_with_head_input_labels": [
+        "L1",
+        "L2",
+        "L3",
+        "L4",
+        "L5",
+        "L6",
+        "L7",
+        "L8",
+        "L9",
+        "L10",
+        "L11",
+        "L12",
+        "L12+RMS"
+      ],
+      "is_headline": false,
+      "degeneracy": {
+        "constant_across_windows_by_point": {
+          "Emb": [
+            false,
+            true
+          ],
+          "L1": [
+            false,
+            false
+          ],
+          "L2": [
+            false,
+            false
+          ],
+          "L3": [
+            false,
+            false
+          ],
+          "L4": [
+            false,
+            false
+          ],
+          "L5": [
+            false,
+            false
+          ],
+          "L6": [
+            false,
+            false
+          ],
+          "L7": [
+            false,
+            false
+          ],
+          "L8": [
+            false,
+            false
+          ],
+          "L9": [
+            false,
+            false
+          ],
+          "L10": [
+            false,
+            false
+          ],
+          "L11": [
+            false,
+            false
+          ],
+          "L12": [
+            false,
+            false
+          ],
+          "L12+RMS": [
+            false,
+            false
+          ]
+        },
+        "affected": [
+          {
+            "point": "Emb",
+            "position": 1
+          }
+        ],
+        "n_affected": 1,
+        "expected": [
+          {
+            "point": "Emb",
+            "position": 1
+          }
+        ],
+        "note": "Which (representation point, readout position) pairs are CONSTANT across windows."
+      },
+      "degeneracy_caveat": "At the Emb depth ONLY, readout position 1 (the first masked-future token) is bit-identical across windows: its patch-embedding input is (values=0, mask=0) before any recurrence, so the embedding is a pure bias. This is why the HEADLINE geometry is `pos0` (position 0 only, at every depth) and why the `all_positions_from_L1` companion starts at L1: a 2n-row matrix at Emb would be n varying rows plus n copies of one point, which deflates its spectrum and distorts its CKA row relative to every other depth. Neither produced curve contains that matrix. The degeneracy is still measured and reported every run.",
+      "effective_rank_summary": {
+        "layer_names": [
+          "L1",
+          "L2",
+          "L3",
+          "L4",
+          "L5",
+          "L6",
+          "L7",
+          "L8",
+          "L9",
+          "L10",
+          "L11",
+          "L12",
+          "L12+RMS"
+        ],
+        "point_types": [
+          "block_depth",
+          "block_depth",
+          "block_depth",
+          "block_depth",
+          "block_depth",
+          "block_depth",
+          "block_depth",
+          "block_depth",
+          "block_depth",
+          "block_depth",
+          "block_depth",
+          "block_depth",
+          "head_input_diagnostic"
+        ],
+        "effective_rank": [
+          16.07449694038234,
+          20.476612927751688,
+          25.17322223483224,
+          32.018480245546584,
+          40.41385082208819,
+          49.770870957471935,
+          56.89263535100042,
+          62.95756023152674,
+          69.69569406394109,
+          73.22567575292958,
+          69.27958598792539,
+          7.363986805873832,
+          9.969961256526014
+        ]
+      }
+    }
+  ],
+  "index": [
+    {
+      "model": "tirex",
+      "dataset": "SZ_TAXI_15T",
+      "display_name": "SZ Taxi",
+      "geometry_variant": "pos0",
+      "split": "test",
+      "estimator": "unbiased",
+      "n_rows": 156,
+      "feature_dim": 512,
+      "null_floor_mean": 0.0026543856211357106,
+      "null_floor_std": 0.0040406099991680275,
+      "is_headline_estimator": true,
+      "is_headline_variant": true,
+      "axis": "block_depth",
+      "path": "tirex/SZ_TAXI_15T/cka/cka_unbiased_pos0_test.npy",
+      "n_layers": 13,
+      "labels": "Emb|L1|L2|L3|L4|L5|L6|L7|L8|L9|L10|L11|L12",
+      "mean_offdiagonal_cka": 0.75723751513821,
+      "mean_offdiagonal_above_null_floor": 0.7545831295170743,
+      "is_main_depth_axis": true
+    },
+    {
+      "model": "tirex",
+      "dataset": "SZ_TAXI_15T",
+      "display_name": "SZ Taxi",
+      "geometry_variant": "pos0",
+      "split": "test",
+      "estimator": "unbiased",
+      "n_rows": 156,
+      "feature_dim": 512,
+      "null_floor_mean": 0.0026543856211357106,
+      "null_floor_std": 0.0040406099991680275,
+      "is_headline_estimator": true,
+      "is_headline_variant": true,
+      "axis": "with_head_input",
+      "path": "tirex/SZ_TAXI_15T/cka/cka_unbiased_pos0_test__with_head_input.npy",
+      "n_layers": 14,
+      "labels": "Emb|L1|L2|L3|L4|L5|L6|L7|L8|L9|L10|L11|L12|L12+RMS",
+      "mean_offdiagonal_cka": "",
+      "mean_offdiagonal_above_null_floor": "",
+      "is_main_depth_axis": false
+    },
+    {
+      "model": "tirex",
+      "dataset": "SZ_TAXI_15T",
+      "display_name": "SZ Taxi",
+      "geometry_variant": "pos0",
+      "split": "test",
+      "estimator": "biased",
+      "n_rows": 156,
+      "feature_dim": 512,
+      "null_floor_mean": 0.7669487536631682,
+      "null_floor_std": 0.0007622144419604527,
+      "is_headline_estimator": false,
+      "is_headline_variant": true,
+      "axis": "block_depth",
+      "path": "tirex/SZ_TAXI_15T/cka/cka_biased_pos0_test.npy",
+      "n_layers": 13,
+      "labels": "Emb|L1|L2|L3|L4|L5|L6|L7|L8|L9|L10|L11|L12",
+      "mean_offdiagonal_cka": 0.7739052779271742,
+      "mean_offdiagonal_above_null_floor": 0.006956524264006059,
+      "is_main_depth_axis": true
+    },
+    {
+      "model": "tirex",
+      "dataset": "SZ_TAXI_15T",
+      "display_name": "SZ Taxi",
+      "geometry_variant": "pos0",
+      "split": "test",
+      "estimator": "biased",
+      "n_rows": 156,
+      "feature_dim": 512,
+      "null_floor_mean": 0.7669487536631682,
+      "null_floor_std": 0.0007622144419604527,
+      "is_headline_estimator": false,
+      "is_headline_variant": true,
+      "axis": "with_head_input",
+      "path": "tirex/SZ_TAXI_15T/cka/cka_biased_pos0_test__with_head_input.npy",
+      "n_layers": 14,
+      "labels": "Emb|L1|L2|L3|L4|L5|L6|L7|L8|L9|L10|L11|L12|L12+RMS",
+      "mean_offdiagonal_cka": "",
+      "mean_offdiagonal_above_null_floor": "",
+      "is_main_depth_axis": false
+    },
+    {
+      "model": "tirex",
+      "dataset": "SZ_TAXI_15T",
+      "display_name": "SZ Taxi",
+      "geometry_variant": "all_positions_from_L1",
+      "split": "test",
+      "estimator": "unbiased",
+      "n_rows": 312,
+      "feature_dim": 512,
+      "null_floor_mean": 7.208191525463874e-05,
+      "null_floor_std": 0.0028189390021468325,
+      "is_headline_estimator": true,
+      "is_headline_variant": false,
+      "axis": "block_depth",
+      "path": "tirex/SZ_TAXI_15T/cka/cka_unbiased_all_positions_from_L1_test.npy",
+      "n_layers": 12,
+      "labels": "L1|L2|L3|L4|L5|L6|L7|L8|L9|L10|L11|L12",
+      "mean_offdiagonal_cka": 0.7492767682556353,
+      "mean_offdiagonal_above_null_floor": 0.7492046863403806,
+      "is_main_depth_axis": true
+    },
+    {
+      "model": "tirex",
+      "dataset": "SZ_TAXI_15T",
+      "display_name": "SZ Taxi",
+      "geometry_variant": "all_positions_from_L1",
+      "split": "test",
+      "estimator": "unbiased",
+      "n_rows": 312,
+      "feature_dim": 512,
+      "null_floor_mean": 7.208191525463874e-05,
+      "null_floor_std": 0.0028189390021468325,
+      "is_headline_estimator": true,
+      "is_headline_variant": false,
+      "axis": "with_head_input",
+      "path": "tirex/SZ_TAXI_15T/cka/cka_unbiased_all_positions_from_L1_test__with_head_input.npy",
+      "n_layers": 13,
+      "labels": "L1|L2|L3|L4|L5|L6|L7|L8|L9|L10|L11|L12|L12+RMS",
+      "mean_offdiagonal_cka": "",
+      "mean_offdiagonal_above_null_floor": "",
+      "is_main_depth_axis": false
+    },
+    {
+      "model": "tirex",
+      "dataset": "SZ_TAXI_15T",
+      "display_name": "SZ Taxi",
+      "geometry_variant": "all_positions_from_L1",
+      "split": "test",
+      "estimator": "biased",
+      "n_rows": 312,
+      "feature_dim": 512,
+      "null_floor_mean": 0.6212328093132958,
+      "null_floor_std": 0.0017651624187365695,
+      "is_headline_estimator": false,
+      "is_headline_variant": false,
+      "axis": "block_depth",
+      "path": "tirex/SZ_TAXI_15T/cka/cka_biased_all_positions_from_L1_test.npy",
+      "n_layers": 12,
+      "labels": "L1|L2|L3|L4|L5|L6|L7|L8|L9|L10|L11|L12",
+      "mean_offdiagonal_cka": 0.755063759911308,
+      "mean_offdiagonal_above_null_floor": 0.1338309505980122,
+      "is_main_depth_axis": true
+    },
+    {
+      "model": "tirex",
+      "dataset": "SZ_TAXI_15T",
+      "display_name": "SZ Taxi",
+      "geometry_variant": "all_positions_from_L1",
+      "split": "test",
+      "estimator": "biased",
+      "n_rows": 312,
+      "feature_dim": 512,
+      "null_floor_mean": 0.6212328093132958,
+      "null_floor_std": 0.0017651624187365695,
+      "is_headline_estimator": false,
+      "is_headline_variant": false,
+      "axis": "with_head_input",
+      "path": "tirex/SZ_TAXI_15T/cka/cka_biased_all_positions_from_L1_test__with_head_input.npy",
+      "n_layers": 13,
+      "labels": "L1|L2|L3|L4|L5|L6|L7|L8|L9|L10|L11|L12|L12+RMS",
+      "mean_offdiagonal_cka": "",
+      "mean_offdiagonal_above_null_floor": "",
+      "is_main_depth_axis": false
+    },
+    {
+      "model": "tirex",
+      "dataset": "SZ_TAXI_15T",
+      "display_name": "SZ Taxi",
+      "geometry_variant": "pos0",
+      "split": "train",
+      "estimator": "unbiased",
+      "n_rows": 1394,
+      "feature_dim": 512,
+      "null_floor_mean": 0.0009208223113989269,
+      "null_floor_std": 0.0005456137502421613,
+      "is_headline_estimator": true,
+      "is_headline_variant": true,
+      "axis": "block_depth",
+      "path": "tirex/SZ_TAXI_15T/cka/cka_unbiased_pos0_train.npy",
+      "n_layers": 13,
+      "labels": "Emb|L1|L2|L3|L4|L5|L6|L7|L8|L9|L10|L11|L12",
+      "mean_offdiagonal_cka": 0.7528162139773381,
+      "mean_offdiagonal_above_null_floor": 0.7518953916659392,
+      "is_main_depth_axis": true
+    },
+    {
+      "model": "tirex",
+      "dataset": "SZ_TAXI_15T",
+      "display_name": "SZ Taxi",
+      "geometry_variant": "pos0",
+      "split": "train",
+      "estimator": "unbiased",
+      "n_rows": 1394,
+      "feature_dim": 512,
+      "null_floor_mean": 0.0009208223113989269,
+      "null_floor_std": 0.0005456137502421613,
+      "is_headline_estimator": true,
+      "is_headline_variant": true,
+      "axis": "with_head_input",
+      "path": "tirex/SZ_TAXI_15T/cka/cka_unbiased_pos0_train__with_head_input.npy",
+      "n_layers": 14,
+      "labels": "Emb|L1|L2|L3|L4|L5|L6|L7|L8|L9|L10|L11|L12|L12+RMS",
+      "mean_offdiagonal_cka": "",
+      "mean_offdiagonal_above_null_floor": "",
+      "is_main_depth_axis": false
+    },
+    {
+      "model": "tirex",
+      "dataset": "SZ_TAXI_15T",
+      "display_name": "SZ Taxi",
+      "geometry_variant": "pos0",
+      "split": "train",
+      "estimator": "biased",
+      "n_rows": 1394,
+      "feature_dim": 512,
+      "null_floor_mean": 0.2692442783018815,
+      "null_floor_std": 0.0006315292890945907,
+      "is_headline_estimator": false,
+      "is_headline_variant": true,
+      "axis": "block_depth",
+      "path": "tirex/SZ_TAXI_15T/cka/cka_biased_pos0_train.npy",
+      "n_layers": 13,
+      "labels": "Emb|L1|L2|L3|L4|L5|L6|L7|L8|L9|L10|L11|L12",
+      "mean_offdiagonal_cka": 0.7546950768933807,
+      "mean_offdiagonal_above_null_floor": 0.48545079859149914,
+      "is_main_depth_axis": true
+    },
+    {
+      "model": "tirex",
+      "dataset": "SZ_TAXI_15T",
+      "display_name": "SZ Taxi",
+      "geometry_variant": "pos0",
+      "split": "train",
+      "estimator": "biased",
+      "n_rows": 1394,
+      "feature_dim": 512,
+      "null_floor_mean": 0.2692442783018815,
+      "null_floor_std": 0.0006315292890945907,
+      "is_headline_estimator": false,
+      "is_headline_variant": true,
+      "axis": "with_head_input",
+      "path": "tirex/SZ_TAXI_15T/cka/cka_biased_pos0_train__with_head_input.npy",
+      "n_layers": 14,
+      "labels": "Emb|L1|L2|L3|L4|L5|L6|L7|L8|L9|L10|L11|L12|L12+RMS",
+      "mean_offdiagonal_cka": "",
+      "mean_offdiagonal_above_null_floor": "",
+      "is_main_depth_axis": false
+    },
+    {
+      "model": "tirex",
+      "dataset": "SZ_TAXI_15T",
+      "display_name": "SZ Taxi",
+      "geometry_variant": "all_positions_from_L1",
+      "split": "train",
+      "estimator": "unbiased",
+      "n_rows": 2788,
+      "feature_dim": 512,
+      "null_floor_mean": 0.0006391908949593246,
+      "null_floor_std": 0.0004081319647584255,
+      "is_headline_estimator": true,
+      "is_headline_variant": false,
+      "axis": "block_depth",
+      "path": "tirex/SZ_TAXI_15T/cka/cka_unbiased_all_positions_from_L1_train.npy",
+      "n_layers": 12,
+      "labels": "L1|L2|L3|L4|L5|L6|L7|L8|L9|L10|L11|L12",
+      "mean_offdiagonal_cka": 0.7420885478462922,
+      "mean_offdiagonal_above_null_floor": 0.7414493569513328,
+      "is_main_depth_axis": true
+    },
+    {
+      "model": "tirex",
+      "dataset": "SZ_TAXI_15T",
+      "display_name": "SZ Taxi",
+      "geometry_variant": "all_positions_from_L1",
+      "split": "train",
+      "estimator": "unbiased",
+      "n_rows": 2788,
+      "feature_dim": 512,
+      "null_floor_mean": 0.0006391908949593246,
+      "null_floor_std": 0.0004081319647584255,
+      "is_headline_estimator": true,
+      "is_headline_variant": false,
+      "axis": "with_head_input",
+      "path": "tirex/SZ_TAXI_15T/cka/cka_unbiased_all_positions_from_L1_train__with_head_input.npy",
+      "n_layers": 13,
+      "labels": "L1|L2|L3|L4|L5|L6|L7|L8|L9|L10|L11|L12|L12+RMS",
+      "mean_offdiagonal_cka": "",
+      "mean_offdiagonal_above_null_floor": "",
+      "is_main_depth_axis": false
+    },
+    {
+      "model": "tirex",
+      "dataset": "SZ_TAXI_15T",
+      "display_name": "SZ Taxi",
+      "geometry_variant": "all_positions_from_L1",
+      "split": "train",
+      "estimator": "biased",
+      "n_rows": 2788,
+      "feature_dim": 512,
+      "null_floor_mean": 0.15569405319525098,
+      "null_floor_std": 0.0003439107225723347,
+      "is_headline_estimator": false,
+      "is_headline_variant": false,
+      "axis": "block_depth",
+      "path": "tirex/SZ_TAXI_15T/cka/cka_biased_all_positions_from_L1_train.npy",
+      "n_layers": 12,
+      "labels": "L1|L2|L3|L4|L5|L6|L7|L8|L9|L10|L11|L12",
+      "mean_offdiagonal_cka": 0.7426732293950683,
+      "mean_offdiagonal_above_null_floor": 0.5869791761998173,
+      "is_main_depth_axis": true
+    },
+    {
+      "model": "tirex",
+      "dataset": "SZ_TAXI_15T",
+      "display_name": "SZ Taxi",
+      "geometry_variant": "all_positions_from_L1",
+      "split": "train",
+      "estimator": "biased",
+      "n_rows": 2788,
+      "feature_dim": 512,
+      "null_floor_mean": 0.15569405319525098,
+      "null_floor_std": 0.0003439107225723347,
+      "is_headline_estimator": false,
+      "is_headline_variant": false,
+      "axis": "with_head_input",
+      "path": "tirex/SZ_TAXI_15T/cka/cka_biased_all_positions_from_L1_train__with_head_input.npy",
+      "n_layers": 13,
+      "labels": "L1|L2|L3|L4|L5|L6|L7|L8|L9|L10|L11|L12|L12+RMS",
+      "mean_offdiagonal_cka": "",
+      "mean_offdiagonal_above_null_floor": "",
+      "is_main_depth_axis": false
+    }
+  ],
+  "headline_estimator": "unbiased",
+  "main_axis": "cka_<est>_<variant>_<split>.npy covers the BLOCK-DEPTH axis only; the __with_head_input sibling adds the final-normalization point and is for the native-head/alignment work, not for a depth figure",
+  "geometry_caveat": "Unbiased linear CKA is the Phase-1 headline. The biased estimator is saved as a diagnostic but its finite-sample floor differs across the three models because the number of readout rows per window and the representation dimension differ (Chronos-2: 4 rows per window at d=768; TimesFM-3: 1 at d=1280; TiRex headline pos0: 1 at d=512). Absolute biased CKA must NEVER be compared across models. The measured per-(n, d, estimator) null floor is saved beside every matrix and nothing is subtracted from the matrices.",
+  "head_input_caveat": "A final normalization (Chronos-2 L12+LN, TiRex L12+RMS) is NOT an additional model depth. It is probed and saved as a head-input diagnostic for the later native-head/alignment work, but it is excluded from the tunnel criterion, from the normalized depth axis and from the main cross-model depth curves and heatmaps. The final depth \u2014 and therefore the final-depth probe loss and the tunnel's reference \u2014 is the final BLOCK output.",
+  "spectra_file": "spectral_metrics.npz",
+  "spectra_keys": "<variant>__<split>__<layer label>"
+}

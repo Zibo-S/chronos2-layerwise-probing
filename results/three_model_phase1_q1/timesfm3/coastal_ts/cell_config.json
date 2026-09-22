@@ -1,0 +1,59 @@
+{
+  "protocol": "phase1/v1",
+  "model": "timesfm3",
+  "dataset": "coastal_ts",
+  "C": 512,
+  "H": 64,
+  "quantile_set": "q1",
+  "quantiles": [
+    0.5
+  ],
+  "num_quantiles": 1,
+  "suite": "paper14",
+  "seed": 0,
+  "boot_b": 5000,
+  "tunnel_definition": "sustained_suffix_v1",
+  "tunnel_tol": 0.05,
+  "tunnel_tols": [
+    0.01,
+    0.02,
+    0.05,
+    0.1
+  ],
+  "window_digest": "sha256:5262c19d9f3768ecbce0ebc175f563263f8fef2545933189fd03984e796c112c",
+  "registry_hash": "sha256:b3041cc47f0851c4f83a0187aec1403952c43195f4404485a6782fc2908c18bd",
+  "probe_epochs": 300,
+  "probe_lr": 0.01,
+  "probe": "Linear(1280, H*Q) per representation point, reshaped horizon-major to (B, Q, 64)",
+  "probe_out_features": 64,
+  "geometry_splits": [
+    "test",
+    "train"
+  ],
+  "cka_estimators": [
+    "unbiased",
+    "biased"
+  ],
+  "wd_grid": [
+    1e-05,
+    0.0001,
+    0.001,
+    0.01,
+    0.1,
+    0.3,
+    1.0,
+    3.0,
+    10.0,
+    30.0,
+    45.0,
+    65.0,
+    90.0
+  ],
+  "checkpoint": "google/timesfm-3.0-pytorch",
+  "null_wd": 100.0,
+  "extract_batch_size": 64,
+  "feature_dtype": "float32",
+  "detrend": true,
+  "readout": "last_real_context_token",
+  "config_hash": "sha256:c02b4fcc1ef2f79b61f2cc365bce50d57eaa159245d90fab93a55f17b8db4003"
+}

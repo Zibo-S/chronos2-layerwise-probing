@@ -1,0 +1,61 @@
+{
+  "dataset": "monash_electricity_hourly",
+  "short": "Electricity",
+  "role": "primary",
+  "seasonal_m": 24,
+  "builder": "rolling_within_series",
+  "split_mode": "rolling_origin_within_series",
+  "n_train_windows": 1394,
+  "n_val_windows": 262,
+  "n_test_windows": 262,
+  "n_test_series": 262,
+  "cluster_unit": "series",
+  "first_test_identifiers": [
+    "s0@t26240",
+    "s1@t26240",
+    "s2@t26240",
+    "s4@t26240",
+    "s5@t26240",
+    "s6@t26240"
+  ],
+  "test_series_first6": [
+    0,
+    1,
+    2,
+    4,
+    5,
+    6
+  ],
+  "chronos_parity": "match",
+  "parity_ok": true,
+  "parity_failures": [],
+  "reference_kind": "committed_chronos2",
+  "chronos_reference": {
+    "config": "results/ext_v5_native_head_adapter/configs/native_head_adapter__monash_electricity_hourly__config.json",
+    "bootstrap_inputs": "results/ext_v5_native_head_adapter/bootstrap_inputs/native_head_adapter__monash_electricity_hourly.npz"
+  },
+  "chronos_counts": {
+    "n_train": 1394,
+    "n_val": 262,
+    "n_test": 262,
+    "dataset_set": "extended_v3_rolling"
+  },
+  "window_digest": "sha256:adce7921407c90694f539e6d871e907e8a99b6430307b66e0d9f199bb906e5f0",
+  "series_cap": {
+    "applied": false,
+    "max_series": null,
+    "n_eligible_before": 321,
+    "n_eligible_after": 321,
+    "rng_stream": 6165221,
+    "seed": 0,
+    "selection": "seeded uniform sample without replacement over the sorted eligible series ids",
+    "reason": "no cap declared for this dataset"
+  },
+  "valtest_budget": {
+    "requested": 262,
+    "realized": 262,
+    "reduced": false,
+    "n_eligible_series": 321
+  },
+  "note": "all three models are evaluated on THESE windows; the digest covers the test contexts themselves, not just their identifiers"
+}

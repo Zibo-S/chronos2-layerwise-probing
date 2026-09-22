@@ -1,0 +1,56 @@
+{
+  "protocol": "phase1/v1",
+  "model": "chronos2",
+  "dataset": "monash_electricity_hourly",
+  "C": 512,
+  "H": 64,
+  "quantile_set": "q1",
+  "quantiles": [
+    0.5
+  ],
+  "num_quantiles": 1,
+  "suite": "paper14",
+  "seed": 0,
+  "boot_b": 5000,
+  "tunnel_definition": "sustained_suffix_v1",
+  "tunnel_tol": 0.05,
+  "tunnel_tols": [
+    0.01,
+    0.02,
+    0.05,
+    0.1
+  ],
+  "window_digest": "sha256:adce7921407c90694f539e6d871e907e8a99b6430307b66e0d9f199bb906e5f0",
+  "registry_hash": "sha256:b3041cc47f0851c4f83a0187aec1403952c43195f4404485a6782fc2908c18bd",
+  "probe_epochs": 300,
+  "probe_lr": 0.01,
+  "probe": "ONE shared Linear(768, Q*16) applied to each of the K=4 native forecast slots; the four predicted patches concatenate to (B, Q, 64)",
+  "probe_out_features": 16,
+  "geometry_splits": [
+    "test",
+    "train"
+  ],
+  "cka_estimators": [
+    "unbiased",
+    "biased"
+  ],
+  "wd_grid": [
+    1e-05,
+    0.0001,
+    0.001,
+    0.01,
+    0.1,
+    0.3,
+    1.0,
+    3.0,
+    10.0,
+    30.0,
+    45.0,
+    65.0,
+    90.0
+  ],
+  "checkpoint": "amazon/chronos-2",
+  "extract_batch_size": 128,
+  "readout": "forecast_slots_K4",
+  "config_hash": "sha256:1ef944116a4b8de23bdad03a971aa5c825ce3fcbed587f4f14bf4fe20e7bb550"
+}

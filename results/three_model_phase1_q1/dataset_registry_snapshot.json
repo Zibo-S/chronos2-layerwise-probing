@@ -1,0 +1,569 @@
+{
+  "roster": "paper14",
+  "tags": [
+    "m4_hourly",
+    "monash_electricity_hourly",
+    "uber_tlc_hourly",
+    "wind_farms_hourly",
+    "sg_carpark",
+    "coastal_ts",
+    "boom_hourly",
+    "LOOP_SEATTLE_5T",
+    "electricity_15min",
+    "SZ_TAXI_15T",
+    "monash_london_smart_meters",
+    "m5",
+    "wiki_daily_100k",
+    "monash_traffic"
+  ],
+  "datasets": {
+    "m4_hourly": {
+      "tag": "m4_hourly",
+      "display_name": "M4",
+      "slug": "m4",
+      "freq": "1H",
+      "seasonal_m": 24,
+      "domain": "mixed hourly",
+      "cluster_unit": "series",
+      "builder": "rolling_within_series",
+      "roster": "paper14",
+      "role": "primary",
+      "source_repo": "autogluon/chronos_datasets",
+      "source_config": "m4_hourly",
+      "target_column": "target",
+      "max_series": null,
+      "notes": ""
+    },
+    "monash_electricity_hourly": {
+      "tag": "monash_electricity_hourly",
+      "display_name": "Electricity",
+      "slug": "electricity",
+      "freq": "1H",
+      "seasonal_m": 24,
+      "domain": "energy",
+      "cluster_unit": "series",
+      "builder": "rolling_within_series",
+      "roster": "paper14",
+      "role": "primary",
+      "source_repo": "autogluon/chronos_datasets",
+      "source_config": "monash_electricity_hourly",
+      "target_column": "target",
+      "max_series": null,
+      "notes": ""
+    },
+    "uber_tlc_hourly": {
+      "tag": "uber_tlc_hourly",
+      "display_name": "Uber TLC",
+      "slug": "uber_tlc",
+      "freq": "1H",
+      "seasonal_m": 24,
+      "domain": "transport / ride demand",
+      "cluster_unit": "series",
+      "builder": "rolling_within_series",
+      "roster": "paper14",
+      "role": "primary",
+      "source_repo": "autogluon/chronos_datasets",
+      "source_config": "uber_tlc_hourly",
+      "target_column": "target",
+      "max_series": null,
+      "notes": ""
+    },
+    "wind_farms_hourly": {
+      "tag": "wind_farms_hourly",
+      "display_name": "Wind Farms",
+      "slug": "wind_farms",
+      "freq": "1H",
+      "seasonal_m": 24,
+      "domain": "renewable generation",
+      "cluster_unit": "series",
+      "builder": "rolling_within_series",
+      "roster": "paper14",
+      "role": "primary",
+      "source_repo": "autogluon/chronos_datasets",
+      "source_config": "wind_farms_hourly",
+      "target_column": "target",
+      "max_series": null,
+      "notes": "yield screen 2026-09-21: 21.95% of val/test windows have a CONSTANT future (mad_const == 0), the highest in the roster; those windows score ~0 at every depth and compress the layer-to-layer differences."
+    },
+    "sg_carpark": {
+      "tag": "sg_carpark",
+      "display_name": "SG Carpark",
+      "slug": "sg_carpark",
+      "freq": "1H(agg)",
+      "seasonal_m": 24,
+      "domain": "transport / parking",
+      "cluster_unit": "carpark",
+      "builder": "rolling_cluster",
+      "roster": "paper14",
+      "role": "primary",
+      "source_repo": null,
+      "source_config": null,
+      "target_column": null,
+      "max_series": null,
+      "notes": ""
+    },
+    "coastal_ts": {
+      "tag": "coastal_ts",
+      "display_name": "Coastal T-S",
+      "slug": "coastal_ts",
+      "freq": "1H",
+      "seasonal_m": 24,
+      "domain": "nature / oceanography",
+      "cluster_unit": "station",
+      "builder": "rolling_cluster",
+      "roster": "paper14",
+      "role": "primary",
+      "source_repo": null,
+      "source_config": null,
+      "target_column": null,
+      "max_series": null,
+      "notes": "24 clusters (2 variates per station) -> 48 val/test windows; the weakest statistical support in the roster."
+    },
+    "boom_hourly": {
+      "tag": "boom_hourly",
+      "display_name": "BOOM",
+      "slug": "boom",
+      "freq": "1H",
+      "seasonal_m": 24,
+      "domain": "cloud observability",
+      "cluster_unit": "metric_query",
+      "builder": "rolling_cluster",
+      "roster": "paper14",
+      "role": "primary",
+      "source_repo": null,
+      "source_config": null,
+      "target_column": null,
+      "max_series": null,
+      "notes": "yield screen: median constant-forecast MAD 0.121, ~3x lower than any other dataset -> least dynamic range; small absolute deltas mean less here."
+    },
+    "LOOP_SEATTLE_5T": {
+      "tag": "LOOP_SEATTLE_5T",
+      "display_name": "Loop Seattle",
+      "slug": "loop_seattle_5t",
+      "freq": "5min",
+      "seasonal_m": 288,
+      "domain": "road speed",
+      "cluster_unit": "series",
+      "builder": "rolling_within_series",
+      "roster": "paper14",
+      "role": "primary",
+      "source_repo": "autogluon/fev_datasets",
+      "source_config": "LOOP_SEATTLE_5T",
+      "target_column": "target",
+      "max_series": null,
+      "notes": ""
+    },
+    "electricity_15min": {
+      "tag": "electricity_15min",
+      "display_name": "Electricity 15min",
+      "slug": "electricity_15min",
+      "freq": "15min",
+      "seasonal_m": 96,
+      "domain": "energy",
+      "cluster_unit": "series",
+      "builder": "rolling_within_series",
+      "roster": "paper14",
+      "role": "control",
+      "source_repo": "autogluon/chronos_datasets",
+      "source_config": "electricity_15min",
+      "target_column": "consumption_kW",
+      "max_series": null,
+      "notes": "FREQUENCY CONTROL, not domain diversity: the same 370 meters as monash_electricity_hourly at 4x the sampling rate. It holds domain and series fixed and varies only the rate. Never count it toward domain coverage."
+    },
+    "SZ_TAXI_15T": {
+      "tag": "SZ_TAXI_15T",
+      "display_name": "SZ Taxi",
+      "slug": "sz_taxi_15t",
+      "freq": "15min",
+      "seasonal_m": 96,
+      "domain": "road speed",
+      "cluster_unit": "series",
+      "builder": "rolling_within_series",
+      "roster": "paper14",
+      "role": "primary",
+      "source_repo": "autogluon/fev_datasets",
+      "source_config": "SZ_TAXI_15T",
+      "target_column": "target",
+      "max_series": null,
+      "notes": ""
+    },
+    "monash_london_smart_meters": {
+      "tag": "monash_london_smart_meters",
+      "display_name": "London Smart Meters",
+      "slug": "monash_london_smart_meters",
+      "freq": "30min",
+      "seasonal_m": 48,
+      "domain": "residential energy",
+      "cluster_unit": "series",
+      "builder": "rolling_within_series",
+      "roster": "paper14",
+      "role": "primary",
+      "source_repo": "autogluon/chronos_datasets",
+      "source_config": "monash_london_smart_meters",
+      "target_column": "target",
+      "max_series": 1394,
+      "notes": "5555 eligible series -> deterministic cap. Sparse isolated NaNs poison the unused canonical denominator for 98.5% of series; the REPORTED in-context denominator is unaffected (the context is finite by construction)."
+    },
+    "m5": {
+      "tag": "m5",
+      "display_name": "M5",
+      "slug": "m5",
+      "freq": "1D",
+      "seasonal_m": 7,
+      "domain": "retail",
+      "cluster_unit": "series",
+      "builder": "rolling_within_series",
+      "roster": "paper14",
+      "role": "primary",
+      "source_repo": "autogluon/chronos_datasets",
+      "source_config": "m5",
+      "target_column": "target",
+      "max_series": 1394,
+      "notes": "28491 eligible series -> deterministic cap. The yield screen's degeneracy trigger did NOT fire (median constant-forecast MAD 0.490), so rossmann_1D stays a benched alternate."
+    },
+    "wiki_daily_100k": {
+      "tag": "wiki_daily_100k",
+      "display_name": "Wiki Daily",
+      "slug": "wiki_daily_100k",
+      "freq": "1D",
+      "seasonal_m": 7,
+      "domain": "web traffic",
+      "cluster_unit": "series",
+      "builder": "rolling_within_series",
+      "roster": "paper14",
+      "role": "primary",
+      "source_repo": "autogluon/chronos_datasets",
+      "source_config": "wiki_daily_100k",
+      "target_column": "target",
+      "max_series": 1394,
+      "notes": "100000 eligible series -> deterministic cap; the largest raw load in the roster (~2.2 GB of float64 series)."
+    },
+    "monash_traffic": {
+      "tag": "monash_traffic",
+      "display_name": "Traffic",
+      "slug": "monash_traffic",
+      "freq": "1H",
+      "seasonal_m": 24,
+      "domain": "road volume",
+      "cluster_unit": "series",
+      "builder": "rolling_within_series",
+      "roster": "paper14",
+      "role": "primary",
+      "source_repo": "autogluon/chronos_datasets",
+      "source_config": "monash_traffic",
+      "target_column": "target",
+      "max_series": null,
+      "notes": ""
+    }
+  },
+  "mase_definition": "MASE is normalized by the seasonal-naive error computed over the 512-step context window using the dataset-specific seasonal period.",
+  "statuses": [
+    "pretraining_exposed",
+    "explicitly_held_out",
+    "not_listed",
+    "undocumented"
+  ],
+  "evidence_scopes": [
+    "exact_dataset",
+    "benchmark_exclusion",
+    "source_level",
+    "source_family"
+  ],
+  "models": [
+    "chronos2",
+    "timesfm3",
+    "tirex"
+  ],
+  "provenance": {
+    "m4_hourly|chronos2": {
+      "status": "pretraining_exposed",
+      "evidence_scope": "exact_dataset",
+      "citation": "Ansari et al., Chronos-2 (arXiv:2510.15821), Table 6 \u2014 the full list of real univariate pretraining datasets lists \"M4 (Hourly/Daily/Weekly/Monthly)\".",
+      "verified": true
+    },
+    "m4_hourly|timesfm3": {
+      "status": "undocumented",
+      "evidence_scope": "source_family",
+      "citation": "TimesFM-3 model card (google/timesfm-3.0-pytorch; blog 2026-08-31, no paper): corpus = GiftEvalPretrain excluding datasets overlapping fev-bench, + Wikipedia Pageviews (cutoff Nov 2023), + Google Trends top queries (cutoff EoY 2022), + \"synthetic and augmented data\" (undefined)",
+      "verified": true
+    },
+    "m4_hourly|tirex": {
+      "status": "undocumented",
+      "evidence_scope": "source_family",
+      "citation": "TiRex (arXiv:2505.23719) App C.2/C.3: Chronos-1 corpus (Table 5) + a GIFT-Eval subset (Table 6) + 15M synthetic GP series; 16 of 97 GIFT-Eval settings are excluded but ARE NEVER NAMED, so per-dataset status cannot be derived",
+      "verified": true
+    },
+    "monash_electricity_hourly|chronos2": {
+      "status": "pretraining_exposed",
+      "evidence_scope": "exact_dataset",
+      "citation": "Ansari et al., Chronos-2 (arXiv:2510.15821), Table 6 \u2014 the full list of real univariate pretraining datasets lists \"Electricity\".",
+      "verified": true
+    },
+    "monash_electricity_hourly|timesfm3": {
+      "status": "undocumented",
+      "evidence_scope": "source_family",
+      "citation": "TimesFM-3 model card (google/timesfm-3.0-pytorch; blog 2026-08-31, no paper): corpus = GiftEvalPretrain excluding datasets overlapping fev-bench, + Wikipedia Pageviews (cutoff Nov 2023), + Google Trends top queries (cutoff EoY 2022), + \"synthetic and augmented data\" (undefined)",
+      "verified": true
+    },
+    "monash_electricity_hourly|tirex": {
+      "status": "undocumented",
+      "evidence_scope": "source_family",
+      "citation": "TiRex (arXiv:2505.23719) App C.2/C.3: Chronos-1 corpus (Table 5) + a GIFT-Eval subset (Table 6) + 15M synthetic GP series; 16 of 97 GIFT-Eval settings are excluded but ARE NEVER NAMED, so per-dataset status cannot be derived",
+      "verified": true
+    },
+    "uber_tlc_hourly|chronos2": {
+      "status": "pretraining_exposed",
+      "evidence_scope": "source_family",
+      "citation": "Ansari et al., Chronos-2 (arXiv:2510.15821), Table 6 \u2014 the full list of real univariate pretraining datasets lists \"Taxi\" (NYC TLC trip records). Uber TLC is the same NYC TLC source family, not a verbatim Table 6 entry \u2014 this is family-level evidence, deliberately NOT recorded as exact_dataset.",
+      "verified": true
+    },
+    "uber_tlc_hourly|timesfm3": {
+      "status": "undocumented",
+      "evidence_scope": "source_family",
+      "citation": "TimesFM-3 model card (google/timesfm-3.0-pytorch; blog 2026-08-31, no paper): corpus = GiftEvalPretrain excluding datasets overlapping fev-bench, + Wikipedia Pageviews (cutoff Nov 2023), + Google Trends top queries (cutoff EoY 2022), + \"synthetic and augmented data\" (undefined)",
+      "verified": true
+    },
+    "uber_tlc_hourly|tirex": {
+      "status": "undocumented",
+      "evidence_scope": "source_family",
+      "citation": "TiRex (arXiv:2505.23719) App C.2/C.3: Chronos-1 corpus (Table 5) + a GIFT-Eval subset (Table 6) + 15M synthetic GP series; 16 of 97 GIFT-Eval settings are excluded but ARE NEVER NAMED, so per-dataset status cannot be derived",
+      "verified": true
+    },
+    "wind_farms_hourly|chronos2": {
+      "status": "pretraining_exposed",
+      "evidence_scope": "exact_dataset",
+      "citation": "Ansari et al., Chronos-2 (arXiv:2510.15821), Table 6 \u2014 the full list of real univariate pretraining datasets lists \"Wind Farms\".",
+      "verified": true
+    },
+    "wind_farms_hourly|timesfm3": {
+      "status": "undocumented",
+      "evidence_scope": "source_family",
+      "citation": "TimesFM-3 model card (google/timesfm-3.0-pytorch; blog 2026-08-31, no paper): corpus = GiftEvalPretrain excluding datasets overlapping fev-bench, + Wikipedia Pageviews (cutoff Nov 2023), + Google Trends top queries (cutoff EoY 2022), + \"synthetic and augmented data\" (undefined)",
+      "verified": true
+    },
+    "wind_farms_hourly|tirex": {
+      "status": "undocumented",
+      "evidence_scope": "source_family",
+      "citation": "TiRex (arXiv:2505.23719) App C.2/C.3: Chronos-1 corpus (Table 5) + a GIFT-Eval subset (Table 6) + 15M synthetic GP series; 16 of 97 GIFT-Eval settings are excluded but ARE NEVER NAMED, so per-dataset status cannot be derived",
+      "verified": true
+    },
+    "sg_carpark|chronos2": {
+      "status": "not_listed",
+      "evidence_scope": "exact_dataset",
+      "citation": "Absent from Ansari et al., Chronos-2 (arXiv:2510.15821), Table 6 \u2014 the full list of real univariate pretraining datasets, which the paper declares exhaustive for real univariate data. No cutoff date is stated anywhere in the paper, so absence is not a temporal guarantee.",
+      "verified": true
+    },
+    "sg_carpark|timesfm3": {
+      "status": "undocumented",
+      "evidence_scope": "source_family",
+      "citation": "TimesFM-3 model card (google/timesfm-3.0-pytorch; blog 2026-08-31, no paper): corpus = GiftEvalPretrain excluding datasets overlapping fev-bench, + Wikipedia Pageviews (cutoff Nov 2023), + Google Trends top queries (cutoff EoY 2022), + \"synthetic and augmented data\" (undefined)",
+      "verified": true
+    },
+    "sg_carpark|tirex": {
+      "status": "undocumented",
+      "evidence_scope": "source_family",
+      "citation": "TiRex (arXiv:2505.23719) App C.2/C.3: Chronos-1 corpus (Table 5) + a GIFT-Eval subset (Table 6) + 15M synthetic GP series; 16 of 97 GIFT-Eval settings are excluded but ARE NEVER NAMED, so per-dataset status cannot be derived",
+      "verified": true
+    },
+    "coastal_ts|chronos2": {
+      "status": "not_listed",
+      "evidence_scope": "exact_dataset",
+      "citation": "Absent from Ansari et al., Chronos-2 (arXiv:2510.15821), Table 6 \u2014 the full list of real univariate pretraining datasets (declared exhaustive). No cutoff date is stated.",
+      "verified": true
+    },
+    "coastal_ts|timesfm3": {
+      "status": "undocumented",
+      "evidence_scope": "source_family",
+      "citation": "TimesFM-3 model card (google/timesfm-3.0-pytorch; blog 2026-08-31, no paper): corpus = GiftEvalPretrain excluding datasets overlapping fev-bench, + Wikipedia Pageviews (cutoff Nov 2023), + Google Trends top queries (cutoff EoY 2022), + \"synthetic and augmented data\" (undefined)",
+      "verified": true
+    },
+    "coastal_ts|tirex": {
+      "status": "undocumented",
+      "evidence_scope": "source_family",
+      "citation": "TiRex (arXiv:2505.23719) App C.2/C.3: Chronos-1 corpus (Table 5) + a GIFT-Eval subset (Table 6) + 15M synthetic GP series; 16 of 97 GIFT-Eval settings are excluded but ARE NEVER NAMED, so per-dataset status cannot be derived",
+      "verified": true
+    },
+    "boom_hourly|chronos2": {
+      "status": "not_listed",
+      "evidence_scope": "benchmark_exclusion",
+      "citation": "CORRECTED 2026-09-21: the strings \"BOOM\" and \"Datadog\" do NOT appear in arXiv:2510.15821, so data/chronos2_seen_manifest.md's \"explicitly listed\" claim is wrong. Held-out status is an INFERENCE via fev-bench, which contains BOOMLET (a BOOM subset). Chronos-2 (arXiv:2510.15821) Sec 5.1 on fev-bench: \"None of these datasets or tasks were seen by Chronos-2 during training.\"",
+      "verified": true
+    },
+    "boom_hourly|timesfm3": {
+      "status": "undocumented",
+      "evidence_scope": "source_family",
+      "citation": "TimesFM-3 model card (google/timesfm-3.0-pytorch; blog 2026-08-31, no paper): corpus = GiftEvalPretrain excluding datasets overlapping fev-bench, + Wikipedia Pageviews (cutoff Nov 2023), + Google Trends top queries (cutoff EoY 2022), + \"synthetic and augmented data\" (undefined)",
+      "verified": true
+    },
+    "boom_hourly|tirex": {
+      "status": "undocumented",
+      "evidence_scope": "source_family",
+      "citation": "TiRex (arXiv:2505.23719) App C.2/C.3: Chronos-1 corpus (Table 5) + a GIFT-Eval subset (Table 6) + 15M synthetic GP series; 16 of 97 GIFT-Eval settings are excluded but ARE NEVER NAMED, so per-dataset status cannot be derived",
+      "verified": true
+    },
+    "LOOP_SEATTLE_5T|chronos2": {
+      "status": "explicitly_held_out",
+      "evidence_scope": "benchmark_exclusion",
+      "citation": "Chronos-2 (arXiv:2510.15821) Sec 5.1 on fev-bench: \"None of these datasets or tasks were seen by Chronos-2 during training.\" VERIFY: confirm LOOP_SEATTLE is a fev-bench task and not merely a member of the autogluon/fev_datasets collection.",
+      "verified": false
+    },
+    "LOOP_SEATTLE_5T|timesfm3": {
+      "status": "explicitly_held_out",
+      "evidence_scope": "benchmark_exclusion",
+      "citation": "TimesFM-3 model card (google/timesfm-3.0-pytorch; blog 2026-08-31, no paper): corpus = GiftEvalPretrain excluding datasets overlapping fev-bench, + Wikipedia Pageviews (cutoff Nov 2023), + Google Trends top queries (cutoff EoY 2022), + \"synthetic and augmented data\" (undefined) VERIFY fev-bench membership.",
+      "verified": false
+    },
+    "LOOP_SEATTLE_5T|tirex": {
+      "status": "undocumented",
+      "evidence_scope": "source_family",
+      "citation": "TiRex (arXiv:2505.23719) App C.2/C.3: Chronos-1 corpus (Table 5) + a GIFT-Eval subset (Table 6) + 15M synthetic GP series; 16 of 97 GIFT-Eval settings are excluded but ARE NEVER NAMED, so per-dataset status cannot be derived",
+      "verified": true
+    },
+    "electricity_15min|chronos2": {
+      "status": "pretraining_exposed",
+      "evidence_scope": "source_level",
+      "citation": "Ansari et al., Chronos-2 (arXiv:2510.15821), Table 6 \u2014 the full list of real univariate pretraining datasets lists \"Electricity\". The 15-minute variant is the SAME 370 meters at 4x the rate, so exposure is source-level: the underlying measurements were seen, this exact resampling was not listed.",
+      "verified": true
+    },
+    "electricity_15min|timesfm3": {
+      "status": "undocumented",
+      "evidence_scope": "source_family",
+      "citation": "TimesFM-3 model card (google/timesfm-3.0-pytorch; blog 2026-08-31, no paper): corpus = GiftEvalPretrain excluding datasets overlapping fev-bench, + Wikipedia Pageviews (cutoff Nov 2023), + Google Trends top queries (cutoff EoY 2022), + \"synthetic and augmented data\" (undefined)",
+      "verified": true
+    },
+    "electricity_15min|tirex": {
+      "status": "undocumented",
+      "evidence_scope": "source_family",
+      "citation": "TiRex (arXiv:2505.23719) App C.2/C.3: Chronos-1 corpus (Table 5) + a GIFT-Eval subset (Table 6) + 15M synthetic GP series; 16 of 97 GIFT-Eval settings are excluded but ARE NEVER NAMED, so per-dataset status cannot be derived",
+      "verified": true
+    },
+    "SZ_TAXI_15T|chronos2": {
+      "status": "explicitly_held_out",
+      "evidence_scope": "benchmark_exclusion",
+      "citation": "Chronos-2 (arXiv:2510.15821) Sec 5.1 on fev-bench: \"None of these datasets or tasks were seen by Chronos-2 during training.\" VERIFY: confirm SZ_TAXI is a fev-bench task and not merely a member of the autogluon/fev_datasets collection.",
+      "verified": false
+    },
+    "SZ_TAXI_15T|timesfm3": {
+      "status": "explicitly_held_out",
+      "evidence_scope": "benchmark_exclusion",
+      "citation": "TimesFM-3 model card (google/timesfm-3.0-pytorch; blog 2026-08-31, no paper): corpus = GiftEvalPretrain excluding datasets overlapping fev-bench, + Wikipedia Pageviews (cutoff Nov 2023), + Google Trends top queries (cutoff EoY 2022), + \"synthetic and augmented data\" (undefined) VERIFY fev-bench membership.",
+      "verified": false
+    },
+    "SZ_TAXI_15T|tirex": {
+      "status": "undocumented",
+      "evidence_scope": "source_family",
+      "citation": "TiRex (arXiv:2505.23719) App C.2/C.3: Chronos-1 corpus (Table 5) + a GIFT-Eval subset (Table 6) + 15M synthetic GP series; 16 of 97 GIFT-Eval settings are excluded but ARE NEVER NAMED, so per-dataset status cannot be derived",
+      "verified": true
+    },
+    "monash_london_smart_meters|chronos2": {
+      "status": "pretraining_exposed",
+      "evidence_scope": "exact_dataset",
+      "citation": "Ansari et al., Chronos-2 (arXiv:2510.15821), Table 6 \u2014 the full list of real univariate pretraining datasets lists \"London Smart Meters\".",
+      "verified": true
+    },
+    "monash_london_smart_meters|timesfm3": {
+      "status": "undocumented",
+      "evidence_scope": "source_family",
+      "citation": "TimesFM-3 model card (google/timesfm-3.0-pytorch; blog 2026-08-31, no paper): corpus = GiftEvalPretrain excluding datasets overlapping fev-bench, + Wikipedia Pageviews (cutoff Nov 2023), + Google Trends top queries (cutoff EoY 2022), + \"synthetic and augmented data\" (undefined)",
+      "verified": true
+    },
+    "monash_london_smart_meters|tirex": {
+      "status": "undocumented",
+      "evidence_scope": "source_family",
+      "citation": "TiRex (arXiv:2505.23719) App C.2/C.3: Chronos-1 corpus (Table 5) + a GIFT-Eval subset (Table 6) + 15M synthetic GP series; 16 of 97 GIFT-Eval settings are excluded but ARE NEVER NAMED, so per-dataset status cannot be derived",
+      "verified": true
+    },
+    "m5|chronos2": {
+      "status": "explicitly_held_out",
+      "evidence_scope": "benchmark_exclusion",
+      "citation": "Chronos-2 (arXiv:2510.15821) on Chronos Benchmark II: \"None of these datasets were included in the training corpus of Chronos-2.\" VERIFY: confirm M5 is a Chronos Benchmark II task.",
+      "verified": false
+    },
+    "m5|timesfm3": {
+      "status": "explicitly_held_out",
+      "evidence_scope": "benchmark_exclusion",
+      "citation": "TimesFM-3 model card (google/timesfm-3.0-pytorch; blog 2026-08-31, no paper): corpus = GiftEvalPretrain excluding datasets overlapping fev-bench, + Wikipedia Pageviews (cutoff Nov 2023), + Google Trends top queries (cutoff EoY 2022), + \"synthetic and augmented data\" (undefined). The corpus excludes datasets overlapping fev-bench. VERIFY M5's fev-bench membership.",
+      "verified": false
+    },
+    "m5|tirex": {
+      "status": "explicitly_held_out",
+      "evidence_scope": "benchmark_exclusion",
+      "citation": "TiRex (arXiv:2505.23719): \"TiRex's pre-training data has no overlap with Chronos-ZS benchmark.\" VERIFY M5's Chronos-ZS membership.",
+      "verified": false
+    },
+    "wiki_daily_100k|chronos2": {
+      "status": "pretraining_exposed",
+      "evidence_scope": "exact_dataset",
+      "citation": "Ansari et al., Chronos-2 (arXiv:2510.15821), Table 6 \u2014 the full list of real univariate pretraining datasets lists \"Wiki\".",
+      "verified": true
+    },
+    "wiki_daily_100k|timesfm3": {
+      "status": "pretraining_exposed",
+      "evidence_scope": "source_level",
+      "citation": "TimesFM-3 model card (google/timesfm-3.0-pytorch; blog 2026-08-31, no paper): corpus = GiftEvalPretrain excluding datasets overlapping fev-bench, + Wikipedia Pageviews (cutoff Nov 2023), + Google Trends top queries (cutoff EoY 2022), + \"synthetic and augmented data\" (undefined). The card names the SOURCE (\"Wikipedia Pageviews, cutoff Nov 2023\"); our series end 2022-12-31, inside that cutoff. This is source-level evidence \u2014 the card never names wiki_daily_100k.",
+      "verified": false
+    },
+    "wiki_daily_100k|tirex": {
+      "status": "undocumented",
+      "evidence_scope": "source_family",
+      "citation": "TiRex (arXiv:2505.23719) App C.2/C.3: Chronos-1 corpus (Table 5) + a GIFT-Eval subset (Table 6) + 15M synthetic GP series; 16 of 97 GIFT-Eval settings are excluded but ARE NEVER NAMED, so per-dataset status cannot be derived",
+      "verified": true
+    },
+    "monash_traffic|chronos2": {
+      "status": "undocumented",
+      "evidence_scope": "source_family",
+      "citation": "Ansari et al., Chronos-2 (arXiv:2510.15821), Table 6 \u2014 the full list of real univariate pretraining datasets is declared exhaustive, but the transcription in data/chronos2_seen_manifest.md ends in \"a.o.\" and does not settle whether \"Traffic\" is an entry. VERIFY against the published Table 6 before citing.",
+      "verified": false
+    },
+    "monash_traffic|timesfm3": {
+      "status": "undocumented",
+      "evidence_scope": "source_family",
+      "citation": "TimesFM-3 model card (google/timesfm-3.0-pytorch; blog 2026-08-31, no paper): corpus = GiftEvalPretrain excluding datasets overlapping fev-bench, + Wikipedia Pageviews (cutoff Nov 2023), + Google Trends top queries (cutoff EoY 2022), + \"synthetic and augmented data\" (undefined)",
+      "verified": true
+    },
+    "monash_traffic|tirex": {
+      "status": "undocumented",
+      "evidence_scope": "source_family",
+      "citation": "TiRex (arXiv:2505.23719) App C.2/C.3: Chronos-1 corpus (Table 5) + a GIFT-Eval subset (Table 6) + 15M synthetic GP series; 16 of 97 GIFT-Eval settings are excluded but ARE NEVER NAMED, so per-dataset status cannot be derived",
+      "verified": true
+    }
+  },
+  "unverified_provenance": [
+    [
+      "LOOP_SEATTLE_5T",
+      "chronos2"
+    ],
+    [
+      "LOOP_SEATTLE_5T",
+      "timesfm3"
+    ],
+    [
+      "SZ_TAXI_15T",
+      "chronos2"
+    ],
+    [
+      "SZ_TAXI_15T",
+      "timesfm3"
+    ],
+    [
+      "m5",
+      "chronos2"
+    ],
+    [
+      "m5",
+      "timesfm3"
+    ],
+    [
+      "m5",
+      "tirex"
+    ],
+    [
+      "wiki_daily_100k",
+      "timesfm3"
+    ],
+    [
+      "monash_traffic",
+      "chronos2"
+    ]
+  ]
+}

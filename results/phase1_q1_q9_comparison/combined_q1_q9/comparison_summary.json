@@ -1,0 +1,74 @@
+{
+  "schema": "phase1_q1_q9_comparison/v1",
+  "q9_root": "/home/eserebri/repos/chronos2-layerwise-probing/results/three_model_phase1_q9_expanded",
+  "q1_root": "/home/eserebri/repos/chronos2-layerwise-probing/results/three_model_phase1_q1",
+  "headline_tolerance": 0.05,
+  "reported_tolerances": [
+    0.02,
+    0.05,
+    0.1
+  ],
+  "tunnel_definition": "sustained_suffix_v1",
+  "agreement_overall": {
+    "n_cells": 41,
+    "n_exact_same_tunnel_05": 30,
+    "fraction_exact": 0.7317073170731707,
+    "n_within_1_block": 36,
+    "fraction_within_1_block": 0.8780487804878049,
+    "n_within_2_blocks": 38,
+    "fraction_within_2_blocks": 0.926829268292683,
+    "median_abs_delta_blocks": 0.0,
+    "mean_signed_delta_blocks_q1_minus_q9": 0.7073170731707317,
+    "median_abs_delta_normalized_depth": 0.0
+  },
+  "agreement_by_model": {
+    "chronos2": {
+      "n_cells": 14,
+      "n_exact_same_tunnel_05": 8,
+      "fraction_exact": 0.5714285714285714,
+      "n_within_1_block": 12,
+      "fraction_within_1_block": 0.8571428571428571,
+      "n_within_2_blocks": 13,
+      "fraction_within_2_blocks": 0.9285714285714286,
+      "median_abs_delta_blocks": 0.0,
+      "mean_signed_delta_blocks_q1_minus_q9": 0.07142857142857142,
+      "median_abs_delta_normalized_depth": 0.0
+    },
+    "timesfm3": {
+      "n_cells": 13,
+      "n_exact_same_tunnel_05": 10,
+      "fraction_exact": 0.7692307692307693,
+      "n_within_1_block": 11,
+      "fraction_within_1_block": 0.8461538461538461,
+      "n_within_2_blocks": 11,
+      "fraction_within_2_blocks": 0.8461538461538461,
+      "median_abs_delta_blocks": 0.0,
+      "mean_signed_delta_blocks_q1_minus_q9": 1.9230769230769231,
+      "median_abs_delta_normalized_depth": 0.0
+    },
+    "tirex": {
+      "n_cells": 14,
+      "n_exact_same_tunnel_05": 12,
+      "fraction_exact": 0.8571428571428571,
+      "n_within_1_block": 13,
+      "fraction_within_1_block": 0.9285714285714286,
+      "n_within_2_blocks": 14,
+      "fraction_within_2_blocks": 1.0,
+      "median_abs_delta_blocks": 0.0,
+      "mean_signed_delta_blocks_q1_minus_q9": 0.21428571428571427,
+      "median_abs_delta_normalized_depth": 0.0
+    }
+  },
+  "n_cells_not_comparable": 1,
+  "cells_not_comparable": [
+    "timesfm3/m4_hourly: one of the two cells is not complete"
+  ],
+  "geometry_identity": {
+    "checked_cells": 41,
+    "max_abs_cka_diff": 0.0,
+    "max_abs_erank_diff": 0.0,
+    "expectation": "CKA and effective rank never see a quantile vector, so both should be 0.0 exactly when the two runs shared a feature cache; any non-zero value means the two runs did NOT read the same representations and the comparison must be re-examined"
+  },
+  "interpretation_caveat": "Q=9 is the headline probabilistic experiment; Q=1 (tau=0.5) is a probe-capacity / objective robustness check. A Q1/Q9 difference is NOT by itself evidence of overfitting at Q=9 \u2014 the two optimize different objectives with different readout capacity, and the losses are not on one scale. These tables are descriptive.",
+  "loss_scale_caveat": "q9 and q1 losses are BOTH mean pinball, but over different quantile sets, so their absolute values are not comparable. What is comparable: the tunnel entrance (a within-run ratio against that run's own final block), MASE and MAE (raw units)."
+}

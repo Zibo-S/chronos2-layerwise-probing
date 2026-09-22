@@ -8,7 +8,7 @@
 #SBATCH --mem=48G                    # dominated by build_windows on the big rosters:
                                      # wiki_daily_100k loads ~2.2 GB of float64 raw series
                                      # BEFORE the deterministic cap can reduce it
-#SBATCH --time=12:00:00              # resubmit the SAME line to resume; see WALL TIME below
+#SBATCH --time=06:00:00              # resubmit the SAME line to resume; see WALL TIME below
 #SBATCH --output=results/three_model_phase1_q9_expanded/logs/%x-%j.out
 #SBATCH --error=results/three_model_phase1_q9_expanded/logs/%x-%j.err
 

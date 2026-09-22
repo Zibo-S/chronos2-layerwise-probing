@@ -1,0 +1,55 @@
+{
+  "dataset": "electricity_15min",
+  "short": "Electricity 15min",
+  "role": "control",
+  "seasonal_m": 96,
+  "builder": "rolling_within_series",
+  "split_mode": "rolling_origin_within_series",
+  "n_train_windows": 1394,
+  "n_val_windows": 262,
+  "n_test_windows": 262,
+  "n_test_series": 262,
+  "cluster_unit": "series",
+  "first_test_identifiers": [
+    "s0@t105152",
+    "s1@t105152",
+    "s2@t105152",
+    "s4@t105152",
+    "s5@t105152",
+    "s6@t105152"
+  ],
+  "test_series_first6": [
+    0,
+    1,
+    2,
+    4,
+    5,
+    6
+  ],
+  "chronos_parity": "match",
+  "parity_ok": true,
+  "parity_failures": [],
+  "reference_kind": "window_reference",
+  "window_reference": {
+    "json": "results/window_references/window_reference__electricity_15min.json",
+    "npz": "results/window_references/window_reference__electricity_15min.npz"
+  },
+  "window_digest": "sha256:fcefaa9880cc530f7efd30129a626f145130206d89940eafd4694322ca9a7cd8",
+  "series_cap": {
+    "applied": false,
+    "max_series": null,
+    "n_eligible_before": 370,
+    "n_eligible_after": 370,
+    "rng_stream": 6165221,
+    "seed": 0,
+    "selection": "seeded uniform sample without replacement over the sorted eligible series ids",
+    "reason": "no cap declared for this dataset"
+  },
+  "valtest_budget": {
+    "requested": 262,
+    "realized": 262,
+    "reduced": false,
+    "n_eligible_series": 370
+  },
+  "note": "all three models are evaluated on THESE windows; the digest covers the test contexts themselves, not just their identifiers"
+}

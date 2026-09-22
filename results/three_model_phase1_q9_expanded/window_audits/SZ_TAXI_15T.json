@@ -1,0 +1,56 @@
+{
+  "dataset": "SZ_TAXI_15T",
+  "short": "SZ Taxi",
+  "role": "primary",
+  "seasonal_m": 96,
+  "builder": "rolling_within_series",
+  "split_mode": "rolling_origin_within_series",
+  "n_train_windows": 1394,
+  "n_val_windows": 156,
+  "n_test_windows": 156,
+  "n_test_series": 156,
+  "cluster_unit": "series",
+  "first_test_identifiers": [
+    "s0@t2880",
+    "s1@t2880",
+    "s2@t2880",
+    "s3@t2880",
+    "s4@t2880",
+    "s5@t2880"
+  ],
+  "test_series_first6": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5
+  ],
+  "chronos_parity": "match",
+  "parity_ok": true,
+  "parity_failures": [],
+  "reference_kind": "window_reference",
+  "window_reference": {
+    "json": "results/window_references/window_reference__SZ_TAXI_15T.json",
+    "npz": "results/window_references/window_reference__SZ_TAXI_15T.npz"
+  },
+  "window_digest": "sha256:e7dbdeae77a6f2f9bf621e96a9045afd29159a36f6c5035f6f4f34ed880cda77",
+  "series_cap": {
+    "applied": false,
+    "max_series": null,
+    "n_eligible_before": 156,
+    "n_eligible_after": 156,
+    "rng_stream": 6165221,
+    "seed": 0,
+    "selection": "seeded uniform sample without replacement over the sorted eligible series ids",
+    "reason": "no cap declared for this dataset"
+  },
+  "valtest_budget": {
+    "requested": 262,
+    "realized": 156,
+    "reduced": true,
+    "n_eligible_series": 156,
+    "reason": "only 156 eligible series available"
+  },
+  "note": "all three models are evaluated on THESE windows; the digest covers the test contexts themselves, not just their identifiers"
+}
