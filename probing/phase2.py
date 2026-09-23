@@ -80,7 +80,7 @@ __all__ = [
 # the frozen Phase-2 protocol
 # --------------------------------------------------------------------------- #
 #: Bumped BY HAND when the scientific meaning of an H3 cell changes. Part of the config hash.
-PHASE2_PROTOCOL_VERSION = "phase2/h3-v2"      # v2: validation MASE + the H4 frontier
+PHASE2_PROTOCOL_VERSION = "phase2/h3-v3"      # v2: validation MASE + H4 frontier; v3: adapter optimizer frozen
 
 QUANTILES = phase1.PHASE1_QUANTILES                  # the nine canonical levels, unchanged
 MEDIAN_INDEX = 4                                     # tau = 0.5 inside QUANTILES
@@ -101,13 +101,22 @@ FL_TIMESFM3_THEOREM = (
     "Phase-1 linear probe Linear(1280, 576). It is therefore not a separate rung: the probe IS "
     "the supervised alignment for TimesFM-3 (tested in code: tests.test_phase2_h3, contract 9).")
 
-# Iterative adapters (Chronos-2, TiRex). Full-batch AdamW at the Phase-1 probe learning rate.
-ADAPTER_LR = 1e-2
-ADAPTER_EPOCHS = 300
-ADAPTER_EVAL_EVERY = 10
+# Iterative adapters (Chronos-2, TiRex): full-batch AdamW. FROZEN 2026-09-23 by the pre-stated,
+# VALIDATION-ONLY optimizer check on Electricity (results/three_model_phase2_optcheck): among
+# the settings whose four entrance fits (C2 L9, TiRex L11; NOA + FL) converged -- best checkpoint
+# before 90% of the epochs and decay not at the grid maximum -- the lowest validation criteria.
+#   A  lr 1e-2 x 300  (the Phase-1 probe's; spiked, still improving at the end)   excluded
+#   B  lr 1e-3 x 1500 (all four converged)                                       CHOSEN
+#   C  lr 3e-3 x 1000 (C2 NOA best at epoch 920/1000)                            excluded
+# B vs A on validation: NOA distillation error -11% (C2) / -18% (TiRex). Test MASE at the entrance
+# moved by <= 1.5% (C2 NOA 1.172 -> 1.158; TiRex 1.073 -> 1.087): the gaps are not an
+# optimization artifact.
+ADAPTER_LR = 1e-3
+ADAPTER_EPOCHS = 1500
+ADAPTER_EVAL_EVERY = 25
 #: Decoupled decay on Delta only, i.e. toward the IDENTITY (A = I + Delta). 0 = no decay. The
-#: Phase-1 ``lr * wd < 1`` wall applies: at lr = 1e-2 the largest lr * wd here is 0.1.
-ADAPTER_WD_GRID = (0.0, 1e-3, 1e-2, 1e-1, 1.0, 10.0)
+#: Phase-1 ``lr * wd < 1`` wall applies: at lr = 1e-3 the largest lr * wd here is 0.1.
+ADAPTER_WD_GRID = (0.0, 0.1, 1.0, 10.0, 30.0, 100.0)
 
 #: Closed-form ridge strengths RELATIVE to the problem's own scale, lambda = kappa * g_max * m_max
 #: (largest eigenvalue of X^T X times that of the metric M). A scale-relative grid spans

@@ -8,7 +8,7 @@
     # one full benchmark job (submit THREE of these: --job-tag job1 / job2 / job3):
     python -m experiments.run_phase2_latency --job-tag job1
 
-WHAT IS TIMED (per model, per configuration, per batch size B in {1, 32, 256}):
+WHAT IS TIMED (per model, per configuration, per batch size B in {1, 256}: latency, throughput):
     api_e2e         the package's PUBLIC forecasting API, host numpy -> host output (HEADLINE)
                     Chronos-2 predict_quantiles | TimesFM-3 predict_batch (per_core_batch_size=B)
                     | TiRex forecast (default two-pass)
@@ -367,7 +367,10 @@ def parse_args(argv=None):
     p.add_argument("--depths", nargs="+", type=int, default=None,
                    help="block depths (default: every depth 0..L)")
     p.add_argument("--kinds", nargs="+", default=list(CONFIG_KINDS), choices=list(CONFIG_KINDS))
-    p.add_argument("--batch-sizes", nargs="+", type=int, default=[1, 32, 256])
+    # B=1 = latency, B=256 = throughput: the only two any figure / table reads. B=32 (formerly
+    # 'supporting') was dropped 2026-09-23 after the smoke measured TiRex's torch backend at
+    # ~0.5 s per call: it cost ~30% of all latency GPU time for no reported number.
+    p.add_argument("--batch-sizes", nargs="+", type=int, default=[1, 256])
     p.add_argument("--levels", nargs="+", default=list(LEVELS), choices=list(LEVELS))
     p.add_argument("--warmup", type=int, default=PROTOCOL_WARMUP)
     p.add_argument("--reps", type=int, default=PROTOCOL_REPS)

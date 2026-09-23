@@ -1548,3 +1548,59 @@ removes ALL blocks): the sharpest test of "recoverable != replaceable".
 6. Tables.
 
 **Contingency** (only if the frontier's knee is weak after converged training): a small nonlinear residual adapter as a declared variant. It cannot recover the cross-token mixing of the removed blocks.
+
+## OPTIMIZER CHECK + LATENCY SMOKE — RESULTS (2026-09-23, commit bf960d9) -> FULL RUN READY
+
+**Adapter optimizer FROZEN (protocol `phase2/h3-v3`, `probing/phase2.py`).** Decided by the pre-stated VALIDATION-only rule. Converged = best checkpoint before 90% of the epochs and decay not at the grid max, for all four entrance fits (C2 L9, TiRex L11; NOA + FL).
+
+| setting | converged | C2 NOA val | TiRex NOA val | verdict |
+|---|---|---|---|---|
+| A lr 1e-2 x 300 | no (all four still improving) | 0.01579 | 0.01354 | excluded |
+| **B lr 1e-3 x 1500, eval every 25, wd {0, .1, 1, 10, 30, 100}** | **yes** | 0.01399 | 0.01109 | **chosen** |
+| C lr 3e-3 x 1000 | no (C2 NOA best at ep 920/1000) | 0.01397 | 0.01074 | excluded |
+
+- **The robustness finding:** converged training moved test MASE at the entrance by <= 1.5% (C2 NOA 1.172 -> 1.158; TiRex NOA 1.073 -> 1.087). The entrance gaps are real, not an optimization artifact.
+- **Probe inverse gate** passed on real data (exact match), and validation MASE is present for every arm.
+
+**Latency harness works on the A100** (27/28 ok; Chronos-2-small failed, probably the checkpoint was not pre-downloaded). At depth 3, end to end:
+
+| model | B=1 | B=256 | note |
+|---|---|---|---|
+| Chronos-2 | 2.9x | 3.0x | |
+| TimesFM-3 | 1.35x | 3.6x | 2.0x device-only; a ~50 ms fixed API cost caps B=1 (F22 confirmed) |
+| TiRex | 4.0x | 3.8x | ~ proportional to blocks; 0.5 s per full-depth call on the torch backend |
+
+- Adapter cost: +1–4%.
+- Native drift within a job: ~1%.
+- **B=32 dropped from the defaults** (no figure or table reads it; ~30% of the latency GPU time).
+
+**Measured cost -> full-run jobs (all <= 3 h tier).**
+
+H3 (measured per dataset):
+
+| model | per dataset | jobs |
+|---|---|---|
+| Chronos-2 | ~27 min (124 s per depth x 12 + FL at L) | 4 jobs of 3–4 datasets |
+| TiRex | ~8.5 min | 2 jobs of 7 |
+| TimesFM-3 | ~2 min (closed form) | 1 job |
+
+- H3 total ~9 GPU-h.
+
+Latency per repeat:
+
+| model | estimate | jobs |
+|---|---|---|
+| Chronos-2 | ~20 min | 1 job |
+| TimesFM-3 | ~1.4 h | 1 job |
+| TiRex | ~2.3 h | 2 depth halves: 0–8 and 9–12 |
+
+- Latency total over 3 repeats: ~12 GPU-h.
+- H4 evaluate: ~1–2 GPU-h.
+- **Grand total ~22 GPU-h.** The drivers are the 1500-epoch Chronos-2 fits and TiRex's slow torch recurrence.
+
+**Order.**
+1. H3 + latency now, in parallel; latency does not depend on H3.
+2. H4 evaluate (budget = main; entrance = secondary) after H3.
+3. Tables.
+
+**Before the Chronos-2 latency jobs and H4 evaluate:** on the login node, `snapshot_download('autogluon/chronos-2-small')`.

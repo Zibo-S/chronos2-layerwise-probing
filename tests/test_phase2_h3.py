@@ -176,7 +176,14 @@ def test_07_wd_grid_guard():
             raise AssertionError(f"grid {bad} was accepted")
         except ValueError:
             pass
-    assert phase2.assert_adapter_wd_grid(phase2.ADAPTER_WD_GRID, 1e-2)[-1] == 10.0
+    # the frozen pairing (optimizer check, 2026-09-23): lr 1e-3 with a grid up to 100 ...
+    assert phase2.assert_adapter_wd_grid(phase2.ADAPTER_WD_GRID, phase2.ADAPTER_LR)[-1] == 100.0
+    # ... and the guard ties the grid to the lr: the same grid at the old lr 1e-2 hits lr*wd = 1
+    try:
+        phase2.assert_adapter_wd_grid(phase2.ADAPTER_WD_GRID, 1e-2)
+        raise AssertionError("the frozen grid was accepted at lr 1e-2 (lr * wd = 1)")
+    except ValueError:
+        pass
     print(" 7   decay grid refuses lr*wd >= 1, negatives, duplicates, empty                 OK")
 
 
