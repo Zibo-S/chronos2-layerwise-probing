@@ -1,0 +1,1944 @@
+{
+  "protocol": {
+    "definition": "sustained_suffix_v1",
+    "selection_split": "validation",
+    "headline_tol": 0.05,
+    "tols": [
+      0.02,
+      0.05,
+      0.1
+    ],
+    "final_block": {
+      "chronos2": "L12",
+      "timesfm3": "L20",
+      "tirex": "L12"
+    },
+    "loss": "mean pinball over (windows, Q=9 quantiles, H=64)"
+  },
+  "sources": {
+    "q9": "results/three_model_phase1_q9_expanded",
+    "q1": "results/three_model_phase1_q1",
+    "superseded_q9": {
+      "LOOP_SEATTLE_5T": [
+        "results/three_model_phase1_q9_loop_lowlr",
+        "Q=9 rerun at lr=1e-3 with widened weight-decay grid not yet complete"
+      ]
+    }
+  },
+  "pending_q9": [
+    {
+      "model": "chronos2",
+      "dataset": "LOOP_SEATTLE_5T",
+      "reason": "Q=9 rerun at lr=1e-3 with widened weight-decay grid not yet complete"
+    },
+    {
+      "model": "timesfm3",
+      "dataset": "m4_hourly",
+      "reason": "cell not yet complete"
+    },
+    {
+      "model": "timesfm3",
+      "dataset": "LOOP_SEATTLE_5T",
+      "reason": "Q=9 rerun at lr=1e-3 with widened weight-decay grid not yet complete"
+    },
+    {
+      "model": "tirex",
+      "dataset": "LOOP_SEATTLE_5T",
+      "reason": "Q=9 rerun at lr=1e-3 with widened weight-decay grid not yet complete"
+    }
+  ],
+  "q9_entrances_05": {
+    "chronos2": {
+      "m4_hourly": {
+        "layer": "L8",
+        "index": 8,
+        "L": 12,
+        "normalized": 0.6666666666666666,
+        "dropped_diagnostics": [
+          "L12+LN"
+        ]
+      },
+      "monash_electricity_hourly": {
+        "layer": "L9",
+        "index": 9,
+        "L": 12,
+        "normalized": 0.75,
+        "dropped_diagnostics": [
+          "L12+LN"
+        ]
+      },
+      "uber_tlc_hourly": {
+        "layer": "L4",
+        "index": 4,
+        "L": 12,
+        "normalized": 0.3333333333333333,
+        "dropped_diagnostics": [
+          "L12+LN"
+        ]
+      },
+      "wind_farms_hourly": {
+        "layer": "L3",
+        "index": 3,
+        "L": 12,
+        "normalized": 0.25,
+        "dropped_diagnostics": [
+          "L12+LN"
+        ]
+      },
+      "sg_carpark": {
+        "layer": "L10",
+        "index": 10,
+        "L": 12,
+        "normalized": 0.8333333333333334,
+        "dropped_diagnostics": [
+          "L12+LN"
+        ]
+      },
+      "coastal_ts": {
+        "layer": "L1",
+        "index": 1,
+        "L": 12,
+        "normalized": 0.08333333333333333,
+        "dropped_diagnostics": [
+          "L12+LN"
+        ]
+      },
+      "boom_hourly": {
+        "layer": "L3",
+        "index": 3,
+        "L": 12,
+        "normalized": 0.25,
+        "dropped_diagnostics": [
+          "L12+LN"
+        ]
+      },
+      "LOOP_SEATTLE_5T": null,
+      "electricity_15min": {
+        "layer": "L10",
+        "index": 10,
+        "L": 12,
+        "normalized": 0.8333333333333334,
+        "dropped_diagnostics": [
+          "L12+LN"
+        ]
+      },
+      "SZ_TAXI_15T": {
+        "layer": "L2",
+        "index": 2,
+        "L": 12,
+        "normalized": 0.16666666666666666,
+        "dropped_diagnostics": [
+          "L12+LN"
+        ]
+      },
+      "monash_london_smart_meters": {
+        "layer": "L3",
+        "index": 3,
+        "L": 12,
+        "normalized": 0.25,
+        "dropped_diagnostics": [
+          "L12+LN"
+        ]
+      },
+      "m5": {
+        "layer": "L0",
+        "index": 0,
+        "L": 12,
+        "normalized": 0.0,
+        "dropped_diagnostics": [
+          "L12+LN"
+        ]
+      },
+      "wiki_daily_100k": {
+        "layer": "L2",
+        "index": 2,
+        "L": 12,
+        "normalized": 0.16666666666666666,
+        "dropped_diagnostics": [
+          "L12+LN"
+        ]
+      },
+      "monash_traffic": {
+        "layer": "L11",
+        "index": 11,
+        "L": 12,
+        "normalized": 0.9166666666666666,
+        "dropped_diagnostics": [
+          "L12+LN"
+        ]
+      }
+    },
+    "timesfm3": {
+      "m4_hourly": null,
+      "monash_electricity_hourly": {
+        "layer": "L15",
+        "index": 15,
+        "L": 20,
+        "normalized": 0.75,
+        "dropped_diagnostics": []
+      },
+      "uber_tlc_hourly": {
+        "layer": "L1",
+        "index": 1,
+        "L": 20,
+        "normalized": 0.05,
+        "dropped_diagnostics": []
+      },
+      "wind_farms_hourly": {
+        "layer": "L0",
+        "index": 0,
+        "L": 20,
+        "normalized": 0.0,
+        "dropped_diagnostics": []
+      },
+      "sg_carpark": {
+        "layer": "L12",
+        "index": 12,
+        "L": 20,
+        "normalized": 0.6,
+        "dropped_diagnostics": []
+      },
+      "coastal_ts": {
+        "layer": "L5",
+        "index": 5,
+        "L": 20,
+        "normalized": 0.25,
+        "dropped_diagnostics": []
+      },
+      "boom_hourly": {
+        "layer": "L0",
+        "index": 0,
+        "L": 20,
+        "normalized": 0.0,
+        "dropped_diagnostics": []
+      },
+      "LOOP_SEATTLE_5T": null,
+      "electricity_15min": {
+        "layer": "L1",
+        "index": 1,
+        "L": 20,
+        "normalized": 0.05,
+        "dropped_diagnostics": []
+      },
+      "SZ_TAXI_15T": {
+        "layer": "L1",
+        "index": 1,
+        "L": 20,
+        "normalized": 0.05,
+        "dropped_diagnostics": []
+      },
+      "monash_london_smart_meters": {
+        "layer": "L1",
+        "index": 1,
+        "L": 20,
+        "normalized": 0.05,
+        "dropped_diagnostics": []
+      },
+      "m5": {
+        "layer": "L0",
+        "index": 0,
+        "L": 20,
+        "normalized": 0.0,
+        "dropped_diagnostics": []
+      },
+      "wiki_daily_100k": {
+        "layer": "L0",
+        "index": 0,
+        "L": 20,
+        "normalized": 0.0,
+        "dropped_diagnostics": []
+      },
+      "monash_traffic": {
+        "layer": "L12",
+        "index": 12,
+        "L": 20,
+        "normalized": 0.6,
+        "dropped_diagnostics": []
+      }
+    },
+    "tirex": {
+      "m4_hourly": {
+        "layer": "L12",
+        "index": 12,
+        "L": 12,
+        "normalized": 1.0,
+        "dropped_diagnostics": [
+          "L12+RMS"
+        ]
+      },
+      "monash_electricity_hourly": {
+        "layer": "L11",
+        "index": 11,
+        "L": 12,
+        "normalized": 0.9166666666666666,
+        "dropped_diagnostics": [
+          "L12+RMS"
+        ]
+      },
+      "uber_tlc_hourly": {
+        "layer": "L10",
+        "index": 10,
+        "L": 12,
+        "normalized": 0.8333333333333334,
+        "dropped_diagnostics": [
+          "L12+RMS"
+        ]
+      },
+      "wind_farms_hourly": {
+        "layer": "L11",
+        "index": 11,
+        "L": 12,
+        "normalized": 0.9166666666666666,
+        "dropped_diagnostics": [
+          "L12+RMS"
+        ]
+      },
+      "sg_carpark": {
+        "layer": "L11",
+        "index": 11,
+        "L": 12,
+        "normalized": 0.9166666666666666,
+        "dropped_diagnostics": [
+          "L12+RMS"
+        ]
+      },
+      "coastal_ts": {
+        "layer": "L1",
+        "index": 1,
+        "L": 12,
+        "normalized": 0.08333333333333333,
+        "dropped_diagnostics": [
+          "L12+RMS"
+        ]
+      },
+      "boom_hourly": {
+        "layer": "L8",
+        "index": 8,
+        "L": 12,
+        "normalized": 0.6666666666666666,
+        "dropped_diagnostics": [
+          "L12+RMS"
+        ]
+      },
+      "LOOP_SEATTLE_5T": null,
+      "electricity_15min": {
+        "layer": "L10",
+        "index": 10,
+        "L": 12,
+        "normalized": 0.8333333333333334,
+        "dropped_diagnostics": [
+          "L12+RMS"
+        ]
+      },
+      "SZ_TAXI_15T": {
+        "layer": "L0",
+        "index": 0,
+        "L": 12,
+        "normalized": 0.0,
+        "dropped_diagnostics": [
+          "L12+RMS"
+        ]
+      },
+      "monash_london_smart_meters": {
+        "layer": "L8",
+        "index": 8,
+        "L": 12,
+        "normalized": 0.6666666666666666,
+        "dropped_diagnostics": [
+          "L12+RMS"
+        ]
+      },
+      "m5": {
+        "layer": "L0",
+        "index": 0,
+        "L": 12,
+        "normalized": 0.0,
+        "dropped_diagnostics": [
+          "L12+RMS"
+        ]
+      },
+      "wiki_daily_100k": {
+        "layer": "L1",
+        "index": 1,
+        "L": 12,
+        "normalized": 0.08333333333333333,
+        "dropped_diagnostics": [
+          "L12+RMS"
+        ]
+      },
+      "monash_traffic": {
+        "layer": "L12",
+        "index": 12,
+        "L": 12,
+        "normalized": 1.0,
+        "dropped_diagnostics": [
+          "L12+RMS"
+        ]
+      }
+    }
+  },
+  "q9_summary_05": {
+    "chronos2": {
+      "n": 13,
+      "n_before_final": 13,
+      "median_norm": 0.25,
+      "q25_norm": 0.16666666666666666,
+      "q75_norm": 0.75,
+      "min_norm": 0.0,
+      "max_norm": 0.9166666666666666
+    },
+    "timesfm3": {
+      "n": 12,
+      "n_before_final": 12,
+      "median_norm": 0.05,
+      "q25_norm": 0.0,
+      "q75_norm": 0.3375,
+      "min_norm": 0.0,
+      "max_norm": 0.75
+    },
+    "tirex": {
+      "n": 13,
+      "n_before_final": 11,
+      "median_norm": 0.8333333333333334,
+      "q25_norm": 0.08333333333333333,
+      "q75_norm": 0.9166666666666666,
+      "min_norm": 0.0,
+      "max_norm": 1.0
+    },
+    "all": {
+      "n": 38,
+      "n_before_final": 36,
+      "median_norm": 0.25,
+      "q25_norm": 0.05,
+      "q75_norm": 0.8125,
+      "min_norm": 0.0,
+      "max_norm": 1.0
+    }
+  },
+  "q9_sensitivity": {
+    "0.02": {
+      "chronos2": {
+        "n": 13,
+        "n_before_final": 12,
+        "median_norm": 0.4166666666666667,
+        "q25_norm": 0.3333333333333333,
+        "q75_norm": 0.9166666666666666,
+        "min_norm": 0.08333333333333333,
+        "max_norm": 1.0
+      },
+      "timesfm3": {
+        "n": 12,
+        "n_before_final": 12,
+        "median_norm": 0.6000000000000001,
+        "q25_norm": 0.08750000000000001,
+        "q75_norm": 0.75,
+        "min_norm": 0.0,
+        "max_norm": 0.9
+      },
+      "tirex": {
+        "n": 13,
+        "n_before_final": 10,
+        "median_norm": 0.9166666666666666,
+        "q25_norm": 0.6666666666666666,
+        "q75_norm": 0.9166666666666666,
+        "min_norm": 0.08333333333333333,
+        "max_norm": 1.0
+      },
+      "all": {
+        "n": 38,
+        "n_before_final": 34,
+        "median_norm": 0.7083333333333333,
+        "q25_norm": 0.3333333333333333,
+        "q75_norm": 0.9166666666666666,
+        "min_norm": 0.0,
+        "max_norm": 1.0
+      }
+    },
+    "0.05": {
+      "chronos2": {
+        "n": 13,
+        "n_before_final": 13,
+        "median_norm": 0.25,
+        "q25_norm": 0.16666666666666666,
+        "q75_norm": 0.75,
+        "min_norm": 0.0,
+        "max_norm": 0.9166666666666666
+      },
+      "timesfm3": {
+        "n": 12,
+        "n_before_final": 12,
+        "median_norm": 0.05,
+        "q25_norm": 0.0,
+        "q75_norm": 0.3375,
+        "min_norm": 0.0,
+        "max_norm": 0.75
+      },
+      "tirex": {
+        "n": 13,
+        "n_before_final": 11,
+        "median_norm": 0.8333333333333334,
+        "q25_norm": 0.08333333333333333,
+        "q75_norm": 0.9166666666666666,
+        "min_norm": 0.0,
+        "max_norm": 1.0
+      },
+      "all": {
+        "n": 38,
+        "n_before_final": 36,
+        "median_norm": 0.25,
+        "q25_norm": 0.05,
+        "q75_norm": 0.8125,
+        "min_norm": 0.0,
+        "max_norm": 1.0
+      }
+    },
+    "0.1": {
+      "chronos2": {
+        "n": 13,
+        "n_before_final": 13,
+        "median_norm": 0.16666666666666666,
+        "q25_norm": 0.08333333333333333,
+        "q75_norm": 0.4166666666666667,
+        "min_norm": 0.0,
+        "max_norm": 0.8333333333333334
+      },
+      "timesfm3": {
+        "n": 12,
+        "n_before_final": 12,
+        "median_norm": 0.0,
+        "q25_norm": 0.0,
+        "q75_norm": 0.075,
+        "min_norm": 0.0,
+        "max_norm": 0.7
+      },
+      "tirex": {
+        "n": 13,
+        "n_before_final": 13,
+        "median_norm": 0.08333333333333333,
+        "q25_norm": 0.08333333333333333,
+        "q75_norm": 0.8333333333333334,
+        "min_norm": 0.0,
+        "max_norm": 0.9166666666666666
+      },
+      "all": {
+        "n": 38,
+        "n_before_final": 38,
+        "median_norm": 0.08333333333333333,
+        "q25_norm": 0.0,
+        "q75_norm": 0.5750000000000001,
+        "min_norm": 0.0,
+        "max_norm": 0.9166666666666666
+      }
+    }
+  },
+  "q9_sensitivity_movement": {
+    "stricter_later": 31,
+    "looser_earlier": 27,
+    "n": 38
+  },
+  "heldout_q9_05": {
+    "chronos2": {
+      "m4_hourly": {
+        "test_rel_degradation": 0.07089774003673366,
+        "test_rel_ci": [
+          0.049757504977395485,
+          0.09334819288215714
+        ],
+        "test_within_5pct_at_entrance": false,
+        "test_sustained_within_5pct": false,
+        "test_mase_rel_change": -0.07412775431960161,
+        "test_at_entrance": 0.10632393773616726,
+        "test_final": 0.09928486517538096,
+        "mase_at_entrance": 2.4801937887472993,
+        "mase_final": 2.678764592327392,
+        "n_test_clusters": 262,
+        "B": 5000
+      },
+      "monash_electricity_hourly": {
+        "test_rel_degradation": 0.02972581116689077,
+        "test_rel_ci": [
+          0.014693312151247463,
+          0.04705240590231556
+        ],
+        "test_within_5pct_at_entrance": true,
+        "test_sustained_within_5pct": true,
+        "test_mase_rel_change": 0.02346316317467534,
+        "test_at_entrance": 0.12172569078571013,
+        "test_final": 0.11821175060938788,
+        "mase_at_entrance": 1.0413373492767506,
+        "mase_final": 1.0174644156675179,
+        "n_test_clusters": 262,
+        "B": 5000
+      },
+      "uber_tlc_hourly": {
+        "test_rel_degradation": 0.0637157315654564,
+        "test_rel_ci": [
+          0.05299777277150936,
+          0.0749621578241252
+        ],
+        "test_within_5pct_at_entrance": false,
+        "test_sustained_within_5pct": false,
+        "test_mase_rel_change": 0.021093404429807228,
+        "test_at_entrance": 0.19025960267443237,
+        "test_final": 0.17886320285442223,
+        "mase_at_entrance": 0.9709126337119356,
+        "mase_final": 0.9508558467813302,
+        "n_test_clusters": 262,
+        "B": 5000
+      },
+      "wind_farms_hourly": {
+        "test_rel_degradation": 0.010176647433451702,
+        "test_rel_ci": [
+          -0.03872119733479894,
+          0.06292659386867638
+        ],
+        "test_within_5pct_at_entrance": true,
+        "test_sustained_within_5pct": true,
+        "test_mase_rel_change": 0.04808621789776235,
+        "test_at_entrance": 0.16033140759033557,
+        "test_final": 0.1587162086924979,
+        "mase_at_entrance": 4.957975044505279,
+        "mase_final": 4.7305030443486995,
+        "n_test_clusters": 262,
+        "B": 5000
+      },
+      "sg_carpark": {
+        "test_rel_degradation": -0.04434043044300151,
+        "test_rel_ci": [
+          -0.05989224559872647,
+          -0.028240729687472786
+        ],
+        "test_within_5pct_at_entrance": true,
+        "test_sustained_within_5pct": true,
+        "test_mase_rel_change": -0.03492059323540175,
+        "test_at_entrance": 0.09662906721360602,
+        "test_final": 0.1011124361558991,
+        "mase_at_entrance": 0.7939972273731792,
+        "mase_final": 0.8227273546692212,
+        "n_test_clusters": 354,
+        "B": 5000
+      },
+      "coastal_ts": {
+        "test_rel_degradation": 0.025279884113881268,
+        "test_rel_ci": [
+          -0.04351553923376517,
+          0.09985359497616317
+        ],
+        "test_within_5pct_at_entrance": true,
+        "test_sustained_within_5pct": true,
+        "test_mase_rel_change": 0.058101213554877074,
+        "test_at_entrance": 0.2042442476376891,
+        "test_final": 0.19920828527150056,
+        "mase_at_entrance": 1.2868174468273865,
+        "mase_final": 1.2161572355673773,
+        "n_test_clusters": 24,
+        "B": 5000
+      },
+      "boom_hourly": {
+        "test_rel_degradation": 0.012644839038898903,
+        "test_rel_ci": [
+          -0.01885061326945986,
+          0.04282237606914337
+        ],
+        "test_within_5pct_at_entrance": true,
+        "test_sustained_within_5pct": true,
+        "test_mase_rel_change": -0.04616815794798945,
+        "test_at_entrance": 0.13279108824681932,
+        "test_final": 0.13113293341113685,
+        "mase_at_entrance": 1.2260938705606383,
+        "mase_final": 1.285440280461702,
+        "n_test_clusters": 354,
+        "B": 5000
+      },
+      "electricity_15min": {
+        "test_rel_degradation": -0.010306734988073774,
+        "test_rel_ci": [
+          -0.02681767259151825,
+          0.006694877513081615
+        ],
+        "test_within_5pct_at_entrance": true,
+        "test_sustained_within_5pct": true,
+        "test_mase_rel_change": -0.052936983854184994,
+        "test_at_entrance": 0.16336293676370428,
+        "test_final": 0.16506420983044245,
+        "mase_at_entrance": 1.4452404514944888,
+        "mase_final": 1.5260235347126803,
+        "n_test_clusters": 262,
+        "B": 5000
+      },
+      "SZ_TAXI_15T": {
+        "test_rel_degradation": 0.03743659337496519,
+        "test_rel_ci": [
+          0.015250949879061004,
+          0.06572558774855232
+        ],
+        "test_within_5pct_at_entrance": true,
+        "test_sustained_within_5pct": true,
+        "test_mase_rel_change": 0.0440934960390027,
+        "test_at_entrance": 0.24542901187370986,
+        "test_final": 0.23657254182184353,
+        "mase_at_entrance": 0.8198770725869003,
+        "mase_final": 0.7852525427054986,
+        "n_test_clusters": 156,
+        "B": 5000
+      },
+      "monash_london_smart_meters": {
+        "test_rel_degradation": 0.033149045237925945,
+        "test_rel_ci": [
+          0.01699103586665498,
+          0.049555842617568915
+        ],
+        "test_within_5pct_at_entrance": true,
+        "test_sustained_within_5pct": true,
+        "test_mase_rel_change": 0.044728083916982575,
+        "test_at_entrance": 0.15288088777820572,
+        "test_final": 0.14797563670302621,
+        "mase_at_entrance": 0.8846150191365153,
+        "mase_final": 0.8467418773886523,
+        "n_test_clusters": 262,
+        "B": 5000
+      },
+      "m5": {
+        "test_rel_degradation": 0.06887757173142162,
+        "test_rel_ci": [
+          0.04816994833889614,
+          0.09194921453757032
+        ],
+        "test_within_5pct_at_entrance": false,
+        "test_sustained_within_5pct": false,
+        "test_mase_rel_change": 0.049261572277548016,
+        "test_at_entrance": 0.23556897331398863,
+        "test_final": 0.22038910680144796,
+        "mase_at_entrance": 1.1566299454154303,
+        "mase_final": 1.1023275568024724,
+        "n_test_clusters": 262,
+        "B": 5000
+      },
+      "wiki_daily_100k": {
+        "test_rel_degradation": 0.06724572680327201,
+        "test_rel_ci": [
+          0.04275813220063986,
+          0.0944387702551191
+        ],
+        "test_within_5pct_at_entrance": false,
+        "test_sustained_within_5pct": false,
+        "test_mase_rel_change": 0.0817286796224943,
+        "test_at_entrance": 0.1953362846135638,
+        "test_final": 0.18302840639957946,
+        "mase_at_entrance": 0.9242241329007637,
+        "mase_final": 0.8543955155402766,
+        "n_test_clusters": 262,
+        "B": 5000
+      },
+      "monash_traffic": {
+        "test_rel_degradation": -0.0015135671335290146,
+        "test_rel_ci": [
+          -0.008619240054610917,
+          0.005582859663511997
+        ],
+        "test_within_5pct_at_entrance": true,
+        "test_sustained_within_5pct": true,
+        "test_mase_rel_change": -0.0033241349262016495,
+        "test_at_entrance": 0.08419937361742703,
+        "test_final": 0.08432700820551574,
+        "mase_at_entrance": 0.7127075817580735,
+        "mase_final": 0.7150846195169995,
+        "n_test_clusters": 262,
+        "B": 5000
+      }
+    },
+    "timesfm3": {
+      "monash_electricity_hourly": {
+        "test_rel_degradation": -0.011706945708735761,
+        "test_rel_ci": [
+          -0.029245554364266176,
+          0.006229704535463755
+        ],
+        "test_within_5pct_at_entrance": true,
+        "test_sustained_within_5pct": true,
+        "test_mase_rel_change": -0.006366900552376875,
+        "test_at_entrance": 0.16697531329993984,
+        "test_final": 0.16895323970447515,
+        "mase_at_entrance": 1.0896197732134132,
+        "mase_final": 1.0966017273570603,
+        "n_test_clusters": 262,
+        "B": 5000
+      },
+      "uber_tlc_hourly": {
+        "test_rel_degradation": 0.09824016631496457,
+        "test_rel_ci": [
+          0.08574516404328263,
+          0.11085226607375685
+        ],
+        "test_within_5pct_at_entrance": false,
+        "test_sustained_within_5pct": false,
+        "test_mase_rel_change": 0.10613560537141553,
+        "test_at_entrance": 0.28897369596111866,
+        "test_final": 0.263124319092008,
+        "mase_at_entrance": 1.035585518067696,
+        "mase_final": 0.9362193143759889,
+        "n_test_clusters": 262,
+        "B": 5000
+      },
+      "wind_farms_hourly": {
+        "test_rel_degradation": 0.03712526918728232,
+        "test_rel_ci": [
+          0.013774017971150526,
+          0.14774616600097118
+        ],
+        "test_within_5pct_at_entrance": true,
+        "test_sustained_within_5pct": true,
+        "test_mase_rel_change": 0.015845473604972904,
+        "test_at_entrance": 0.6302697491611688,
+        "test_final": 0.6077084108220256,
+        "mase_at_entrance": 4.80579227337263,
+        "mase_final": 4.730830030987012,
+        "n_test_clusters": 262,
+        "B": 5000
+      },
+      "sg_carpark": {
+        "test_rel_degradation": -0.031108394231354253,
+        "test_rel_ci": [
+          -0.04990837437144573,
+          -0.013451491237787409
+        ],
+        "test_within_5pct_at_entrance": true,
+        "test_sustained_within_5pct": true,
+        "test_mase_rel_change": -0.04664794858302301,
+        "test_at_entrance": 0.12991989225064968,
+        "test_final": 0.13409125590223378,
+        "mase_at_entrance": 0.7822052862450136,
+        "mase_final": 0.8204789459281215,
+        "n_test_clusters": 354,
+        "B": 5000
+      },
+      "coastal_ts": {
+        "test_rel_degradation": -0.06347614208439034,
+        "test_rel_ci": [
+          -0.1380360312768534,
+          0.020086812400334508
+        ],
+        "test_within_5pct_at_entrance": true,
+        "test_sustained_within_5pct": true,
+        "test_mase_rel_change": -0.04531629917004554,
+        "test_at_entrance": 0.3056232997526725,
+        "test_final": 0.3263379754498601,
+        "mase_at_entrance": 1.2625301061543277,
+        "mase_final": 1.322459056394015,
+        "n_test_clusters": 24,
+        "B": 5000
+      },
+      "boom_hourly": {
+        "test_rel_degradation": -0.04353917655959649,
+        "test_rel_ci": [
+          -0.0915837563987866,
+          -0.0011452897191514318
+        ],
+        "test_within_5pct_at_entrance": true,
+        "test_sustained_within_5pct": true,
+        "test_mase_rel_change": -0.04409826813049089,
+        "test_at_entrance": 0.22727809790627093,
+        "test_final": 0.23762405352761684,
+        "mase_at_entrance": 1.2834941451869526,
+        "mase_final": 1.3427051153853997,
+        "n_test_clusters": 354,
+        "B": 5000
+      },
+      "electricity_15min": {
+        "test_rel_degradation": 0.01109429610121171,
+        "test_rel_ci": [
+          -0.02856596477847043,
+          0.052514589637663305
+        ],
+        "test_within_5pct_at_entrance": true,
+        "test_sustained_within_5pct": true,
+        "test_mase_rel_change": -0.013423723467218651,
+        "test_at_entrance": 0.2065628279028958,
+        "test_final": 0.2042963042115892,
+        "mase_at_entrance": 1.335715535962795,
+        "mase_final": 1.3538897779470502,
+        "n_test_clusters": 262,
+        "B": 5000
+      },
+      "SZ_TAXI_15T": {
+        "test_rel_degradation": 0.013208223254950635,
+        "test_rel_ci": [
+          0.0007902861962093832,
+          0.026259031022813732
+        ],
+        "test_within_5pct_at_entrance": true,
+        "test_sustained_within_5pct": true,
+        "test_mase_rel_change": 0.01547969338545574,
+        "test_at_entrance": 0.3273300646971434,
+        "test_final": 0.3230629767744969,
+        "mase_at_entrance": 0.8345340343845459,
+        "mase_final": 0.8218126268998404,
+        "n_test_clusters": 156,
+        "B": 5000
+      },
+      "monash_london_smart_meters": {
+        "test_rel_degradation": 0.004493290165406449,
+        "test_rel_ci": [
+          -0.008947622008483272,
+          0.019691601189741642
+        ],
+        "test_within_5pct_at_entrance": true,
+        "test_sustained_within_5pct": true,
+        "test_mase_rel_change": 0.013892060512655124,
+        "test_at_entrance": 0.2170813203796403,
+        "test_final": 0.21611027420988974,
+        "mase_at_entrance": 0.9125701989071241,
+        "mase_final": 0.9000664217113017,
+        "n_test_clusters": 262,
+        "B": 5000
+      },
+      "m5": {
+        "test_rel_degradation": 0.029213302525342266,
+        "test_rel_ci": [
+          0.019782537080063296,
+          0.03998235726274224
+        ],
+        "test_within_5pct_at_entrance": true,
+        "test_sustained_within_5pct": true,
+        "test_mase_rel_change": 0.030800816152442234,
+        "test_at_entrance": 0.30182422416014526,
+        "test_final": 0.2932572124938246,
+        "mase_at_entrance": 1.1133023948014138,
+        "mase_final": 1.0800363924399248,
+        "n_test_clusters": 262,
+        "B": 5000
+      },
+      "wiki_daily_100k": {
+        "test_rel_degradation": 0.06227138417198286,
+        "test_rel_ci": [
+          0.03856246574226185,
+          0.08992952194857175
+        ],
+        "test_within_5pct_at_entrance": false,
+        "test_sustained_within_5pct": false,
+        "test_mase_rel_change": 0.10541784554549216,
+        "test_at_entrance": 0.2628376963086256,
+        "test_final": 0.24742989430474188,
+        "mase_at_entrance": 0.9602535767857419,
+        "mase_final": 0.8686792787499139,
+        "n_test_clusters": 262,
+        "B": 5000
+      },
+      "monash_traffic": {
+        "test_rel_degradation": 0.01872203923085558,
+        "test_rel_ci": [
+          -0.00853107646366392,
+          0.048895178164568065
+        ],
+        "test_within_5pct_at_entrance": true,
+        "test_sustained_within_5pct": true,
+        "test_mase_rel_change": 0.056804200277087435,
+        "test_at_entrance": 0.12106096127447281,
+        "test_final": 0.11883610701686098,
+        "mase_at_entrance": 0.8650564688712009,
+        "mase_final": 0.8185588859737579,
+        "n_test_clusters": 262,
+        "B": 5000
+      }
+    },
+    "tirex": {
+      "m4_hourly": {
+        "test_rel_degradation": 0.0,
+        "test_rel_ci": [
+          0.0,
+          0.0
+        ],
+        "test_within_5pct_at_entrance": true,
+        "test_sustained_within_5pct": true,
+        "test_mase_rel_change": 0.0,
+        "test_at_entrance": 0.10566483562428305,
+        "test_final": 0.10566483562428305,
+        "mase_at_entrance": 1.2359011609420771,
+        "mase_final": 1.2359011609420771,
+        "n_test_clusters": 262,
+        "B": 5000
+      },
+      "monash_electricity_hourly": {
+        "test_rel_degradation": 0.0448905057631408,
+        "test_rel_ci": [
+          0.02943609252807457,
+          0.059704729085003336
+        ],
+        "test_within_5pct_at_entrance": true,
+        "test_sustained_within_5pct": true,
+        "test_mase_rel_change": 0.054330846487898876,
+        "test_at_entrance": 0.15808661424249182,
+        "test_final": 0.15129490924700525,
+        "mase_at_entrance": 1.0595690133223952,
+        "mase_final": 1.004968238245087,
+        "n_test_clusters": 262,
+        "B": 5000
+      },
+      "uber_tlc_hourly": {
+        "test_rel_degradation": 0.013771707400560551,
+        "test_rel_ci": [
+          0.008930290833325544,
+          0.01883589014161462
+        ],
+        "test_within_5pct_at_entrance": true,
+        "test_sustained_within_5pct": true,
+        "test_mase_rel_change": 0.012329656090079633,
+        "test_at_entrance": 0.2509762865583633,
+        "test_final": 0.24756686808896883,
+        "mase_at_entrance": 0.9059521827535605,
+        "mase_final": 0.8949181497385142,
+        "n_test_clusters": 262,
+        "B": 5000
+      },
+      "wind_farms_hourly": {
+        "test_rel_degradation": 0.00749982873859345,
+        "test_rel_ci": [
+          0.001815515746395874,
+          0.03608067036800752
+        ],
+        "test_within_5pct_at_entrance": true,
+        "test_sustained_within_5pct": true,
+        "test_mase_rel_change": 0.00838748095340347,
+        "test_at_entrance": 0.5938630836326202,
+        "test_final": 0.5894423668301231,
+        "mase_at_entrance": 4.548447093839079,
+        "mase_final": 4.510614401458697,
+        "n_test_clusters": 262,
+        "B": 5000
+      },
+      "sg_carpark": {
+        "test_rel_degradation": -0.018492419264211857,
+        "test_rel_ci": [
+          -0.034982274593787124,
+          -0.0023390109707698216
+        ],
+        "test_within_5pct_at_entrance": true,
+        "test_sustained_within_5pct": true,
+        "test_mase_rel_change": -0.018968423594734718,
+        "test_at_entrance": 0.1184514754657018,
+        "test_final": 0.12068319979444736,
+        "mase_at_entrance": 0.7079023031838065,
+        "mase_final": 0.7215897227056953,
+        "n_test_clusters": 354,
+        "B": 5000
+      },
+      "coastal_ts": {
+        "test_rel_degradation": -0.006677252422786828,
+        "test_rel_ci": [
+          -0.0804471211763151,
+          0.07012502456400033
+        ],
+        "test_within_5pct_at_entrance": true,
+        "test_sustained_within_5pct": true,
+        "test_mase_rel_change": -0.013394247356826039,
+        "test_at_entrance": 0.29123965891388554,
+        "test_final": 0.2931974120438099,
+        "mase_at_entrance": 1.2554643935356748,
+        "mase_final": 1.272508689689081,
+        "n_test_clusters": 24,
+        "B": 5000
+      },
+      "boom_hourly": {
+        "test_rel_degradation": 0.04676949640374661,
+        "test_rel_ci": [
+          0.01595782681977556,
+          0.07749296390833776
+        ],
+        "test_within_5pct_at_entrance": true,
+        "test_sustained_within_5pct": true,
+        "test_mase_rel_change": 0.045917002114939764,
+        "test_at_entrance": 0.22237489628737087,
+        "test_final": 0.2124392209090503,
+        "mase_at_entrance": 1.2274859835614065,
+        "mase_final": 1.1735978869062436,
+        "n_test_clusters": 354,
+        "B": 5000
+      },
+      "electricity_15min": {
+        "test_rel_degradation": 0.028352638737849212,
+        "test_rel_ci": [
+          0.014971016319258141,
+          0.041435885401307666
+        ],
+        "test_within_5pct_at_entrance": true,
+        "test_sustained_within_5pct": true,
+        "test_mase_rel_change": 0.029294554423589858,
+        "test_at_entrance": 0.20676565766050162,
+        "test_final": 0.20106493616263374,
+        "mase_at_entrance": 1.3640395969443755,
+        "mase_final": 1.3252179282229317,
+        "n_test_clusters": 262,
+        "B": 5000
+      },
+      "SZ_TAXI_15T": {
+        "test_rel_degradation": 0.04787410849294993,
+        "test_rel_ci": [
+          0.03052459029890977,
+          0.0659229223518308
+        ],
+        "test_within_5pct_at_entrance": true,
+        "test_sustained_within_5pct": true,
+        "test_mase_rel_change": 0.05507471928838026,
+        "test_at_entrance": 0.32772649050905156,
+        "test_final": 0.31275368658586955,
+        "mase_at_entrance": 0.8460946586695101,
+        "mase_final": 0.8019286626829409,
+        "n_test_clusters": 156,
+        "B": 5000
+      },
+      "monash_london_smart_meters": {
+        "test_rel_degradation": 0.05189571902295498,
+        "test_rel_ci": [
+          0.04145510243325162,
+          0.06307714610267859
+        ],
+        "test_within_5pct_at_entrance": false,
+        "test_sustained_within_5pct": false,
+        "test_mase_rel_change": 0.04770751986976496,
+        "test_at_entrance": 0.21306566077903027,
+        "test_final": 0.20255397652624219,
+        "mase_at_entrance": 0.8923262836636588,
+        "mase_final": 0.8516940718098304,
+        "n_test_clusters": 262,
+        "B": 5000
+      },
+      "m5": {
+        "test_rel_degradation": 0.03864986973396456,
+        "test_rel_ci": [
+          0.029539409315761052,
+          0.0477735002084989
+        ],
+        "test_within_5pct_at_entrance": true,
+        "test_sustained_within_5pct": true,
+        "test_mase_rel_change": 0.011884084480791257,
+        "test_at_entrance": 0.29939144067750634,
+        "test_final": 0.2882505928144883,
+        "mase_at_entrance": 1.09581987462423,
+        "mase_final": 1.0829500052730914,
+        "n_test_clusters": 262,
+        "B": 5000
+      },
+      "wiki_daily_100k": {
+        "test_rel_degradation": 0.05503659694427365,
+        "test_rel_ci": [
+          0.035489415329004265,
+          0.07665666175902128
+        ],
+        "test_within_5pct_at_entrance": false,
+        "test_sustained_within_5pct": false,
+        "test_mase_rel_change": 0.0734094330678825,
+        "test_at_entrance": 0.2549370825219587,
+        "test_final": 0.2416381415207195,
+        "mase_at_entrance": 0.9152824117837083,
+        "mase_final": 0.8526871327819101,
+        "n_test_clusters": 262,
+        "B": 5000
+      },
+      "monash_traffic": {
+        "test_rel_degradation": 0.0,
+        "test_rel_ci": [
+          0.0,
+          0.0
+        ],
+        "test_within_5pct_at_entrance": true,
+        "test_sustained_within_5pct": true,
+        "test_mase_rel_change": 0.0,
+        "test_at_entrance": 0.09866984455867578,
+        "test_final": 0.09866984455867578,
+        "mase_at_entrance": 0.6981769395774609,
+        "mase_final": 0.6981769395774609,
+        "n_test_clusters": 262,
+        "B": 5000
+      }
+    }
+  },
+  "heldout_q9_05_summary": {
+    "chronos2": {
+      "n": 13,
+      "median_rel_degradation": 0.02972581116689077,
+      "q25": 0.010176647433451702,
+      "q75": 0.0637157315654564,
+      "mean_rel_degradation": 0.027922219841407168,
+      "max_rel_degradation": 0.07089774003673366,
+      "n_within_5pct_at_entrance": 9,
+      "n_sustained_within_5pct": 9,
+      "n_ci_upper_le_5pct": 6,
+      "median_mase_rel_change": 0.02346316317467534
+    },
+    "timesfm3": {
+      "n": 12,
+      "median_rel_degradation": 0.012151259678081172,
+      "q25": -0.016557307839390384,
+      "q75": 0.03119129419082728,
+      "mean_rel_degradation": 0.010378109363993296,
+      "max_rel_degradation": 0.09824016631496457,
+      "n_within_5pct_at_entrance": 10,
+      "n_sustained_within_5pct": 10,
+      "n_ci_upper_le_5pct": 8,
+      "median_mase_rel_change": 0.014685876949055432
+    },
+    "tirex": {
+      "n": 13,
+      "median_rel_degradation": 0.028352638737849212,
+      "q25": 0.0,
+      "q75": 0.04676949640374661,
+      "mean_rel_degradation": 0.023813138427002698,
+      "max_rel_degradation": 0.05503659694427365,
+      "n_within_5pct_at_entrance": 11,
+      "n_sustained_within_5pct": 11,
+      "n_ci_upper_le_5pct": 7,
+      "median_mase_rel_change": 0.012329656090079633
+    },
+    "all": {
+      "n": 38,
+      "median_rel_degradation": 0.022000961672368424,
+      "q25": 0.0,
+      "q75": 0.04629974874359516,
+      "mean_rel_degradation": 0.02097623604887494,
+      "max_rel_degradation": 0.09824016631496457,
+      "n_within_5pct_at_entrance": 30,
+      "n_sustained_within_5pct": 30,
+      "n_ci_upper_le_5pct": 21,
+      "median_mase_rel_change": 0.01566258349521432
+    }
+  },
+  "q1_vs_q9": {
+    "pairs": [
+      {
+        "model": "chronos2",
+        "dataset": "m4_hourly",
+        "q9": 8,
+        "q1": 5,
+        "delta": -3,
+        "q1_label": "L5",
+        "q9_label": "L8"
+      },
+      {
+        "model": "chronos2",
+        "dataset": "monash_electricity_hourly",
+        "q9": 9,
+        "q1": 10,
+        "delta": 1,
+        "q1_label": "L10",
+        "q9_label": "L9"
+      },
+      {
+        "model": "chronos2",
+        "dataset": "uber_tlc_hourly",
+        "q9": 4,
+        "q1": 5,
+        "delta": 1,
+        "q1_label": "L5",
+        "q9_label": "L4"
+      },
+      {
+        "model": "chronos2",
+        "dataset": "wind_farms_hourly",
+        "q9": 3,
+        "q1": 3,
+        "delta": 0,
+        "q1_label": "L3",
+        "q9_label": "L3"
+      },
+      {
+        "model": "chronos2",
+        "dataset": "sg_carpark",
+        "q9": 10,
+        "q1": 12,
+        "delta": 2,
+        "q1_label": "L12",
+        "q9_label": "L10"
+      },
+      {
+        "model": "chronos2",
+        "dataset": "coastal_ts",
+        "q9": 1,
+        "q1": 1,
+        "delta": 0,
+        "q1_label": "L1",
+        "q9_label": "L1"
+      },
+      {
+        "model": "chronos2",
+        "dataset": "boom_hourly",
+        "q9": 3,
+        "q1": 2,
+        "delta": -1,
+        "q1_label": "L2",
+        "q9_label": "L3"
+      },
+      {
+        "model": "chronos2",
+        "dataset": "electricity_15min",
+        "q9": 10,
+        "q1": 10,
+        "delta": 0,
+        "q1_label": "L10",
+        "q9_label": "L10"
+      },
+      {
+        "model": "chronos2",
+        "dataset": "SZ_TAXI_15T",
+        "q9": 2,
+        "q1": 2,
+        "delta": 0,
+        "q1_label": "L2",
+        "q9_label": "L2"
+      },
+      {
+        "model": "chronos2",
+        "dataset": "monash_london_smart_meters",
+        "q9": 3,
+        "q1": 4,
+        "delta": 1,
+        "q1_label": "L4",
+        "q9_label": "L3"
+      },
+      {
+        "model": "chronos2",
+        "dataset": "m5",
+        "q9": 0,
+        "q1": 0,
+        "delta": 0,
+        "q1_label": "L0",
+        "q9_label": "L0"
+      },
+      {
+        "model": "chronos2",
+        "dataset": "wiki_daily_100k",
+        "q9": 2,
+        "q1": 2,
+        "delta": 0,
+        "q1_label": "L2",
+        "q9_label": "L2"
+      },
+      {
+        "model": "chronos2",
+        "dataset": "monash_traffic",
+        "q9": 11,
+        "q1": 11,
+        "delta": 0,
+        "q1_label": "L11",
+        "q9_label": "L11"
+      },
+      {
+        "model": "timesfm3",
+        "dataset": "monash_electricity_hourly",
+        "q9": 15,
+        "q1": 15,
+        "delta": 0,
+        "q1_label": "L15",
+        "q9_label": "L15"
+      },
+      {
+        "model": "timesfm3",
+        "dataset": "uber_tlc_hourly",
+        "q9": 1,
+        "q1": 1,
+        "delta": 0,
+        "q1_label": "L1",
+        "q9_label": "L1"
+      },
+      {
+        "model": "timesfm3",
+        "dataset": "wind_farms_hourly",
+        "q9": 0,
+        "q1": 0,
+        "delta": 0,
+        "q1_label": "L0",
+        "q9_label": "L0"
+      },
+      {
+        "model": "timesfm3",
+        "dataset": "sg_carpark",
+        "q9": 12,
+        "q1": 11,
+        "delta": -1,
+        "q1_label": "L11",
+        "q9_label": "L12"
+      },
+      {
+        "model": "timesfm3",
+        "dataset": "coastal_ts",
+        "q9": 5,
+        "q1": 18,
+        "delta": 13,
+        "q1_label": "L18",
+        "q9_label": "L5"
+      },
+      {
+        "model": "timesfm3",
+        "dataset": "boom_hourly",
+        "q9": 0,
+        "q1": 0,
+        "delta": 0,
+        "q1_label": "L0",
+        "q9_label": "L0"
+      },
+      {
+        "model": "timesfm3",
+        "dataset": "electricity_15min",
+        "q9": 1,
+        "q1": 1,
+        "delta": 0,
+        "q1_label": "L1",
+        "q9_label": "L1"
+      },
+      {
+        "model": "timesfm3",
+        "dataset": "SZ_TAXI_15T",
+        "q9": 1,
+        "q1": 1,
+        "delta": 0,
+        "q1_label": "L1",
+        "q9_label": "L1"
+      },
+      {
+        "model": "timesfm3",
+        "dataset": "monash_london_smart_meters",
+        "q9": 1,
+        "q1": 1,
+        "delta": 0,
+        "q1_label": "L1",
+        "q9_label": "L1"
+      },
+      {
+        "model": "timesfm3",
+        "dataset": "m5",
+        "q9": 0,
+        "q1": 0,
+        "delta": 0,
+        "q1_label": "L0",
+        "q9_label": "L0"
+      },
+      {
+        "model": "timesfm3",
+        "dataset": "wiki_daily_100k",
+        "q9": 0,
+        "q1": 0,
+        "delta": 0,
+        "q1_label": "L0",
+        "q9_label": "L0"
+      },
+      {
+        "model": "timesfm3",
+        "dataset": "monash_traffic",
+        "q9": 12,
+        "q1": 12,
+        "delta": 0,
+        "q1_label": "L12",
+        "q9_label": "L12"
+      },
+      {
+        "model": "tirex",
+        "dataset": "m4_hourly",
+        "q9": 12,
+        "q1": 12,
+        "delta": 0,
+        "q1_label": "L12",
+        "q9_label": "L12"
+      },
+      {
+        "model": "tirex",
+        "dataset": "monash_electricity_hourly",
+        "q9": 11,
+        "q1": 11,
+        "delta": 0,
+        "q1_label": "L11",
+        "q9_label": "L11"
+      },
+      {
+        "model": "tirex",
+        "dataset": "uber_tlc_hourly",
+        "q9": 10,
+        "q1": 10,
+        "delta": 0,
+        "q1_label": "L10",
+        "q9_label": "L10"
+      },
+      {
+        "model": "tirex",
+        "dataset": "wind_farms_hourly",
+        "q9": 11,
+        "q1": 11,
+        "delta": 0,
+        "q1_label": "L11",
+        "q9_label": "L11"
+      },
+      {
+        "model": "tirex",
+        "dataset": "sg_carpark",
+        "q9": 11,
+        "q1": 11,
+        "delta": 0,
+        "q1_label": "L11",
+        "q9_label": "L11"
+      },
+      {
+        "model": "tirex",
+        "dataset": "coastal_ts",
+        "q9": 1,
+        "q1": 1,
+        "delta": 0,
+        "q1_label": "L1",
+        "q9_label": "L1"
+      },
+      {
+        "model": "tirex",
+        "dataset": "boom_hourly",
+        "q9": 8,
+        "q1": 9,
+        "delta": 1,
+        "q1_label": "L9",
+        "q9_label": "L8"
+      },
+      {
+        "model": "tirex",
+        "dataset": "electricity_15min",
+        "q9": 10,
+        "q1": 10,
+        "delta": 0,
+        "q1_label": "L10",
+        "q9_label": "L10"
+      },
+      {
+        "model": "tirex",
+        "dataset": "SZ_TAXI_15T",
+        "q9": 0,
+        "q1": 0,
+        "delta": 0,
+        "q1_label": "L0",
+        "q9_label": "L0"
+      },
+      {
+        "model": "tirex",
+        "dataset": "monash_london_smart_meters",
+        "q9": 8,
+        "q1": 8,
+        "delta": 0,
+        "q1_label": "L8",
+        "q9_label": "L8"
+      },
+      {
+        "model": "tirex",
+        "dataset": "m5",
+        "q9": 0,
+        "q1": 0,
+        "delta": 0,
+        "q1_label": "L0",
+        "q9_label": "L0"
+      },
+      {
+        "model": "tirex",
+        "dataset": "wiki_daily_100k",
+        "q9": 1,
+        "q1": 1,
+        "delta": 0,
+        "q1_label": "L1",
+        "q9_label": "L1"
+      },
+      {
+        "model": "tirex",
+        "dataset": "monash_traffic",
+        "q9": 12,
+        "q1": 12,
+        "delta": 0,
+        "q1_label": "L12",
+        "q9_label": "L12"
+      }
+    ],
+    "not_comparable": [
+      {
+        "model": "chronos2",
+        "dataset": "LOOP_SEATTLE_5T",
+        "reason": "Q=9 pending"
+      },
+      {
+        "model": "timesfm3",
+        "dataset": "m4_hourly",
+        "reason": "Q=9 pending"
+      },
+      {
+        "model": "timesfm3",
+        "dataset": "LOOP_SEATTLE_5T",
+        "reason": "Q=9 pending"
+      },
+      {
+        "model": "tirex",
+        "dataset": "LOOP_SEATTLE_5T",
+        "reason": "Q=9 pending"
+      }
+    ],
+    "agreement": {
+      "chronos2": {
+        "n": 13,
+        "n_exact": 7,
+        "n_within_1": 11,
+        "n_within_2": 12,
+        "median_abs_delta": 0.0,
+        "mean_signed_delta": 0.07692307692307693
+      },
+      "timesfm3": {
+        "n": 12,
+        "n_exact": 10,
+        "n_within_1": 11,
+        "n_within_2": 11,
+        "median_abs_delta": 0.0,
+        "mean_signed_delta": 1.0
+      },
+      "tirex": {
+        "n": 13,
+        "n_exact": 12,
+        "n_within_1": 13,
+        "n_within_2": 13,
+        "median_abs_delta": 0.0,
+        "mean_signed_delta": 0.07692307692307693
+      },
+      "all": {
+        "n": 38,
+        "n_exact": 29,
+        "n_within_1": 35,
+        "n_within_2": 36,
+        "median_abs_delta": 0.0,
+        "mean_signed_delta": 0.3684210526315789
+      }
+    }
+  },
+  "legacy_including_committed_loop_q9": {
+    "note": "uses the committed lr=1e-2 LOOP Seattle Q=9 cells that SUPERSEDED_Q9 marks pending; reported only to reconcile with earlier counts",
+    "q9_summary_05": {
+      "chronos2": {
+        "n": 14,
+        "n_before_final": 14,
+        "median_norm": 0.29166666666666663,
+        "q25_norm": 0.1875,
+        "q75_norm": 0.7291666666666666,
+        "min_norm": 0.0,
+        "max_norm": 0.9166666666666666
+      },
+      "timesfm3": {
+        "n": 13,
+        "n_before_final": 13,
+        "median_norm": 0.05,
+        "q25_norm": 0.0,
+        "q75_norm": 0.25,
+        "min_norm": 0.0,
+        "max_norm": 0.75
+      },
+      "tirex": {
+        "n": 14,
+        "n_before_final": 12,
+        "median_norm": 0.75,
+        "q25_norm": 0.22916666666666663,
+        "q75_norm": 0.9166666666666666,
+        "min_norm": 0.0,
+        "max_norm": 1.0
+      },
+      "all": {
+        "n": 41,
+        "n_before_final": 39,
+        "median_norm": 0.25,
+        "q25_norm": 0.05,
+        "q75_norm": 0.75,
+        "min_norm": 0.0,
+        "max_norm": 1.0
+      }
+    },
+    "q1_vs_q9_agreement": {
+      "chronos2": {
+        "n": 14,
+        "n_exact": 8,
+        "n_within_1": 12,
+        "n_within_2": 13,
+        "median_abs_delta": 0.0,
+        "mean_signed_delta": 0.07142857142857142
+      },
+      "timesfm3": {
+        "n": 13,
+        "n_exact": 10,
+        "n_within_1": 11,
+        "n_within_2": 11,
+        "median_abs_delta": 0.0,
+        "mean_signed_delta": 1.9230769230769231
+      },
+      "tirex": {
+        "n": 14,
+        "n_exact": 12,
+        "n_within_1": 13,
+        "n_within_2": 14,
+        "median_abs_delta": 0.0,
+        "mean_signed_delta": 0.21428571428571427
+      },
+      "all": {
+        "n": 41,
+        "n_exact": 30,
+        "n_within_1": 36,
+        "n_within_2": 38,
+        "median_abs_delta": 0.0,
+        "mean_signed_delta": 0.7073170731707317
+      }
+    }
+  },
+  "main_figure_datasets": {
+    "datasets": [
+      "monash_electricity_hourly",
+      "uber_tlc_hourly",
+      "monash_london_smart_meters"
+    ],
+    "rule": "fixed illustrative trio, required complete for all three models; every dataset is shown in the appendix figures",
+    "entrances_05": {
+      "chronos2": {
+        "monash_electricity_hourly": "L9",
+        "uber_tlc_hourly": "L4",
+        "monash_london_smart_meters": "L3"
+      },
+      "timesfm3": {
+        "monash_electricity_hourly": "L15",
+        "uber_tlc_hourly": "L1",
+        "monash_london_smart_meters": "L1"
+      },
+      "tirex": {
+        "monash_electricity_hourly": "L11",
+        "uber_tlc_hourly": "L10",
+        "monash_london_smart_meters": "L8"
+      }
+    }
+  },
+  "pending_q1_figures": [
+    {
+      "model": "chronos2",
+      "dataset": "LOOP_SEATTLE_5T",
+      "reason": "matched Q=1 rerun at lr=1e-3 not yet run"
+    },
+    {
+      "model": "timesfm3",
+      "dataset": "LOOP_SEATTLE_5T",
+      "reason": "matched Q=1 rerun at lr=1e-3 not yet run"
+    },
+    {
+      "model": "tirex",
+      "dataset": "LOOP_SEATTLE_5T",
+      "reason": "matched Q=1 rerun at lr=1e-3 not yet run"
+    }
+  ],
+  "q9_summary_02": {
+    "chronos2": {
+      "n": 13,
+      "n_before_final": 12,
+      "median_norm": 0.4166666666666667,
+      "q25_norm": 0.3333333333333333,
+      "q75_norm": 0.9166666666666666,
+      "min_norm": 0.08333333333333333,
+      "max_norm": 1.0
+    },
+    "timesfm3": {
+      "n": 12,
+      "n_before_final": 12,
+      "median_norm": 0.6000000000000001,
+      "q25_norm": 0.08750000000000001,
+      "q75_norm": 0.75,
+      "min_norm": 0.0,
+      "max_norm": 0.9
+    },
+    "tirex": {
+      "n": 13,
+      "n_before_final": 10,
+      "median_norm": 0.9166666666666666,
+      "q25_norm": 0.6666666666666666,
+      "q75_norm": 0.9166666666666666,
+      "min_norm": 0.08333333333333333,
+      "max_norm": 1.0
+    },
+    "all": {
+      "n": 38,
+      "n_before_final": 34,
+      "median_norm": 0.7083333333333333,
+      "q25_norm": 0.3333333333333333,
+      "q75_norm": 0.9166666666666666,
+      "min_norm": 0.0,
+      "max_norm": 1.0
+    }
+  },
+  "q9_summary_08": {
+    "chronos2": {
+      "n": 13,
+      "n_before_final": 13,
+      "median_norm": 0.25,
+      "q25_norm": 0.08333333333333333,
+      "q75_norm": 0.4166666666666667,
+      "min_norm": 0.0,
+      "max_norm": 0.9166666666666666
+    },
+    "timesfm3": {
+      "n": 12,
+      "n_before_final": 12,
+      "median_norm": 0.05,
+      "q25_norm": 0.0,
+      "q75_norm": 0.2,
+      "min_norm": 0.0,
+      "max_norm": 0.75
+    },
+    "tirex": {
+      "n": 13,
+      "n_before_final": 13,
+      "median_norm": 0.6666666666666666,
+      "q25_norm": 0.08333333333333333,
+      "q75_norm": 0.8333333333333334,
+      "min_norm": 0.0,
+      "max_norm": 0.9166666666666666
+    },
+    "all": {
+      "n": 38,
+      "n_before_final": 38,
+      "median_norm": 0.18333333333333335,
+      "q25_norm": 0.05,
+      "q75_norm": 0.6666666666666666,
+      "min_norm": 0.0,
+      "max_norm": 0.9166666666666666
+    }
+  },
+  "q9_sensitivity_2_5_8": {
+    "0.02": {
+      "chronos2": {
+        "n": 13,
+        "n_before_final": 12,
+        "median_norm": 0.4166666666666667,
+        "q25_norm": 0.3333333333333333,
+        "q75_norm": 0.9166666666666666,
+        "min_norm": 0.08333333333333333,
+        "max_norm": 1.0
+      },
+      "timesfm3": {
+        "n": 12,
+        "n_before_final": 12,
+        "median_norm": 0.6000000000000001,
+        "q25_norm": 0.08750000000000001,
+        "q75_norm": 0.75,
+        "min_norm": 0.0,
+        "max_norm": 0.9
+      },
+      "tirex": {
+        "n": 13,
+        "n_before_final": 10,
+        "median_norm": 0.9166666666666666,
+        "q25_norm": 0.6666666666666666,
+        "q75_norm": 0.9166666666666666,
+        "min_norm": 0.08333333333333333,
+        "max_norm": 1.0
+      },
+      "all": {
+        "n": 38,
+        "n_before_final": 34,
+        "median_norm": 0.7083333333333333,
+        "q25_norm": 0.3333333333333333,
+        "q75_norm": 0.9166666666666666,
+        "min_norm": 0.0,
+        "max_norm": 1.0
+      }
+    },
+    "0.05": {
+      "chronos2": {
+        "n": 13,
+        "n_before_final": 13,
+        "median_norm": 0.25,
+        "q25_norm": 0.16666666666666666,
+        "q75_norm": 0.75,
+        "min_norm": 0.0,
+        "max_norm": 0.9166666666666666
+      },
+      "timesfm3": {
+        "n": 12,
+        "n_before_final": 12,
+        "median_norm": 0.05,
+        "q25_norm": 0.0,
+        "q75_norm": 0.3375,
+        "min_norm": 0.0,
+        "max_norm": 0.75
+      },
+      "tirex": {
+        "n": 13,
+        "n_before_final": 11,
+        "median_norm": 0.8333333333333334,
+        "q25_norm": 0.08333333333333333,
+        "q75_norm": 0.9166666666666666,
+        "min_norm": 0.0,
+        "max_norm": 1.0
+      },
+      "all": {
+        "n": 38,
+        "n_before_final": 36,
+        "median_norm": 0.25,
+        "q25_norm": 0.05,
+        "q75_norm": 0.8125,
+        "min_norm": 0.0,
+        "max_norm": 1.0
+      }
+    },
+    "0.08": {
+      "chronos2": {
+        "n": 13,
+        "n_before_final": 13,
+        "median_norm": 0.25,
+        "q25_norm": 0.08333333333333333,
+        "q75_norm": 0.4166666666666667,
+        "min_norm": 0.0,
+        "max_norm": 0.9166666666666666
+      },
+      "timesfm3": {
+        "n": 12,
+        "n_before_final": 12,
+        "median_norm": 0.05,
+        "q25_norm": 0.0,
+        "q75_norm": 0.2,
+        "min_norm": 0.0,
+        "max_norm": 0.75
+      },
+      "tirex": {
+        "n": 13,
+        "n_before_final": 13,
+        "median_norm": 0.6666666666666666,
+        "q25_norm": 0.08333333333333333,
+        "q75_norm": 0.8333333333333334,
+        "min_norm": 0.0,
+        "max_norm": 0.9166666666666666
+      },
+      "all": {
+        "n": 38,
+        "n_before_final": 38,
+        "median_norm": 0.18333333333333335,
+        "q25_norm": 0.05,
+        "q75_norm": 0.6666666666666666,
+        "min_norm": 0.0,
+        "max_norm": 0.9166666666666666
+      }
+    }
+  },
+  "outputs": {
+    "figures": [
+      "three_models_paper/figures/recoverability/main_representative_q9.pdf",
+      "three_models_paper/figures/recoverability/main_representative_q9.png",
+      "three_models_paper/figures/recoverability/appendix_chronos2_q9.pdf",
+      "three_models_paper/figures/recoverability/appendix_chronos2_q9.png",
+      "three_models_paper/figures/recoverability/appendix_timesfm3_q9.pdf",
+      "three_models_paper/figures/recoverability/appendix_timesfm3_q9.png",
+      "three_models_paper/figures/recoverability/appendix_tirex_q9.pdf",
+      "three_models_paper/figures/recoverability/appendix_tirex_q9.png",
+      "three_models_paper/figures/recoverability/appendix_chronos2_q1.pdf",
+      "three_models_paper/figures/recoverability/appendix_chronos2_q1.png",
+      "three_models_paper/figures/recoverability/appendix_timesfm3_q1.pdf",
+      "three_models_paper/figures/recoverability/appendix_timesfm3_q1.png",
+      "three_models_paper/figures/recoverability/appendix_tirex_q1.pdf",
+      "three_models_paper/figures/recoverability/appendix_tirex_q1.png"
+    ],
+    "tables": [
+      "three_models_paper/figures/recoverability/tables/tunnel_q9_05.tex",
+      "three_models_paper/figures/recoverability/tables/tunnel_q9_02.tex",
+      "three_models_paper/figures/recoverability/tables/tunnel_q9_08.tex",
+      "three_models_paper/figures/recoverability/tables/tunnel_sensitivity.tex",
+      "three_models_paper/figures/recoverability/tables/q1_vs_q9.tex",
+      "three_models_paper/figures/recoverability/tables/heldout_q9.tex",
+      "three_models_paper/figures/recoverability/tables/heldout_q9_full.tex",
+      "three_models_paper/figures/recoverability/tables/tunnel_sensitivity_2_5_8.tex"
+    ]
+  }
+}

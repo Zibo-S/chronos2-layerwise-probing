@@ -1327,3 +1327,135 @@ identical element-wise (0.0 expected) instead of assuming it.
   test_wide_wd_grid_value_and_sharing` fails under a FULL pytest run and passes alone —
   `tests/test_ft_specialization.py:301` sets `rfs.WD_GRID = (1e-3, 1e-2)` on the shared module
   and never restores it. Confirmed identical on a pristine `git archive HEAD` tree.
+
+---
+
+# PHASE 2 v3 (H3 functional replaceability + H4 truncate-to-accelerate) — CODE IMPLEMENTED 2026-09-23, NOT RUN, NOTHING SUBMITTED
+
+Full design: `writing/phase2_design.md` (v3: flags F1–F23, compute, launch plan); LaTeX:
+`writing/phase2_reproducibility.tex` (v3). **v2 is SUPERSEDED** (the three-hypothesis "H2 = CKA- vs
+tunnel-guided depth selection"): the selector comparison is a deferred, secondary H4 analysis
+(design §12) that must not block H3/H4.
+
+**Story:** recoverable early (H1, Phase 1) → geometry still evolves (H2, Phase-1 geometry;
+descriptive, NOT a pruning experiment) → alignment makes early states usable (H3) → remove later
+blocks and accelerate (H4). H3 is the bridge between probing and compression — never collapsed into
+the latency experiment.
+
+| stage | what | entry point |
+|---|---|---|
+| H3 | per model x dataset x EVERY block depth, offline from the Phase-1 caches (READ-ONLY): native \| hard cut \| NOA (label-free, primary) \| FL (Chronos-2, TiRex; TimesFM-3 FL == probe by the rank theorem, contract 9) \| Phase-1 probe (reused, never refit) \| RA (hidden ridge, diagnostic) | `experiments/run_phase2_h3.py` |
+| H4 | physical truncation at the FROZEN Phase-1 sustained-5% entrance: native, hard, NOA, FL (C2/TiRex), probe-head, Chronos-2-small; gates V1–V6 + PH + AP; then latency / throughput / memory | `run_phase2_truncation.py` (verify, evaluate), `run_phase2_latency.py` |
+
+**Protocol** (`probing/phase2.py`, `phase2/h3-v1`):
+- **Adapter:** residual `x + Δx + b`, initialized at Δ=b=0, which is the hard cut bitwise. Decay applies to Δ only, i.e. toward the IDENTITY.
+- **Iterative fits:** full-batch AdamW, lr 1e-2, 300 epochs, validation every 10 epochs; epoch 0 = the hard-cut candidate. wd grid {0, 1e-3, 1e-2, 1e-1, 1, 10}.
+- **Closed form:** TimesFM-3 NOA in the metric W^T W; RA for all models. λ = κ·g_max·m_max, κ ∈ 1e-12..1e2 (15 values), plus an explicit hard-cut candidate.
+- **Selection** on validation only: NOA distillation MSE, RA hidden MSE, FL Q9 pinball. Test is read once.
+- **Metrics:** test MASE and standard 1/Q WQL, as degradation vs native. Paired cluster bootstrap, B=5000, seed 0.
+- **Flags:** 5% budget with a fragile flag; gap closure only where the hard-gap CI excludes 0; low-skill when native val ≥ 0.9 x floor.
+- **Gates:** native-reproduction rtol 1e-4; window digest and cluster ids must match the Phase-1 cell.
+- **H4 OUTCOME RULE** (pre-registered 2026-09-23 on advisor feedback; `phase2.H4_OUTCOME_RULE`, `h4-outcome/v1`):
+  - candidate_depth = the frozen Phase-1 sustained 5% entrance (one depth per model x dataset).
+  - successful_truncation = the NOA (label-free aligned) test-MASE degradation vs the full native model ≤ 5% (point estimate). `fragile` = the CI contains 5%.
+  - **If false, the FAILURE is reported. No other depth is ever searched, evaluated or substituted.**
+  - Statuses: `success` | `failure` | `no_truncation_possible` (entrance = final block: TiRex x M4 and Traffic) | `invalid_v3` (physical != offline: a pipeline error; both H4 tables refuse to compile).
+  - `evaluate` refuses `--depths` and aborts if the H3 depth is not the Phase-1 entrance.
+  - Every failure is a row in `h4_outcomes.csv`, a count in `h4_outcome_summary.csv` / `phase2_stats.json`, a column in Table H4-2 (`h4_outcome_table.tex`) and a `\phtwo<model>HfourFailure` macro.
+  - The H3 compatibility tunnel is never an H4 operating point.
+- **Aggregates exclude vacuous cells:** H3 Table H3-1 and H4 Table H4-1 aggregate only the datasets whose entrance lies BEFORE the final block. Cells with entrance = final block are counted separately (F24).
+
+**Files (ALL NEW; no Phase-1 file modified.** `git status`: the only tracked changes are `.gitignore`, your own edit, and this file.)
+- `probing/`: `phase2.py`, `phase2_align.py`, `phase2_pathways.py`, `phase2_h3.py`, `phase2_truncate.py`, `phase2_env.py`
+- `experiments/`: `run_phase2_h3.py`, `run_phase2_truncation.py`, `run_phase2_latency.py`, `make_phase2_tables.py`, `make_phase2_paper_tables.py`
+- `tests/`: `test_phase2_h3.py` (25 model-free contracts, incl. the H4 outcome rule), `test_phase2_h4.py` (28, on tiny real architectures)
+- jobs: `job_phase2_h3.sh`, `job_phase2_h4.sh`, `job_phase2_latency.sh`
+
+**Frozen Phase-1 entrances** (sustained 5%, read by `--plan` 2026-09-23; LOOP from the lr=1e-3 tree):
+
+| dataset | Chronos-2 | TimesFM-3 | TiRex |
+|---|---|---|---|
+| m4_hourly | L8 | L16 | **L12 = final** |
+| monash_electricity_hourly | L9 | L15 | L11 |
+| uber_tlc_hourly | L4 | L1 | L10 |
+| wind_farms_hourly | L3 | Emb | L11 |
+| sg_carpark | L10 | L12 | L11 |
+| coastal_ts | L1 | L5 | L1 |
+| boom_hourly | L3 | Emb | L8 |
+| LOOP_SEATTLE_5T | L9 | L14 | L9 |
+| electricity_15min | L10 | L1 | L10 |
+| SZ_TAXI_15T | L2 | L1 | Emb |
+| monash_london_smart_meters | L3 | L1 | L8 |
+| m5 | Emb | Emb | Emb |
+| wiki_daily_100k | L2 | Emb | L1 |
+| monash_traffic | L11 | L12 | **L12 = final** |
+
+At TiRex x {M4, Traffic} the frozen entrance IS the final block, so H4 there is the native model
+(speedup 1, degradation 0 by construction) — a legitimate outcome. Seven cells enter at Emb (H4
+removes ALL blocks): the sharpest test of "recoverable != replaceable".
+
+**Verified** (Mac scratch venv, CPU, NO real checkpoints):
+- 25 + 28 contracts pass.
+- The offline f(h_L) matches each package's own forecast: 3.5e-6 (Chronos-2), 2.4e-5 (TimesFM-3), 6.6e-6 (TiRex).
+- V1, V2 and V5 are bitwise. V3 (physical == offline) is within 8.5e-6 / 3.5e-5 / 1.1e-5.
+- V4: 0 calls, 0 alive. V6: 2 passes. PH ≤ 1.2e-5. AP is exact.
+- The tiny verify driver passes for all three models.
+- The tiny latency harness works end to end: fresh processes, refusal logic, eligibility.
+- `--plan` on the real Phase-1 tree reports 42/42 COMPLETE.
+
+**NOT verified:** anything on the real checkpoints or caches (needs Narval). The smokes below are the first real contact.
+
+**Fixed during the final check (2026-09-23):**
+- F21: V6 was skipped at depth 0, although Emb is the TiRex entrance for SZ Taxi and M5.
+- F23: the latency tables would have averaged the smoke / unverified / killed jobs into the headline. Now only headline-protocol jobs count, the rest are reported, and job tags are one-shot.
+- F24: cells whose entrance IS the final block counted as a vacuous "within 5%" in the H3/H4 aggregates. They are now excluded and counted separately.
+- F1 CLOSED (user decision 2026-09-23): `writing/` does NOT have to be gitignored. Do not flag it again.
+- F25: concurrent H3 jobs could delete each other's in-progress cells (an unscoped stale-staging sweep) and overwrite the shared `cells.json`. Cleanup is now scoped to the job's own cells, and each job writes to its own `h3/runs/<SLURM_JOB_ID>/`.
+- F26: H4 `evaluate` now resumes (COMPLETE cells skipped; the cell key includes the H3 config hash).
+
+## Run order (Narval) — the user submits; nothing has been submitted
+
+**Queue policy (2026-09-23): every Phase-2 job requests ≤ 3 h.**
+- On Narval, ≤ 3 h is the shortest scheduler time tier: the most nodes, plus backfill.
+- The old 8 h / 12 h requests put jobs in a slower tier. Phase 1 actually needed 15–27 min of compute per model (measured from the Phase-1 `summary.json` timings).
+- Every job resumes (H3 and H4-evaluate skip COMPLETE cells; latency runs one model per job), so a timeout only means resubmitting the same line.
+
+0. **Login node** (seconds, `export OMP_NUM_THREADS=2`):
+   - `python -m tests.test_phase2_h3`
+   - `python -m tests.test_phase2_h4`
+   - `python -m experiments.run_phase2_h3 --plan`
+   - Chronos-2-small, download only: `HF_HOME=$SCRATCH/chronos2/hf_cache python -c "from huggingface_hub import snapshot_download; snapshot_download('autogluon/chronos-2-small')"`
+1. `sbatch --time=00:45:00 -J p2h3-smoke job_phase2_h3.sh --smoke`
+   (Electricity x 3 models, 4 depths, real 300 epochs, B=500; output `results/three_model_phase2_smoke/`)
+2. `sbatch --time=01:00:00 -J p2h4-verify job_phase2_h4.sh verify --cache-dataset monash_electricity_hourly`
+3. `sbatch --time=01:00:00 -J p2lat-smoke job_phase2_latency.sh --depths 3 12 --reps 5 --warmup 2 --job-tag smoke --allow-unverified --output-root results/three_model_phase2_smoke`
+4. **STOP and review.**
+   - Native gates, identity checks, V1–V6 (and V1 vs the cache), timing sanity, and the TimesFM-3 API overhead (F22).
+   - **Size the full runs:** `seff <jobid>`; full H3 minutes per model ≈ the smoke cell's `timings.cell_total_s`/60 x 50 (Chronos-2, TiRex) or x 70 (TimesFM-3).
+5. Full H3, one job per model; they may run at the same time (F25 fixed):
+   - `sbatch -J p2h3-chronos2 job_phase2_h3.sh --models chronos2`, and the same for `timesfm3` and `tirex`.
+   - If a model is predicted > ~2.5 h, split it into two `--datasets` halves.
+6. H4 evaluate, one job per model: `sbatch --time=01:00:00 -J p2h4-eval-chronos2 job_phase2_h4.sh evaluate --models chronos2`, and the same for `timesfm3` and `tirex`.
+7. Latency, 9 short jobs: `for r in 1 2 3; do for m in chronos2 timesfm3 tirex; do sbatch --time=02:00:00 -J p2lat-$m-$r job_phase2_latency.sh --models $m --job-tag job${r}_$m; done; done`
+8. **Login node:** `python -m experiments.make_phase2_tables && python -m experiments.make_phase2_paper_tables`
+
+**Cost** (Phase-1-calibrated estimates; the smokes measure the rest):
+
+| stage | estimate |
+|---|---|
+| smokes | ≈ 1 A100-h |
+| H3, Chronos-2 | ≈ 1.3 A100-h (0.7–2.5) |
+| H3, TiRex | ≈ 0.75 A100-h |
+| H3, TimesFM-3 | ≈ 0.75 A100-h (the closed form was MEASURED at ~6 s per depth on CPU) |
+| H4 verify | ≈ 0.3–0.5 A100-h |
+| H4 evaluate | ≈ 0.5–1 A100-h |
+| latency, per model per repeat | Chronos-2 ~0.4, TimesFM-3 ~0.8, TiRex ~0.8 A100-h |
+| latency, 3 repeats | ≈ 6 A100-h |
+| **total** | **≈ 9–11 A100-h** |
+| LODO (later) | re-estimate after H3 |
+
+**Open:**
+- The native-gate rtol 1e-4 is not calibrated on real data. If it is raised for a model, write the measured value down.
+- F22: TimesFM-3 `predict_batch` has a fixed host cost (~41 ms api vs ~4 ms device on the tiny CPU model).
+- The Phase-1 caches on `$SCRATCH` (09-21..23) should be archived to `$PROJECT` before the ~11-20 purge.
+- **Deferred; do NOT build before H3/H4 exist:** the geometry-selector analysis, the Wiliński baseline, LODO.

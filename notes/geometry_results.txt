@@ -1,0 +1,243 @@
+GEOMETRY vs FORECAST RECOVERABILITY -- evidence notes + draft text
+=====================================================================
+Status: 2026-09-22. Read-only analysis of existing Phase-1 outputs. No GPU job was run.
+Everything below is reproduced by
+
+    python -m experiments.make_geometry_figures        (login node OK, seconds)
+
+-> three_models_paper/figures/geometry/geometry_descriptors.json  (every per-pair number and
+   every aggregate quoted here), appendix figures, and tables/*.tex.
+
+
+0. SOURCES AND COMPLETENESS
+---------------------------
+Recoverability: results/three_model_phase1_q9_expanded (Q=9, expanded wd grid, sustained tunnel
+  definition "sustained_suffix_v1"). Entrances are recomputed from the saved validation curves and
+  checked against the run's own is_tunnel_entrance_0.05 flags (make_recoverability_figures).
+Geometry: the same cells' effective_rank.csv and cka/*.npy. Geometry never sees a probe (verified
+  identical between the Q=1 and Q=9 runs: max |dCKA| = max |d erank| = 0.0, phase1_q1_q9_comparison),
+  so TimesFM-3 x M4 geometry is read from results/three_model_phase1_q1.
+Not used: results/three_model_final (old narrow-grid, first-crossing run, superseded),
+  three_model_phase1_q9_loop_lowlr (launched, no cells yet), any smoke/scratch roots.
+
+Tunnel complete (Q=9): 38 of 42 pairs.
+Tunnel pending: TimesFM-3 x M4 (cell not complete); Loop Seattle x {Chronos-2, TimesFM-3, TiRex}
+  (committed lr=1e-2 cells clip the wd grid; lr=1e-3 rerun pending). Geometry for all four
+  exists and is shown in the appendix without an entrance marker; these four are excluded from
+  every comparison below.
+Of the 38: 7 have the entrance at L0 (the whole validation curve is within 5%: Chronos-2 M5;
+  TimesFM-3 Wind Farms, BOOM, M5, Wiki Daily; TiRex SZ Taxi, M5). Statistics about "the step
+  into the entrance" use the remaining 31.
+
+
+1. CONVENTIONS (as implemented, not re-chosen)
+----------------------------------------------
+- Depth axis: L0 (state before block 1) .. final block (L12 / L20 / L12). Chronos-2 L12+LN and
+  TiRex L12+RMS are head-input diagnostics (point_type head_input_diagnostic), excluded from the
+  depth axis, the tunnel and the main CKA matrices (cka_*.npy vs cka_*__with_head_input.npy).
+- CKA: unbiased linear CKA ("headline_estimator": "unbiased"), TEST split (the committed
+  Chronos-2 CKA convention), raw hidden states (phase1.geometry_block refuses z-scored input).
+- Effective rank: exp(entropy of normalized squared singular values of the centred matrix),
+  TRAIN split (the committed spectral convention; the run stores both, test is a robustness curve).
+- Representations: Chronos-2 K=4 forecast-slot states stacked (n*4 rows, d=768); TimesFM-3 last
+  real context token (n rows, d=1280); TiRex headline "pos0" = pass-0 readout token (n rows,
+  d=512); TiRex "all_positions_from_L1" (2n rows, L1..L12) is a diagnostic only.
+- Chronos-2 L0 forecast-slot state is near-degenerate (effective rank ~1.0 on every dataset), so
+  CKA involving L0 is uninformative for Chronos-2.
+- The biased CKA estimator is not used here (its floor differs across models; phase1 caveat).
+
+
+2. POST-HOC DESCRIPTORS (exploratory; not part of the registered Phase-1 analysis)
+---------------------------------------------------------------------------------
+No "geometric transition" rule exists in the Phase-1 code, so I defined a few parameter-free
+landmarks, each with a chance baseline, instead of a thresholded transition detector:
+  (a) erank peak: argmax of the train effective-rank curve.
+  (b) dominant CKA boundary: the single split of L1..L into two contiguous blocks maximizing
+      mean within-block CKA minus mean between-block CKA (L0 excluded: degenerate for
+      Chronos-2). Also computed over L1..L-1 ("excl. final") so TiRex's always-distinct final
+      block cannot dominate.
+  (c) entry step: the adjacent step (l*-1 -> l*); its rank among all L steps by 1-CKA and by
+      |delta erank|.
+  (d) sharpest CKA step: the adjacent step k-1 -> k (k = 2..L; L0 -> L1 excluded) with the lowest
+      CKA; "inside the tunnel" if k > l*.
+  (e) share of erank total variation sum|r_j - r_(j-1)| from steps entering depths > l*;
+      erank final/peak; CKA(l*, L).
+  "near" = within max(1, round(0.1 L)) blocks: 1 block for L=12, 2 for L=20.
+  Chance baselines assume the landmark is placed uniformly over its admissible depths,
+  independently of l*.
+Robustness across splits: erank peak train==test in 25/38 (Chronos-2 12/13, TimesFM-3 7/12,
+  TiRex 6/13 -- TiRex peaks are flat plateaus); dominant CKA boundary train vs test within 1 block
+  in 35/38 (TimesFM-3 9/12). TimesFM-3's CKA block structure is weak and split-dependent: treat
+  its boundary locations as unreliable.
+
+
+3. EVIDENCE SUMMARY
+-------------------
+Short version: the two-way dissociation IS supported, as a statement about depth location, with
+one important nuance (dataset-level covariation in Chronos-2) and one model-specific pattern
+(TiRex's final block).
+
+3.1 The entrance is not placed at a geometric landmark (31 pairs with l* > L0).
+  - Entry step is the largest adjacent change: CKA 3/31, erank 2/31; chance 2.3.
+  - Erank peak within +-0.1L of l*: 2/31 (chance 6.9). Peak before / near / after the entrance:
+    12 / 2 / 17 (Chronos-2 5/0/7, TimesFM-3 0/1/7, TiRex 7/1/3).
+  - Dominant CKA boundary within +-0.1L of l*: 8/31 (chance 6.8); excluding the final block
+    5/31 (chance 6.9). The 5: Chronos-2 London (L3 vs L4), TiRex London (L8 vs L8), TimesFM-3
+    Uber (L1 vs L2), Coastal (L5 vs L5), Electricity 15min (L1 vs L2; weak boundaries).
+  => Co-location of the entrance with any geometric landmark is at or below chance.
+
+3.2 Substantial geometric change continues inside the tunnel (38 pairs).
+  - The sharpest adjacent CKA change among block outputs lies strictly inside the tunnel in 33/38
+    (Chronos-2 10/13, TimesFM-3 12/12, TiRex 11/13); uniform-placement expectation 23.3. Among
+    the 17 late entrances (l*/L >= 0.5), still 12/17.
+  - TiRex: the sharpest CKA step is L11 -> L12 in 13/13 datasets (adjacent CKA 0.31-0.92 over all
+    13; 0.31-0.76 in the 11 with l* <= L11, e.g. London 0.31, Electricity 0.41, SG Carpark 0.51), with erank collapsing across it (London
+    66 -> 9, BOOM 64 -> 2, Uber TLC 41 -> 3). In the 11 datasets whose entrance is <= L11,
+    val(L11)/val(L12) lies in [0.989, 1.023]: the largest representational change on the depth
+    axis moves validation loss by at most 2.3%.
+  - Effective rank rises and then collapses toward the final block in every model; median
+    final/peak = 0.11 (Chronos-2 0.07, TimesFM-3 0.20, TiRex 0.09). The peak is at or after the
+    entrance in 26/38 pairs (chance 23.3 -- i.e. not aligned with the entrance, but it means the
+    entire decline lies inside the tunnel in those 26).
+  - >= 50% of the erank total variation occurs inside the tunnel in 27/38 (20/31 excluding L0
+    entrances). CKA(l*, L) < 0.5 in 19/38 (13/31).
+  Caveat: "inside the tunnel" is favoured by early entrances; this is why each count is given
+  with its chance baseline. The claim that survives is existential and prevalent -- large,
+  late geometric reorganization repeatedly occurs within the 5% band -- not that it is aligned
+  with the tunnel.
+
+3.3 Nuance: geometry and entrance co-vary ACROSS DATASETS in Chronos-2, without aligning in depth.
+  Late-entrance datasets (l* = L8-L11: M4, Electricity, SG Carpark, Electricity 15min, Traffic)
+  all have the erank peak at L6 and the dominant CKA boundary at L3-L4, i.e. 2-5 (peak) and
+  5-7 (boundary) blocks BEFORE the entrance. Early-entrance datasets (l* = L0-L3: Wind Farms, Coastal T-S, BOOM, SZ Taxi, M5,
+  Wiki Daily) peak at L8 with the boundary at L10-L12, i.e. AFTER the entrance. Uber TLC and
+  London are mixed. So the Chronos-2 geometric profile is dataset-dependent and not independent
+  of the functional profile, but in neither group does the entrance coincide with the geometric
+  landmarks. This must not be written as "geometry is unrelated to recoverability".
+
+3.4 Other exceptions / cautions.
+  - TiRex M4 and Traffic have l* = L12 (final block). There the entrance IS the TiRex final-block
+    transition (adjacent CKA 0.92 / 0.69; loss ratio at L11 1.068 / 1.071). These two are the
+    cases where recoverability and the dominant geometric change coincide.
+  - Chronos-2 Electricity: the entry step (L8 -> L9) is the largest erank step (45.7 peak at L6,
+    decline through L9) -- one of the 2/31 erank coincidences.
+  - L0 entrances (7 pairs) trivially place all geometric change inside the tunnel; statistics are
+    reported with and without them.
+  - Absolute CKA / erank are not compared across models (different n, d, readouts).
+  - Loss curves: validation is used for the entrance; test curves agree closely for the chosen
+    examples, except Chronos-2 SG Carpark (test already within 4% from L3; the validation entrance
+    is L10) -- mention if SG Carpark is used.
+
+
+4. REPRESENTATIVE EXAMPLES (all complete for all three models)
+--------------------------------------------------------------
+Selection rule: datasets complete for all three models, >= 262 test windows, then the dataset
+whose three pairs best satisfy each pattern on the descriptors above. Not chosen by appearance.
+
+(A) Geometric change continuing inside the tunnel -- London Smart Meters (262 test windows).
+    Works for all three models.
+    Chronos-2  l* = L3 (val/final 1.04). Erank 39 at L3 -> peak 90 at L6 -> 8 at L12.
+               CKA(L3, L12) = 0.33; sharpest adjacent CKA step L11 -> L12 (0.77), inside.
+    TimesFM-3  l* = L1 (val/final 1.02). Erank 43 at L1 -> peak 120 at L5 -> 56 at L20.
+               CKA(L1, L20) = 0.27; sharpest step L19 -> L20 (0.76), inside.
+    TiRex      l* = L8 (val/final 1.04). Erank 63 at L8 -> peak 66 at L9 -> 9 at L12.
+               CKA(L8, L12) = 0.31; sharpest step L11 -> L12 (0.31), inside.
+    Caveat: for Chronos-2 (boundary L4) and TiRex (boundary L8) the London entrance also sits at
+    a CKA block boundary, so London is NOT an example of direction (B).
+
+(B) Tunnel beginning without a corresponding geometric transition -- no clean universal example.
+    Closest cross-model dataset: SG Carpark (354 test windows).
+    Chronos-2  l* = L10. CKA to the final block >= 0.87 from L5 onward; adjacent CKA 0.99-1.00
+               around L10; entry step ranks 11/12 (CKA) and 8/12 (erank). Geometric
+               reorganization (dominant boundary L4, erank peak L6) precedes the entrance by
+               4-6 blocks while validation loss keeps falling (1.22 at L5 -> 1.05 at L10).
+               Caveat: test loss is already within 4% from L3.
+    TimesFM-3  l* = L12. CKA(l, L20) is at its minimum around the entrance (0.51-0.53 over
+               L10-L12); adjacent CKA 0.93-0.96; entry step ranks 7/20 and 10/20; erank still
+               rising (66 at L12 -> 83 at L16 -> 10 at L20). Also an instance of (A).
+    TiRex      l* = L11. CKA to L12 flat at ~0.50 over L3-L11 and adjacent CKA >= 0.99 up to L11:
+               no CKA change at the entrance. BUT the erank step L10 -> L11 (36 -> 28) is the
+               second-largest erank step -> weaker example.
+    Strongest single-model examples of (B):
+      Chronos-2 M4, l* = L8: the entry step is the SMALLEST of all 12 steps by both CKA (1.00)
+        and erank; CKA to the final block is >= 0.89 from L5; boundary L3, peak L6. (TimesFM-3 x
+        M4 is pending, so M4 cannot be the cross-model example yet.)
+      TimesFM-3 SG Carpark (above); TimesFM-3 Traffic l* = L12 (ranks 7/20, 15/20).
+      TiRex BOOM, l* = L8: adjacent CKA 0.99 around L8, CKA to L12 flat 0.66-0.71 from L4 to L10,
+        entry-step ranks 9/12 and 8/12. TiRex Uber TLC l* = L10: ranks 8/12 and 9/12.
+    => Report explicitly that no dataset shows (B) cleanly for all three models.
+
+
+5. PROPOSED MAIN-PAPER FIGURE
+-----------------------------
+fig:geometry_main -- 2 rows x 3 columns (Chronos-2 | TimesFM-3 | TiRex), \textwidth, square
+panels in the style of the recoverability figures:
+  row 1: SG Carpark (direction B), row 2: London Smart Meters (direction A).
+  Each panel: effective rank (train; left axis, solid purple) and CKA to the final block,
+  CKA(l, L) (test; right axis in [0, 1], dashed), over block depth L0..L. The validation-selected
+  5% tunnel is shaded, with the same entrance line + tag as Figure recoverability. A
+  third, optional curve: the Q=9 validation loss ratio R_l/R_L in a thin inset or omitted (the
+  loss is already in Fig. recoverability).
+Rationale: CKA(l, L) is the 1-D slice of the heatmap that speaks to both directions (flat at the
+entrance for B; low at the entrance and rising inside the tunnel for A). Full heatmaps belong in
+the appendix. If M4 completes for TimesFM-3, re-check whether M4 replaces SG Carpark as row 1.
+(Not generated yet; say the word and it is a ~60-line addition to make_geometry_figures.py.)
+
+
+6. DRAFT TEXT
+-------------
+
+\subsection{Geometry and forecast recoverability}
+\label{sec:results_geometry}
+
+We next ask whether the onset of the forecasting tunnel coincides with a transition in
+representation geometry. For every model--dataset pair with a completed tunnel (38 of 42), we
+compare the validation-selected 5\% entrance with the depth profiles of unbiased linear CKA and
+entropy effective rank, computed from the same raw readout states the probes use.
+Figure~\ref{fig:geometry_main} shows two datasets; all pairs are in
+Appendix~\ref{app:geometry}.
+
+\paragraph{Recoverability can begin without a geometric transition.}
+On SG Carpark, the Chronos-2 tunnel begins at L10. The dominant change in CKA structure occurs
+at L3--L4 and effective rank peaks at L6, whereas representations from L5 onward already have
+CKA $\geq 0.87$ with the final block, and adjacent blocks around L10 have CKA $\geq 0.99$. The
+TimesFM-3 tunnel on the same dataset begins at L12, where similarity to the final block is near
+its minimum (0.51--0.53) and changes little between adjacent blocks. For TiRex, similarity to the
+final block is flat ($\approx 0.50$) from L3 to L11 and the tunnel begins at L11. The entrance
+is marked by an effective-rank step, however, so no dataset shows this pattern cleanly for all
+three models. The pattern is nevertheless general in the aggregate. Among the 31 pairs whose
+entrance lies after L0, the step into the entrance is the largest adjacent change in CKA in 3
+pairs and in effective rank in 2, as often as expected if entrances were placed at random along
+the depth axis (2.3). The effective-rank peak lies within $\pm 0.1L$ of the entrance in 2 pairs
+(6.9 expected), and the dominant CKA block boundary in 8 (6.8 expected).
+
+\paragraph{Geometry keeps changing inside the tunnel.}
+Conversely, large geometric changes regularly occur after validation loss has already come
+within 5\% of the final block. On London Smart Meters, the tunnel begins at L3 (Chronos-2), L1
+(TimesFM-3) and L8 (TiRex). In all three models, effective rank subsequently peaks and then
+collapses (Chronos-2 39\,$\to$\,90\,$\to$\,8; TimesFM-3 43\,$\to$\,120\,$\to$\,56; TiRex
+63\,$\to$\,66\,$\to$\,9), and the entrance representation shares only 0.27--0.33 CKA with the
+final block. Across all 38 pairs, the sharpest adjacent change in CKA among block outputs lies
+inside the tunnel in 33 pairs, against 23.3 expected at random. For TiRex, it is the final block
+in every dataset. In the 11 datasets where the tunnel has already begun, this block has
+adjacent CKA 0.31--0.76 yet changes validation loss by at most 2.3\%. Effective rank falls to a median of
+11\% of its peak by the final block, and in 26 pairs the whole decline lies inside the tunnel.
+
+These are statements about depth location, not about independence. In Chronos-2, datasets with
+late entrances (L8--L11) share an earlier geometric profile (effective-rank peak at L6, CKA
+boundary at L3--L4) than datasets with early entrances (peak at L8). But in neither group does
+the entrance coincide with these landmarks. The two coincide only for TiRex on M4 and Traffic,
+where the tunnel begins at the final block itself.
+\textit{The forecasting tunnel does not correspond to a fixed transition in representation
+geometry: near-final forecasting performance can become recoverable without a corresponding
+geometric transition, while substantial geometric changes can occur without further gains in
+forecast recoverability.}
+
+-- notes on the draft --
+* "without further gains" is precise only up to the 5% tolerance: inside the tunnel, validation
+  loss stays within 5% of the final block by definition. If a reviewer pushes, cite the TiRex
+  final-block number (<= 2.3%).
+* All numbers are over 38 pairs; update when TimesFM-3 x M4 and Loop Seattle land (rerun the
+  script; nothing else changes).
+* The descriptors in Sec. 2 must be described in the appendix as post-hoc and exploratory.
+* The reference Appendix~\ref{app:geometry} matches writing/appendix_geometry.tex.
