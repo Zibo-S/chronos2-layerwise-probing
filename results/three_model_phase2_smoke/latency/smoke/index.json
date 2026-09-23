@@ -1,0 +1,336 @@
+{
+ "job_tag": "smoke",
+ "headline_eligible": false,
+ "ineligible_reasons": [
+  "--allow-unverified",
+  "warmup/reps 2/5 != 20/100"
+ ],
+ "protocol": {
+  "warmup": 2,
+  "reps": 5,
+  "batch_sizes": [
+   1,
+   32,
+   256
+  ],
+  "levels": [
+   "api_e2e",
+   "device_forward"
+  ],
+  "device": "cuda",
+  "tiny": false,
+  "allow_unverified": true,
+  "allow_mig": false,
+  "seed": 0
+ },
+ "configs": [
+  {
+   "id": "000_chronos2_native_L12_start",
+   "model": "chronos2",
+   "kind": "native",
+   "depth": 12,
+   "drift": "start",
+   "status": "failed",
+   "median_ms": {},
+   "params": null,
+   "weights_bytes": null
+  },
+  {
+   "id": "001_chronos2_adapter_L12",
+   "model": "chronos2",
+   "kind": "adapter",
+   "depth": 12,
+   "drift": null,
+   "status": "failed",
+   "median_ms": {},
+   "params": null,
+   "weights_bytes": null
+  },
+  {
+   "id": "002_chronos2_probe_head_L03",
+   "model": "chronos2",
+   "kind": "probe_head",
+   "depth": 3,
+   "drift": null,
+   "status": "failed",
+   "median_ms": {},
+   "params": null,
+   "weights_bytes": null
+  },
+  {
+   "id": "003_chronos2_adapter_L03",
+   "model": "chronos2",
+   "kind": "adapter",
+   "depth": 3,
+   "drift": null,
+   "status": "failed",
+   "median_ms": {},
+   "params": null,
+   "weights_bytes": null
+  },
+  {
+   "id": "004_chronos2_native_L12_middle",
+   "model": "chronos2",
+   "kind": "native",
+   "depth": 12,
+   "drift": "middle",
+   "status": "failed",
+   "median_ms": {},
+   "params": null,
+   "weights_bytes": null
+  },
+  {
+   "id": "005_chronos2_hard_L03",
+   "model": "chronos2",
+   "kind": "hard",
+   "depth": 3,
+   "drift": null,
+   "status": "failed",
+   "median_ms": {},
+   "params": null,
+   "weights_bytes": null
+  },
+  {
+   "id": "006_chronos2_probe_head_L12",
+   "model": "chronos2",
+   "kind": "probe_head",
+   "depth": 12,
+   "drift": null,
+   "status": "failed",
+   "median_ms": {},
+   "params": null,
+   "weights_bytes": null
+  },
+  {
+   "id": "007_chronos2_hard_L12",
+   "model": "chronos2",
+   "kind": "hard",
+   "depth": 12,
+   "drift": null,
+   "status": "failed",
+   "median_ms": {},
+   "params": null,
+   "weights_bytes": null
+  },
+  {
+   "id": "008_chronos2_chronos2_small_na",
+   "model": "chronos2",
+   "kind": "chronos2_small",
+   "depth": null,
+   "drift": null,
+   "status": "failed",
+   "median_ms": {},
+   "params": null,
+   "weights_bytes": null
+  },
+  {
+   "id": "009_chronos2_native_L12_end",
+   "model": "chronos2",
+   "kind": "native",
+   "depth": 12,
+   "drift": "end",
+   "status": "failed",
+   "median_ms": {},
+   "params": null,
+   "weights_bytes": null
+  },
+  {
+   "id": "010_timesfm3_native_L20_start",
+   "model": "timesfm3",
+   "kind": "native",
+   "depth": 20,
+   "drift": "start",
+   "status": "failed",
+   "median_ms": {},
+   "params": null,
+   "weights_bytes": null
+  },
+  {
+   "id": "011_timesfm3_adapter_L12",
+   "model": "timesfm3",
+   "kind": "adapter",
+   "depth": 12,
+   "drift": null,
+   "status": "failed",
+   "median_ms": {},
+   "params": null,
+   "weights_bytes": null
+  },
+  {
+   "id": "012_timesfm3_hard_L03",
+   "model": "timesfm3",
+   "kind": "hard",
+   "depth": 3,
+   "drift": null,
+   "status": "failed",
+   "median_ms": {},
+   "params": null,
+   "weights_bytes": null
+  },
+  {
+   "id": "013_timesfm3_adapter_L03",
+   "model": "timesfm3",
+   "kind": "adapter",
+   "depth": 3,
+   "drift": null,
+   "status": "failed",
+   "median_ms": {},
+   "params": null,
+   "weights_bytes": null
+  },
+  {
+   "id": "014_timesfm3_native_L20_middle",
+   "model": "timesfm3",
+   "kind": "native",
+   "depth": 20,
+   "drift": "middle",
+   "status": "failed",
+   "median_ms": {},
+   "params": null,
+   "weights_bytes": null
+  },
+  {
+   "id": "015_timesfm3_probe_head_L12",
+   "model": "timesfm3",
+   "kind": "probe_head",
+   "depth": 12,
+   "drift": null,
+   "status": "failed",
+   "median_ms": {},
+   "params": null,
+   "weights_bytes": null
+  },
+  {
+   "id": "016_timesfm3_probe_head_L03",
+   "model": "timesfm3",
+   "kind": "probe_head",
+   "depth": 3,
+   "drift": null,
+   "status": "failed",
+   "median_ms": {},
+   "params": null,
+   "weights_bytes": null
+  },
+  {
+   "id": "017_timesfm3_hard_L12",
+   "model": "timesfm3",
+   "kind": "hard",
+   "depth": 12,
+   "drift": null,
+   "status": "failed",
+   "median_ms": {},
+   "params": null,
+   "weights_bytes": null
+  },
+  {
+   "id": "018_timesfm3_native_L20_end",
+   "model": "timesfm3",
+   "kind": "native",
+   "depth": 20,
+   "drift": "end",
+   "status": "failed",
+   "median_ms": {},
+   "params": null,
+   "weights_bytes": null
+  },
+  {
+   "id": "019_tirex_native_L12_start",
+   "model": "tirex",
+   "kind": "native",
+   "depth": 12,
+   "drift": "start",
+   "status": "failed",
+   "median_ms": {},
+   "params": null,
+   "weights_bytes": null
+  },
+  {
+   "id": "020_tirex_probe_head_L12",
+   "model": "tirex",
+   "kind": "probe_head",
+   "depth": 12,
+   "drift": null,
+   "status": "failed",
+   "median_ms": {},
+   "params": null,
+   "weights_bytes": null
+  },
+  {
+   "id": "021_tirex_hard_L12",
+   "model": "tirex",
+   "kind": "hard",
+   "depth": 12,
+   "drift": null,
+   "status": "failed",
+   "median_ms": {},
+   "params": null,
+   "weights_bytes": null
+  },
+  {
+   "id": "022_tirex_hard_L03",
+   "model": "tirex",
+   "kind": "hard",
+   "depth": 3,
+   "drift": null,
+   "status": "failed",
+   "median_ms": {},
+   "params": null,
+   "weights_bytes": null
+  },
+  {
+   "id": "023_tirex_native_L12_middle",
+   "model": "tirex",
+   "kind": "native",
+   "depth": 12,
+   "drift": "middle",
+   "status": "failed",
+   "median_ms": {},
+   "params": null,
+   "weights_bytes": null
+  },
+  {
+   "id": "024_tirex_probe_head_L03",
+   "model": "tirex",
+   "kind": "probe_head",
+   "depth": 3,
+   "drift": null,
+   "status": "failed",
+   "median_ms": {},
+   "params": null,
+   "weights_bytes": null
+  },
+  {
+   "id": "025_tirex_adapter_L03",
+   "model": "tirex",
+   "kind": "adapter",
+   "depth": 3,
+   "drift": null,
+   "status": "failed",
+   "median_ms": {},
+   "params": null,
+   "weights_bytes": null
+  },
+  {
+   "id": "026_tirex_adapter_L12",
+   "model": "tirex",
+   "kind": "adapter",
+   "depth": 12,
+   "drift": null,
+   "status": "failed",
+   "median_ms": {},
+   "params": null,
+   "weights_bytes": null
+  },
+  {
+   "id": "027_tirex_native_L12_end",
+   "model": "tirex",
+   "kind": "native",
+   "depth": 12,
+   "drift": "end",
+   "status": "failed",
+   "median_ms": {},
+   "params": null,
+   "weights_bytes": null
+  }
+ ]
+}
