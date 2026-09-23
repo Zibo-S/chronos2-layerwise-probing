@@ -1,0 +1,204 @@
+{
+  "schema": "phase2_h3_cell/v1",
+  "model": "chronos2",
+  "dataset": "monash_electricity_hourly",
+  "question": "Once forecasting is recoverable from an intermediate representation, can a lightweight transformation make it usable by the model's ORIGINAL frozen forecasting pathway, close to the full native model?",
+  "families": [
+    "hard",
+    "noa",
+    "fl",
+    "ra",
+    "probe"
+  ],
+  "dropped_families": {},
+  "depths_evaluated": [
+    "Emb",
+    "L9",
+    "L10",
+    "L12"
+  ],
+  "complete_depth_sweep": false,
+  "phase1_tunnel_entrance": "L9",
+  "blocks_removed_at_entrance": 3,
+  "ladder_at_entrance": {
+    "hard": {
+      "mase_ratio": 1.3443563378442849,
+      "mase_ci": [
+        1.3028005973208738,
+        1.3960756243278727
+      ],
+      "wql_ratio": 1.7284220201057219,
+      "within_budget_mase": false
+    },
+    "noa": {
+      "mase_ratio": 1.1813729323800883,
+      "mase_ci": [
+        1.15082864444112,
+        1.216802490165619
+      ],
+      "wql_ratio": 1.1428318152046022,
+      "within_budget_mase": false
+    },
+    "fl": {
+      "mase_ratio": 1.1376848262316703,
+      "mase_ci": [
+        1.1128507382135426,
+        1.1671803186617518
+      ],
+      "wql_ratio": 1.1466172137332,
+      "within_budget_mase": false
+    },
+    "ra": {
+      "mase_ratio": 1.1439882516416466,
+      "mase_ci": [
+        1.1179855116364654,
+        1.1719846366870805
+      ],
+      "wql_ratio": 1.14100730273135,
+      "within_budget_mase": false
+    },
+    "probe": {
+      "mase_ratio": 1.2453369468349031,
+      "mase_ci": [
+        1.2108118784595063,
+        1.2870310918567633
+      ],
+      "wql_ratio": 1.349068506816164,
+      "within_budget_mase": false
+    }
+  },
+  "compatibility_gap_exists_at_entrance": true,
+  "native": {
+    "test_loss": 0.09895731304494046,
+    "test_mase": 0.836189235309665,
+    "test_mae": 187.65801041603424,
+    "test_wql": 0.06217794502574354,
+    "val_loss": 0.061414182436730684,
+    "wql_standard": 0.06217794502574354
+  },
+  "low_skill": {
+    "native_val_over_floor": 0.24205198957770963,
+    "flag": false,
+    "threshold": 0.9
+  },
+  "frontier_budgets": {},
+  "verification": {
+    "native_gate": true,
+    "final_norm_vs_cached_head_input": {
+      "max_abs": 0.0,
+      "note": "head(norm(h_L)) vs head(cached post-norm state): the pathway applies the checkpoint's own final norm to the pre-norm final block"
+    },
+    "native_quantile_crossing_fraction_test": 0.00715648854961832,
+    "hard_cut_at_final_depth_equals_native": true,
+    "identity_adapter_equals_hard_cut_bitwise": {
+      "depth": "Emb",
+      "bitwise": true
+    },
+    "probe_inverse_gate": true,
+    "wql_denominator_equals_phase1": true
+  },
+  "timings": {
+    "Emb": 83.98,
+    "L9": 83.53,
+    "L10": 83.48,
+    "L12": 42.26,
+    "cell_total_s": 293.8
+  },
+  "fit_cfg": {
+    "epochs": 1000,
+    "lr": 0.003,
+    "wd_grid": [
+      0.0,
+      0.1,
+      1.0,
+      10.0,
+      30.0,
+      100.0
+    ],
+    "eval_every": 20,
+    "kappas": [
+      1e-12,
+      1e-11,
+      1e-10,
+      1e-09,
+      1e-08,
+      1e-07,
+      1e-06,
+      1e-05,
+      0.0001,
+      0.001,
+      0.01,
+      0.1,
+      1.0,
+      10.0,
+      100.0
+    ],
+    "seed": 0,
+    "native_gate_rtol": 0.0001,
+    "boot_b": 500,
+    "boot_seed": 0
+  },
+  "pathway": {
+    "model": "chronos2",
+    "d": 768,
+    "rows_per_window": 1,
+    "n_out_per_row": 336,
+    "native_quantiles": 21,
+    "q9_native_indices": [
+      2,
+      4,
+      6,
+      8,
+      10,
+      12,
+      14,
+      16,
+      18
+    ],
+    "layout": "b n (q p) -> b q (n p)  (Chronos2Model.forward)",
+    "inverse": "loc + scale * sinh(z)  (InstanceNorm, use_arcsinh=True)",
+    "final_norm": "encoder.final_layer_norm: T5-style RMS scaling, no mean, no bias"
+  },
+  "phase1_dependency": {
+    "root": "/home/eserebri/repos/chronos2-layerwise-probing/results/three_model_phase1_q9_expanded",
+    "model": "chronos2",
+    "dataset": "monash_electricity_hourly",
+    "config_hash": "sha256:19f2daedafc6158e6a834faa9ecb70692e45ac63411e93c79b232145d7193119",
+    "fit_hash": "sha256:6cf1a130e9cf3e62a16bd6950dd1eb6cf8963d92ddfbc7d66438cab9c2f94cb9",
+    "postprocess_hash": "sha256:584a3c65d0f25e8875be66632b91f9e0d289c075b73e11fa47b77305d187e5f6",
+    "completed_utc": "2026-09-22T11:57:09+00:00",
+    "protocol": "phase1/v1",
+    "tunnel_definition": "sustained_suffix_v1",
+    "window_digest": "sha256:adce7921407c90694f539e6d871e907e8a99b6430307b66e0d9f199bb906e5f0",
+    "checkpoint": "amazon/chronos-2",
+    "quantile_set": "q9",
+    "sha256_bootstrap_inputs.npz": "sha256:12736c25c92f58c40051f33112921666d75af58233f74d1250c5ea927a6f4e3a",
+    "sha256_tunnel.json": "sha256:6cf9adec7fac9e1fa06d3ed0a2e77a43463d57f7d70bed4af4ccbd01da7703e0",
+    "sha256_cell_config.json": "sha256:ef3b101dadddf04d94a71e9d20a6bf9969cb357e6cd985ce42d568faed8c9ea1",
+    "sha256_predictions_val.npz": "sha256:bca009f2c165fa3f9eab631406ddb37e0334121d1aa6a3b3aae489eea2c9bf15",
+    "sha256_predictions_test.npz": "sha256:fc0588488471fa60a8abd19131728be145aef40ffb177ad9f349d7b4ada6e030"
+  },
+  "provenance": {
+    "feature_files": {
+      "train": {
+        "path": "/home/eserebri/repos/chronos2-layerwise-probing/features_cache/IDF_monash_electricity_hourly__paper14_rolling__train__clean__K4_H64.npz",
+        "candidates_tried": []
+      },
+      "val": {
+        "path": "/home/eserebri/repos/chronos2-layerwise-probing/features_cache/IDF_monash_electricity_hourly__paper14_rolling__val__clean__K4_H64.npz",
+        "candidates_tried": []
+      },
+      "test": {
+        "path": "/home/eserebri/repos/chronos2-layerwise-probing/features_cache/IDF_monash_electricity_hourly__paper14_rolling__test__clean__K4_H64.npz",
+        "candidates_tried": []
+      }
+    }
+  },
+  "caveats": {
+    "recoverability_vs_replaceability": "A strong intermediate-layer probe establishes RECOVERABILITY but not REPLACEABILITY: the probe replaces the pretrained pathway. The hard cut and the aligned native pathway test replaceability; only they license H4.",
+    "cross_model_loss": "Each model is probed where its OWN head reads, in its OWN normalized target space (Chronos-2: context-standardized + arcsinh at the K=4 forecast slots; TimesFM-3: detrend + RevIN at the last real context token; TiRex: per-pass loc/scale at the two native forecast-producing states). The absolute Q=9 mean pinball loss is therefore NOT comparable ACROSS models. Cross-model comparison is valid for (a) the tunnel entrance, which is a within-model ratio against that model's own final depth, and (b) MASE, which is in raw units under one shared in-context seasonal-naive denominator.",
+    "wql": "WQL is reported with the standard 1/Q normalization (phase2.standard_wql)",
+    "operating_point": "the frozen Phase-1 sustained 5% entrance; compatibility tunnels are a secondary diagnostic"
+  },
+  "smoke": true
+}

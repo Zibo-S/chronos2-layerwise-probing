@@ -1,0 +1,687 @@
+{
+ "job_tag": "smoke2",
+ "headline_eligible": false,
+ "ineligible_reasons": [
+  "--allow-unverified",
+  "warmup/reps 2/5 != 20/100"
+ ],
+ "protocol": {
+  "warmup": 2,
+  "reps": 5,
+  "batch_sizes": [
+   1,
+   32,
+   256
+  ],
+  "levels": [
+   "api_e2e",
+   "device_forward"
+  ],
+  "device": "cuda",
+  "tiny": false,
+  "allow_unverified": true,
+  "allow_mig": false,
+  "seed": 0
+ },
+ "configs": [
+  {
+   "id": "000_chronos2_native_L12_start",
+   "model": "chronos2",
+   "kind": "native",
+   "depth": 12,
+   "drift": "start",
+   "status": "ok",
+   "median_ms": {
+    "api_e2e__B1": 19.577998,
+    "device_forward__B1": 18.831329,
+    "api_e2e__B32": 38.548229,
+    "device_forward__B32": 36.469365,
+    "api_e2e__B256": 194.262478,
+    "device_forward__B256": 171.629813
+   },
+   "params": {
+    "active_params": 119477664,
+    "n_blocks": 12,
+    "block_params": 113273856,
+    "per_block_params": 9439488,
+    "non_block_params": 6203808
+   },
+   "weights_bytes": 477923840
+  },
+  {
+   "id": "001_chronos2_adapter_L12",
+   "model": "chronos2",
+   "kind": "adapter",
+   "depth": 12,
+   "drift": null,
+   "status": "ok",
+   "median_ms": {
+    "api_e2e__B1": 20.440637,
+    "device_forward__B1": 19.400924,
+    "api_e2e__B32": 39.680697,
+    "device_forward__B32": 37.431621,
+    "api_e2e__B256": 188.446189,
+    "device_forward__B256": 171.809223
+   },
+   "params": {
+    "active_params": 120068256,
+    "n_blocks": 12,
+    "block_params": 113273856,
+    "per_block_params": 9439488,
+    "non_block_params": 6794400
+   },
+   "weights_bytes": 480286208
+  },
+  {
+   "id": "002_chronos2_probe_head_L03",
+   "model": "chronos2",
+   "kind": "probe_head",
+   "depth": 3,
+   "drift": null,
+   "status": "ok",
+   "median_ms": {
+    "api_e2e__B1": 6.496264,
+    "device_forward__B1": 5.750966,
+    "api_e2e__B32": 14.628475,
+    "device_forward__B32": 12.539982,
+    "api_e2e__B256": 67.102533,
+    "device_forward__B256": 45.375347
+   },
+   "params": {
+    "active_params": 31126608,
+    "n_blocks": 3,
+    "block_params": 28318464,
+    "per_block_params": 9439488,
+    "non_block_params": 2808144
+   },
+   "weights_bytes": 124510208
+  },
+  {
+   "id": "003_chronos2_adapter_L03",
+   "model": "chronos2",
+   "kind": "adapter",
+   "depth": 3,
+   "drift": null,
+   "status": "ok",
+   "median_ms": {
+    "api_e2e__B1": 6.773758,
+    "device_forward__B1": 6.180016,
+    "api_e2e__B32": 15.058637,
+    "device_forward__B32": 13.001073,
+    "api_e2e__B256": 64.10826,
+    "device_forward__B256": 47.74441
+   },
+   "params": {
+    "active_params": 35112864,
+    "n_blocks": 3,
+    "block_params": 28318464,
+    "per_block_params": 9439488,
+    "non_block_params": 6794400
+   },
+   "weights_bytes": 140455424
+  },
+  {
+   "id": "004_chronos2_native_L12_middle",
+   "model": "chronos2",
+   "kind": "native",
+   "depth": 12,
+   "drift": "middle",
+   "status": "ok",
+   "median_ms": {
+    "api_e2e__B1": 19.599198,
+    "device_forward__B1": 18.898455,
+    "api_e2e__B32": 38.443511,
+    "device_forward__B32": 36.482199,
+    "api_e2e__B256": 192.995537,
+    "device_forward__B256": 171.078022
+   },
+   "params": {
+    "active_params": 119477664,
+    "n_blocks": 12,
+    "block_params": 113273856,
+    "per_block_params": 9439488,
+    "non_block_params": 6203808
+   },
+   "weights_bytes": 477923840
+  },
+  {
+   "id": "005_chronos2_hard_L03",
+   "model": "chronos2",
+   "kind": "hard",
+   "depth": 3,
+   "drift": null,
+   "status": "ok",
+   "median_ms": {
+    "api_e2e__B1": 6.685623,
+    "device_forward__B1": 6.008774,
+    "api_e2e__B32": 14.971937,
+    "device_forward__B32": 12.870629,
+    "api_e2e__B256": 63.758535,
+    "device_forward__B256": 47.024632
+   },
+   "params": {
+    "active_params": 34522272,
+    "n_blocks": 3,
+    "block_params": 28318464,
+    "per_block_params": 9439488,
+    "non_block_params": 6203808
+   },
+   "weights_bytes": 138093056
+  },
+  {
+   "id": "006_chronos2_probe_head_L12",
+   "model": "chronos2",
+   "kind": "probe_head",
+   "depth": 12,
+   "drift": null,
+   "status": "ok",
+   "median_ms": {
+    "api_e2e__B1": 19.200319,
+    "device_forward__B1": 18.408555,
+    "api_e2e__B32": 38.177419,
+    "device_forward__B32": 36.195206,
+    "api_e2e__B256": 180.200955,
+    "device_forward__B256": 169.422696
+   },
+   "params": {
+    "active_params": 116082000,
+    "n_blocks": 12,
+    "block_params": 113273856,
+    "per_block_params": 9439488,
+    "non_block_params": 2808144
+   },
+   "weights_bytes": 464340992
+  },
+  {
+   "id": "007_chronos2_hard_L12",
+   "model": "chronos2",
+   "kind": "hard",
+   "depth": 12,
+   "drift": null,
+   "status": "ok",
+   "median_ms": {
+    "api_e2e__B1": 19.551011,
+    "device_forward__B1": 18.8508,
+    "api_e2e__B32": 38.669126,
+    "device_forward__B32": 36.473331,
+    "api_e2e__B256": 193.069481,
+    "device_forward__B256": 171.072712
+   },
+   "params": {
+    "active_params": 119477664,
+    "n_blocks": 12,
+    "block_params": 113273856,
+    "per_block_params": 9439488,
+    "non_block_params": 6203808
+   },
+   "weights_bytes": 477923840
+  },
+  {
+   "id": "008_chronos2_chronos2_small_na",
+   "model": "chronos2",
+   "kind": "chronos2_small",
+   "depth": null,
+   "drift": null,
+   "status": "failed",
+   "median_ms": {},
+   "params": null,
+   "weights_bytes": null
+  },
+  {
+   "id": "009_chronos2_native_L12_end",
+   "model": "chronos2",
+   "kind": "native",
+   "depth": 12,
+   "drift": "end",
+   "status": "ok",
+   "median_ms": {
+    "api_e2e__B1": 19.391992,
+    "device_forward__B1": 18.815444,
+    "api_e2e__B32": 38.849718,
+    "device_forward__B32": 36.528515,
+    "api_e2e__B256": 187.865937,
+    "device_forward__B256": 171.089273
+   },
+   "params": {
+    "active_params": 119477664,
+    "n_blocks": 12,
+    "block_params": 113273856,
+    "per_block_params": 9439488,
+    "non_block_params": 6203808
+   },
+   "weights_bytes": 477923840
+  },
+  {
+   "id": "010_timesfm3_native_L20_start",
+   "model": "timesfm3",
+   "kind": "native",
+   "depth": 20,
+   "drift": "start",
+   "status": "ok",
+   "median_ms": {
+    "api_e2e__B1": 97.496631,
+    "device_forward__B1": 49.378906,
+    "api_e2e__B32": 129.653783,
+    "device_forward__B32": 72.713261,
+    "api_e2e__B256": 473.53868,
+    "device_forward__B256": 399.605837
+   },
+   "params": {
+    "active_params": 330710976,
+    "n_blocks": 20,
+    "block_params": 327843200,
+    "per_block_params": 16392160,
+    "non_block_params": 2867776
+   },
+   "weights_bytes": 1322877440
+  },
+  {
+   "id": "011_timesfm3_adapter_L12",
+   "model": "timesfm3",
+   "kind": "adapter",
+   "depth": 12,
+   "drift": null,
+   "status": "ok",
+   "median_ms": {
+    "api_e2e__B1": 84.959291,
+    "device_forward__B1": 38.166978,
+    "api_e2e__B32": 98.886586,
+    "device_forward__B32": 48.972649,
+    "api_e2e__B256": 305.662734,
+    "device_forward__B256": 246.461804
+   },
+   "params": {
+    "active_params": 201213376,
+    "n_blocks": 12,
+    "block_params": 196705920,
+    "per_block_params": 16392160,
+    "non_block_params": 4507456
+   },
+   "weights_bytes": 804873728
+  },
+  {
+   "id": "012_timesfm3_hard_L03",
+   "model": "timesfm3",
+   "kind": "hard",
+   "depth": 3,
+   "drift": null,
+   "status": "ok",
+   "median_ms": {
+    "api_e2e__B1": 73.244312,
+    "device_forward__B1": 24.812796,
+    "api_e2e__B32": 75.61608,
+    "device_forward__B32": 25.431303,
+    "api_e2e__B256": 128.750456,
+    "device_forward__B256": 72.13591
+   },
+   "params": {
+    "active_params": 52044256,
+    "n_blocks": 3,
+    "block_params": 49176480,
+    "per_block_params": 16392160,
+    "non_block_params": 2867776
+   },
+   "weights_bytes": 208182272
+  },
+  {
+   "id": "013_timesfm3_adapter_L03",
+   "model": "timesfm3",
+   "kind": "adapter",
+   "depth": 3,
+   "drift": null,
+   "status": "ok",
+   "median_ms": {
+    "api_e2e__B1": 73.278758,
+    "device_forward__B1": 24.788259,
+    "api_e2e__B32": 76.983672,
+    "device_forward__B32": 25.627604,
+    "api_e2e__B256": 130.788183,
+    "device_forward__B256": 72.952181
+   },
+   "params": {
+    "active_params": 53683936,
+    "n_blocks": 3,
+    "block_params": 49176480,
+    "per_block_params": 16392160,
+    "non_block_params": 4507456
+   },
+   "weights_bytes": 214740992
+  },
+  {
+   "id": "014_timesfm3_native_L20_middle",
+   "model": "timesfm3",
+   "kind": "native",
+   "depth": 20,
+   "drift": "middle",
+   "status": "ok",
+   "median_ms": {
+    "api_e2e__B1": 102.023867,
+    "device_forward__B1": 49.003817,
+    "api_e2e__B32": 127.255985,
+    "device_forward__B32": 72.682051,
+    "api_e2e__B256": 462.86941,
+    "device_forward__B256": 399.610069
+   },
+   "params": {
+    "active_params": 330710976,
+    "n_blocks": 20,
+    "block_params": 327843200,
+    "per_block_params": 16392160,
+    "non_block_params": 2867776
+   },
+   "weights_bytes": 1322877440
+  },
+  {
+   "id": "015_timesfm3_probe_head_L12",
+   "model": "timesfm3",
+   "kind": "probe_head",
+   "depth": 12,
+   "drift": null,
+   "status": "ok",
+   "median_ms": {
+    "api_e2e__B1": 84.408661,
+    "device_forward__B1": 37.73918,
+    "api_e2e__B32": 99.029374,
+    "device_forward__B32": 48.757473,
+    "api_e2e__B256": 303.679055,
+    "device_forward__B256": 245.379708
+   },
+   "params": {
+    "active_params": 199573696,
+    "n_blocks": 12,
+    "block_params": 196705920,
+    "per_block_params": 16392160,
+    "non_block_params": 2867776
+   },
+   "weights_bytes": 798315008
+  },
+  {
+   "id": "016_timesfm3_probe_head_L03",
+   "model": "timesfm3",
+   "kind": "probe_head",
+   "depth": 3,
+   "drift": null,
+   "status": "ok",
+   "median_ms": {
+    "api_e2e__B1": 73.314455,
+    "device_forward__B1": 24.595015,
+    "api_e2e__B32": 74.593581,
+    "device_forward__B32": 24.699191,
+    "api_e2e__B256": 129.293572,
+    "device_forward__B256": 72.037113
+   },
+   "params": {
+    "active_params": 52044256,
+    "n_blocks": 3,
+    "block_params": 49176480,
+    "per_block_params": 16392160,
+    "non_block_params": 2867776
+   },
+   "weights_bytes": 208182272
+  },
+  {
+   "id": "017_timesfm3_hard_L12",
+   "model": "timesfm3",
+   "kind": "hard",
+   "depth": 12,
+   "drift": null,
+   "status": "ok",
+   "median_ms": {
+    "api_e2e__B1": 83.565177,
+    "device_forward__B1": 37.524364,
+    "api_e2e__B32": 99.673369,
+    "device_forward__B32": 48.628079,
+    "api_e2e__B256": 305.304593,
+    "device_forward__B256": 245.42827
+   },
+   "params": {
+    "active_params": 199573696,
+    "n_blocks": 12,
+    "block_params": 196705920,
+    "per_block_params": 16392160,
+    "non_block_params": 2867776
+   },
+   "weights_bytes": 798315008
+  },
+  {
+   "id": "018_timesfm3_native_L20_end",
+   "model": "timesfm3",
+   "kind": "native",
+   "depth": 20,
+   "drift": "end",
+   "status": "ok",
+   "median_ms": {
+    "api_e2e__B1": 99.349909,
+    "device_forward__B1": 49.306459,
+    "api_e2e__B32": 129.078556,
+    "device_forward__B32": 72.615445,
+    "api_e2e__B256": 462.68371,
+    "device_forward__B256": 399.511693
+   },
+   "params": {
+    "active_params": 330710976,
+    "n_blocks": 20,
+    "block_params": 327843200,
+    "per_block_params": 16392160,
+    "non_block_params": 2867776
+   },
+   "weights_bytes": 1322877440
+  },
+  {
+   "id": "019_tirex_native_L12_start",
+   "model": "tirex",
+   "kind": "native",
+   "depth": 12,
+   "drift": "start",
+   "status": "ok",
+   "median_ms": {
+    "api_e2e__B1": 496.690544,
+    "device_forward__B1": 495.91507,
+    "api_e2e__B32": 519.364982,
+    "device_forward__B32": 518.635875,
+    "api_e2e__B256": 847.313326,
+    "device_forward__B256": 839.034226
+   },
+   "params": {
+    "active_params": 35291200,
+    "n_blocks": 12,
+    "block_params": 32286720,
+    "per_block_params": 2690560,
+    "non_block_params": 3004480
+   },
+   "weights_bytes": 145359872
+  },
+  {
+   "id": "020_tirex_probe_head_L12",
+   "model": "tirex",
+   "kind": "probe_head",
+   "depth": 12,
+   "drift": null,
+   "status": "ok",
+   "median_ms": {
+    "api_e2e__B1": 496.364247,
+    "device_forward__B1": 497.230934,
+    "api_e2e__B32": 516.770213,
+    "device_forward__B32": 519.575329,
+    "api_e2e__B256": 834.966436,
+    "device_forward__B256": 832.164883
+   },
+   "params": {
+    "active_params": 33649952,
+    "n_blocks": 12,
+    "block_params": 32286720,
+    "per_block_params": 2690560,
+    "non_block_params": 1363232
+   },
+   "weights_bytes": 138794496
+  },
+  {
+   "id": "021_tirex_hard_L12",
+   "model": "tirex",
+   "kind": "hard",
+   "depth": 12,
+   "drift": null,
+   "status": "ok",
+   "median_ms": {
+    "api_e2e__B1": 498.835896,
+    "device_forward__B1": 498.508387,
+    "api_e2e__B32": 521.993748,
+    "device_forward__B32": 520.986426,
+    "api_e2e__B256": 859.640076,
+    "device_forward__B256": 839.709968
+   },
+   "params": {
+    "active_params": 35291200,
+    "n_blocks": 12,
+    "block_params": 32286720,
+    "per_block_params": 2690560,
+    "non_block_params": 3004480
+   },
+   "weights_bytes": 145359872
+  },
+  {
+   "id": "022_tirex_hard_L03",
+   "model": "tirex",
+   "kind": "hard",
+   "depth": 3,
+   "drift": null,
+   "status": "ok",
+   "median_ms": {
+    "api_e2e__B1": 125.06808,
+    "device_forward__B1": 124.843496,
+    "api_e2e__B32": 131.80605,
+    "device_forward__B32": 130.603891,
+    "api_e2e__B256": 222.163035,
+    "device_forward__B256": 219.896116
+   },
+   "params": {
+    "active_params": 11076160,
+    "n_blocks": 3,
+    "block_params": 8071680,
+    "per_block_params": 2690560,
+    "non_block_params": 3004480
+   },
+   "weights_bytes": 45353984
+  },
+  {
+   "id": "023_tirex_native_L12_middle",
+   "model": "tirex",
+   "kind": "native",
+   "depth": 12,
+   "drift": "middle",
+   "status": "ok",
+   "median_ms": {
+    "api_e2e__B1": 499.0235,
+    "device_forward__B1": 497.99052,
+    "api_e2e__B32": 520.77711,
+    "device_forward__B32": 521.192916,
+    "api_e2e__B256": 847.697389,
+    "device_forward__B256": 839.299875
+   },
+   "params": {
+    "active_params": 35291200,
+    "n_blocks": 12,
+    "block_params": 32286720,
+    "per_block_params": 2690560,
+    "non_block_params": 3004480
+   },
+   "weights_bytes": 145359872
+  },
+  {
+   "id": "024_tirex_probe_head_L03",
+   "model": "tirex",
+   "kind": "probe_head",
+   "depth": 3,
+   "drift": null,
+   "status": "ok",
+   "median_ms": {
+    "api_e2e__B1": 124.244715,
+    "device_forward__B1": 124.832365,
+    "api_e2e__B32": 130.760967,
+    "device_forward__B32": 129.990493,
+    "api_e2e__B256": 214.98309,
+    "device_forward__B256": 213.043178
+   },
+   "params": {
+    "active_params": 9434912,
+    "n_blocks": 3,
+    "block_params": 8071680,
+    "per_block_params": 2690560,
+    "non_block_params": 1363232
+   },
+   "weights_bytes": 38788608
+  },
+  {
+   "id": "025_tirex_adapter_L03",
+   "model": "tirex",
+   "kind": "adapter",
+   "depth": 3,
+   "drift": null,
+   "status": "ok",
+   "median_ms": {
+    "api_e2e__B1": 125.672601,
+    "device_forward__B1": 126.621091,
+    "api_e2e__B32": 131.305906,
+    "device_forward__B32": 132.306707,
+    "api_e2e__B256": 223.283991,
+    "device_forward__B256": 221.209916
+   },
+   "params": {
+    "active_params": 11338816,
+    "n_blocks": 3,
+    "block_params": 8071680,
+    "per_block_params": 2690560,
+    "non_block_params": 3267136
+   },
+   "weights_bytes": 46404608
+  },
+  {
+   "id": "026_tirex_adapter_L12",
+   "model": "tirex",
+   "kind": "adapter",
+   "depth": 12,
+   "drift": null,
+   "status": "ok",
+   "median_ms": {
+    "api_e2e__B1": 497.968609,
+    "device_forward__B1": 497.912583,
+    "api_e2e__B32": 522.270921,
+    "device_forward__B32": 522.913054,
+    "api_e2e__B256": 842.790714,
+    "device_forward__B256": 840.682895
+   },
+   "params": {
+    "active_params": 35553856,
+    "n_blocks": 12,
+    "block_params": 32286720,
+    "per_block_params": 2690560,
+    "non_block_params": 3267136
+   },
+   "weights_bytes": 146410496
+  },
+  {
+   "id": "027_tirex_native_L12_end",
+   "model": "tirex",
+   "kind": "native",
+   "depth": 12,
+   "drift": "end",
+   "status": "ok",
+   "median_ms": {
+    "api_e2e__B1": 496.381776,
+    "device_forward__B1": 494.652831,
+    "api_e2e__B32": 516.181238,
+    "device_forward__B32": 515.448685,
+    "api_e2e__B256": 848.146296,
+    "device_forward__B256": 839.237546
+   },
+   "params": {
+    "active_params": 35291200,
+    "n_blocks": 12,
+    "block_params": 32286720,
+    "per_block_params": 2690560,
+    "non_block_params": 3004480
+   },
+   "weights_bytes": 145359872
+  }
+ ]
+}

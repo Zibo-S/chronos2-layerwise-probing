@@ -1,0 +1,271 @@
+{
+ "config": {
+  "model": "timesfm3",
+  "kind": "native",
+  "depth": 20,
+  "drift": "middle",
+  "batch_sizes": [
+   1,
+   32,
+   256
+  ],
+  "levels": [
+   "api_e2e",
+   "device_forward"
+  ],
+  "warmup": 2,
+  "reps": 5,
+  "device": "cuda",
+  "tiny": false,
+  "checkpoint": null,
+  "allow_mig": false,
+  "dest": "results/three_model_phase2_smoke/latency/smoke2/014_timesfm3_native_L20_middle"
+ },
+ "configured": {
+  "kind": "native",
+  "depth": 20
+ },
+ "params": {
+  "active_params": 330710976,
+  "n_blocks": 20,
+  "block_params": 327843200,
+  "per_block_params": 16392160,
+  "non_block_params": 2867776
+ },
+ "weights_bytes": 1322877440,
+ "load_s": 2.55,
+ "numerics": {
+  "matmul_allow_tf32": false,
+  "cudnn_allow_tf32": false,
+  "float32_matmul_precision": "highest",
+  "cudnn_benchmark": false,
+  "cudnn_deterministic": false,
+  "deterministic_algorithms": false,
+  "cublas_workspace_config": "unavailable (not set)",
+  "sdpa": {
+   "flash_sdp_enabled": true,
+   "mem_efficient_sdp_enabled": true,
+   "math_sdp_enabled": true
+  },
+  "amp": false,
+  "torch_compile": false
+ },
+ "levels": {
+  "api_e2e__B1": {
+   "median_ms": 102.023867,
+   "p95_ms": 106.655181,
+   "mean_ms": 101.8315964,
+   "std_ms": 3.8943492249410294,
+   "min_ms": 97.689775,
+   "iqr_ms": 4.317641999999992,
+   "reps": 5,
+   "throughput_series_per_s": 9.801628083750247,
+   "peak_allocated_bytes": 1332478464,
+   "peak_reserved_bytes": 1430257664,
+   "status": "ok"
+  },
+  "device_forward__B1": {
+   "median_ms": 49.003817,
+   "p95_ms": 49.693267,
+   "mean_ms": 49.175726,
+   "std_ms": 0.3760725268242806,
+   "min_ms": 48.887989,
+   "iqr_ms": 0.22149799999999686,
+   "reps": 5,
+   "throughput_series_per_s": 20.406573634866035,
+   "peak_allocated_bytes": 1332476416,
+   "peak_reserved_bytes": 1430257664,
+   "status": "ok"
+  },
+  "api_e2e__B32": {
+   "median_ms": 127.255985,
+   "p95_ms": 132.0921146,
+   "mean_ms": 128.4101256,
+   "std_ms": 2.735895839779319,
+   "min_ms": 125.833159,
+   "iqr_ms": 1.9852180000000033,
+   "reps": 5,
+   "throughput_series_per_s": 251.4616503105925,
+   "peak_allocated_bytes": 1366222336,
+   "peak_reserved_bytes": 1474297856,
+   "status": "ok"
+  },
+  "device_forward__B32": {
+   "median_ms": 72.682051,
+   "p95_ms": 72.75399300000001,
+   "mean_ms": 72.6953682,
+   "std_ms": 0.043150512357330015,
+   "min_ms": 72.666281,
+   "iqr_ms": 0.010920999999996184,
+   "reps": 5,
+   "throughput_series_per_s": 440.2737616746671,
+   "peak_allocated_bytes": 1366156800,
+   "peak_reserved_bytes": 1474297856,
+   "status": "ok"
+  },
+  "api_e2e__B256": {
+   "median_ms": 462.86941,
+   "p95_ms": 477.4599526,
+   "mean_ms": 466.3076876,
+   "std_ms": 8.48250733949847,
+   "min_ms": 459.498606,
+   "iqr_ms": 10.89808499999998,
+   "reps": 5,
+   "throughput_series_per_s": 553.0717616443912,
+   "peak_allocated_bytes": 1601959424,
+   "peak_reserved_bytes": 1784676352,
+   "status": "ok"
+  },
+  "device_forward__B256": {
+   "median_ms": 399.610069,
+   "p95_ms": 399.6638808,
+   "mean_ms": 399.5939766,
+   "std_ms": 0.06272583139585174,
+   "min_ms": 399.523645,
+   "iqr_ms": 0.08821599999998853,
+   "reps": 5,
+   "throughput_series_per_s": 640.6244983781927,
+   "peak_allocated_bytes": 1601435136,
+   "peak_reserved_bytes": 1784676352,
+   "status": "ok"
+  }
+ },
+ "environment": {
+  "general": {
+   "timestamp_utc": "2026-09-23T19:51:23+00:00",
+   "hostname": "ng10802",
+   "argv": [
+    "/home/eserebri/repos/chronos2-layerwise-probing/experiments/run_phase2_latency.py",
+    "--child",
+    "results/three_model_phase2_smoke/latency/smoke2/014_timesfm3_native_L20_middle/config.json"
+   ],
+   "git": {
+    "sha": "af27423bf59f644259d5a8e3d7f1287662c4179e",
+    "branch": "tirex-experiment",
+    "dirty": true,
+    "dirty_files": [
+     "results/three_model_phase2_smoke/latency/smoke2/"
+    ],
+    "diff_sha256": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+   }
+  },
+  "slurm": {
+   "SLURM_JOB_ID": "3827653",
+   "SLURM_JOB_NAME": "p2lat-smoke2",
+   "SLURM_JOB_ACCOUNT": "def-irina_gpu",
+   "SLURM_JOB_PARTITION": "gpubase_bygpu_b1",
+   "SLURM_JOB_NODELIST": "ng10802",
+   "SLURM_CPUS_PER_TASK": "12",
+   "SLURM_MEM_PER_NODE": "65536",
+   "SLURM_MEM_PER_CPU": "unavailable (not set)",
+   "SLURM_JOB_GPUS": "3",
+   "SLURM_GPUS_ON_NODE": "1",
+   "CUDA_VISIBLE_DEVICES": "0",
+   "SLURM_ARRAY_TASK_ID": "unavailable (not set)",
+   "time_limit": "20:00"
+  },
+  "gpu": {
+   "nvidia_smi": "NVIDIA A100-SXM4-40GB, 40960 MiB, 580.178.04, 8.0, Disabled, 1410 MHz, 1215 MHz, 400.00 W, Disabled, Enabled",
+   "name": "NVIDIA A100-SXM4-40GB",
+   "count": 1,
+   "total_memory_mib": 40440.375,
+   "capability": "8.0",
+   "is_mig": false
+  },
+  "cpu": {
+   "model": "AMD EPYC 7413 24-Core Processor",
+   "affinity_count": 12,
+   "os_cpu_count": 48,
+   "omp_num_threads": "12"
+  },
+  "software": {
+   "python": "3.11.4",
+   "platform": "Linux-5.14.0-687.42.1.el9_8.x86_64-x86_64-AMD_EPYC_7413_24-Core_Processor-with-glibc2.37",
+   "torch": "2.12.1+computecanada",
+   "numpy": "1.26.4+computecanada",
+   "scipy": "1.15.2+computecanada",
+   "scikit-learn": "1.7.1+computecanada",
+   "transformers": "5.13.0",
+   "huggingface_hub": "1.22.0",
+   "safetensors": "0.8.0+computecanada",
+   "einops": "0.8.2+computecanada",
+   "datasets": "5.0.0+computecanada",
+   "chronos-forecasting": "2.3.1",
+   "timesfm": "3.0.2",
+   "tirex-ts": "1.4.2",
+   "accelerate": "1.14.0+computecanada",
+   "pandas": "2.3.3+computecanada",
+   "torch_cuda": "13.2",
+   "cudnn": 92101
+  },
+  "numerics": {
+   "matmul_allow_tf32": false,
+   "cudnn_allow_tf32": false,
+   "float32_matmul_precision": "highest",
+   "cudnn_benchmark": false,
+   "cudnn_deterministic": false,
+   "deterministic_algorithms": false,
+   "cublas_workspace_config": "unavailable (not set)",
+   "sdpa": {
+    "flash_sdp_enabled": true,
+    "mem_efficient_sdp_enabled": true,
+    "math_sdp_enabled": true
+   },
+   "amp": false,
+   "torch_compile": false
+  },
+  "models": {
+   "hf_home": "/scratch/eserebri/chronos2/hf_cache",
+   "hf_hub_offline": "1",
+   "amazon/chronos-2": "29ec3766d36d6f73f0696f85560a422f50e8498c",
+   "autogluon/chronos-2-small": "unavailable (not cached)",
+   "google/timesfm-3.0-pytorch": "43046b85ec22d584a13f8098c2ed39c889e129c2",
+   "NX-AI/TiRex": "63c740922493f5fbe60b277609ec62babfba2762"
+  }
+ },
+ "status": "ok",
+ "inputs": {
+  "B1": {
+   "generator": "mu + sigma * cumsum(N(0,1)), mu~U(-50,50), sigma~LogUniform(0.1,10)",
+   "rng": "numpy default_rng([SEED, B, k])",
+   "seed": 0,
+   "n_batches": 4,
+   "C": 512,
+   "dtype": "float32",
+   "sha256": [
+    "sha256:8a59938eeaef59e40f010ddcb788756d683655f2cdf520184d2e03b12445f10b",
+    "sha256:3d46a8a083536f8d02173851c1d47582c2d5c39d23801508e4df15d2ba5ed730",
+    "sha256:e998432c6bcd3953494e58c3e071373545fc232db5bb9af5185f7c3cb200c9ba",
+    "sha256:79968bb808436bbf4021812c2bfaf273759acac80342be3b22523ae2a4b176b9"
+   ]
+  },
+  "B32": {
+   "generator": "mu + sigma * cumsum(N(0,1)), mu~U(-50,50), sigma~LogUniform(0.1,10)",
+   "rng": "numpy default_rng([SEED, B, k])",
+   "seed": 0,
+   "n_batches": 4,
+   "C": 512,
+   "dtype": "float32",
+   "sha256": [
+    "sha256:b7fde03adb1829f64961050b644bc151dc2a23b4d77e56980c0c2d162d1fe01f",
+    "sha256:ae4b0f58054d0c9181f6c3c9644f889ab9239a49d07598a70442270bb381e83c",
+    "sha256:56cb89d514c056c92b7326667a8dcc7aa96f3231525dd0def4944ca1458919a7",
+    "sha256:b54f10757e848870fa0ac00b3b72af2acd045d66b0ea3d55f84bcf5958be111b"
+   ]
+  },
+  "B256": {
+   "generator": "mu + sigma * cumsum(N(0,1)), mu~U(-50,50), sigma~LogUniform(0.1,10)",
+   "rng": "numpy default_rng([SEED, B, k])",
+   "seed": 0,
+   "n_batches": 4,
+   "C": 512,
+   "dtype": "float32",
+   "sha256": [
+    "sha256:e56a88d2ec20052d1f85d1ca5897e0d58c48168d6854e6c627005f54b9a5fca4",
+    "sha256:2c3076628ee7fcc9aff27899080722085f93e13384a72ba4f4b2f8b04c38fd37",
+    "sha256:1545013c7a8b4ba184aaabc0deb417493d519132d3edb1cdfbc2962ffc996f71",
+    "sha256:e5e25388381638edcd159b5448342ae59d974a7b7ebdba5801aadd898cca3789"
+   ]
+  }
+ }
+}

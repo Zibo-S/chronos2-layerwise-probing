@@ -1,0 +1,37 @@
+{
+  "rule": {
+    "version": "h4-frontier/v1",
+    "question": "how much forecasting accuracy survives a given reduction in inference cost?",
+    "operating_point": "per model x dataset x arm x budget eps: the SHALLOWEST block depth l < L whose VALIDATION MASE ratio to the full native model is <= 1 + eps at EVERY truncation depth j in [l, L-1] (sustained, the Phase-1 operator)",
+    "fallback": "no qualifying depth -> no truncation: the full native model (speedup 1)",
+    "budgets": [
+      0.02,
+      0.05,
+      0.1,
+      0.2
+    ],
+    "selection_data": "validation only; the selected depth is frozen, then test is read once",
+    "entrance_test": "the frozen Phase-1 entrance test (H4_OUTCOME_RULE) is kept unchanged as the stricter secondary hypothesis test"
+  },
+  "complete_depth_sweep": false,
+  "native_val_mase": 0.5674727371613624,
+  "native_test_mase": 0.836189235309665,
+  "depth_labels": [
+    "Emb",
+    "L1",
+    "L2",
+    "L3",
+    "L4",
+    "L5",
+    "L6",
+    "L7",
+    "L8",
+    "L9",
+    "L10",
+    "L11",
+    "L12"
+  ],
+  "reference_index": 12,
+  "arms": {},
+  "note": "depth subset (smoke): the frontier and the budget rule need every depth"
+}
