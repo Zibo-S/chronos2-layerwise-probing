@@ -1355,7 +1355,7 @@ the latency experiment.
 - **Metrics:** test MASE and standard 1/Q WQL, as degradation vs native. Paired cluster bootstrap, B=5000, seed 0.
 - **Flags:** 5% budget with a fragile flag; gap closure only where the hard-gap CI excludes 0; low-skill when native val ≥ 0.9 x floor.
 - **Gates:** native-reproduction rtol 1e-4; window digest and cluster ids must match the Phase-1 cell.
-- **H4 OUTCOME RULE** (pre-registered 2026-09-23 on advisor feedback; `phase2.H4_OUTCOME_RULE`, `h4-outcome/v1`):
+- **H4 OUTCOME RULE** (pre-registered 2026-09-23; `phase2.H4_OUTCOME_RULE`, `h4-outcome/v1`):
   - candidate_depth = the frozen Phase-1 sustained 5% entrance (one depth per model x dataset).
   - successful_truncation = the NOA (label-free aligned) test-MASE degradation vs the full native model ≤ 5% (point estimate). `fragile` = the CI contains 5%.
   - **If false, the FAILURE is reported. No other depth is ever searched, evaluated or substituted.**
@@ -1459,3 +1459,92 @@ removes ALL blocks): the sharpest test of "recoverable != replaceable".
 - F22: TimesFM-3 `predict_batch` has a fixed host cost (~41 ms api vs ~4 ms device on the tiny CPU model).
 - The Phase-1 caches on `$SCRATCH` (09-21..23) should be archived to `$PROJECT` before the ~11-20 purge.
 - **Deferred; do NOT build before H3/H4 exist:** the geometry-selector analysis, the Wiliński baseline, LODO.
+
+## SMOKE RESULTS (Narval, 2026-09-23, commit 14af351) — full run ON HOLD
+
+**Passed.**
+- **H3 gates, all three models (Electricity).**
+  - Native reproduced to ~1e-9 relative (gate 1e-4).
+  - hard@L == native; the identity adapter == the hard cut (bitwise); the closed-form identity holds to 2e-8.
+- **H4 verify.** All pass, at every depth, for all 3 models: V1 (incl. vs the Phase-1 cache on real windows), V2, V3, V4, V5, V6, PH.
+- **Timings match the estimates.**
+  - Chronos-2: ~2.1 s per adapter fit (26 s per depth).
+  - TiRex: ~0.7 s per fit.
+  - TimesFM-3: ~4 s per depth (closed form).
+
+**H3 ladder at the frozen entrance** (test MASE / native; provisional, B=500):
+
+| model (entrance) | hard | NOA | FL | RA | probe |
+|---|---|---|---|---|---|
+| Chronos-2 (L9, 3 blocks removed) | 1.344 | 1.172 | 1.133 | 1.144 | 1.245 |
+| TimesFM-3 (L15, 5 blocks removed) | 216.9 | 1.442 | (= probe) | 2.847 | 1.150 |
+| TiRex (L11, 1 block removed) | 2.170 | 1.073 | 1.082 | 1.112 | 1.304 |
+
+- A compatibility gap exists for all three. NOA closes 50% / 99.8% / 94% of it.
+- Nothing is within 5% at the entrance on Electricity.
+- **Interpretation point:** the entrance is defined relative to the final-depth PROBE, which is itself 15–30% worse than the native model here (the probe column). Reaching 5% of *native* at the probe's entrance is a stricter bar than recoverability. The rule is NOT changed.
+
+**Two blockers found.**
+1. **Latency harness (F27, FIXED).** `device_forward` ran `np.asarray` on a CUDA tensor, so 28/28 configurations failed. Reproduced and fixed on the Mac GPU (MPS) with the real Chronos-2. Contract DF was added. The latency smoke must be rerun.
+2. **Adapters NOT converged (OPEN; decided on VALIDATION curves only).**
+   - AdamW at lr 1e-2 for 300 epochs (copied from the Phase-1 probe) is too aggressive and too short for a residual adapter around the identity:
+     - validation spikes ~2x above the hard cut at epoch 10;
+     - NOA's validation distillation MSE is still falling at epoch 300 (TiRex L11: -24..-29% over epochs 250->300 for wd <= 0.1, -6.5% at the selected wd = 1; Chronos-2 L9: -9..-10%);
+     - selections sit at epochs 240–300 and often at the grid-max wd = 10.
+   - The H4 verdict is decided exactly by that NOA number (TiRex +7.3% vs the 5% budget), so an unconverged fit would bias it.
+   - The TimesFM-3 NOA is a closed form (converged by construction).
+
+**Next (all GPU; compute nodes).**
+- Rerun the latency smoke.
+- An optimizer check on Electricity, Chronos-2 + TiRex:
+  - lr 1e-3 x 1500 epochs (eval every 25);
+  - lr 3e-3 x 1000 epochs (eval every 20);
+  - both with wd grid {0, 0.1, 1, 10, 30, 100}.
+- **Pre-stated decision rule (validation only, never test):** pick the configuration whose selected validation criteria (NOA distillation MSE; FL validation pinball) at the entrance depth are lowest AMONG configurations that converged. Converged means the selected epoch is below 90% of the maximum and the selected wd is not at the grid maximum.
+- Then freeze the choice in `probing/phase2.py`, bump `PHASE2_PROTOCOL_VERSION`, (probably) add patience-based early stopping, rerun the H3 smoke, and launch the full run.
+
+## H4 = THE ACCURACY–COMPUTE FRONTIER — DECIDED + IMPLEMENTED 2026-09-23 (before any full Phase-2 result)
+
+**The H4 question:** how much forecasting accuracy survives a given reduction in inference cost?
+
+**The paper's H4 claim to test:** TSFMs admit a broad accuracy–compute frontier well before full depth; lightweight alignment improves it over naive truncation; and a validation accuracy budget turns ONE pretrained checkpoint into a family of faster forecasters without retraining the backbone.
+
+**Arc:** recoverable early -> geometry keeps evolving -> native pathway misaligned -> lightweight alignment -> accuracy–compute frontier from physical truncation.
+
+**Main result 1 — Figure H4-1 (`h4_frontier.pdf`).**
+- Three panels, one per model.
+- y = test ΔMASE = MASE_trunc / MASE_native − 1 (median + IQR over 14 datasets).
+- x = measured speedup (end-to-end, B=1).
+- Appendix variants: throughput (B=256) and parameters removed.
+- Curves: hard | NOA + native head | FL + native head (C2, TiRex) | probe head.
+- The full model is at (1x, 0); Chronos-2-small is a point.
+
+**Main result 2 — Table H4-1 (`h4_budget_table.tex`).**
+- For eps in {2, 5, 10, 20}%, per model x dataset x arm, pick on **VALIDATION MASE** the shallowest SUSTAINED depth with MASE_val(j) <= (1+eps) * MASE_val(native) for all truncation depths j in [l, L-1].
+  - This is `phase2.BUDGET_RULE` / `budget_depth`. If none qualifies, the operating point is the full model at 1x.
+- The choice is frozen in the H3 cell's `frontier.json`.
+- `run_phase2_truncation evaluate --operating-points budget` physically instantiates exactly those cuts, reads test once, and V3-checks the per-window MASE. A failed point blocks the table.
+- The table reports the median speedup over ALL datasets, the datasets cut, and how many of those stay within budget on test.
+- Macros support the paper sentence (X% removed, Y× speedup, Z/n within budget).
+
+**Secondary — the frozen 5% entrance test** (`H4_OUTCOME_RULE`), unchanged. Its reading: recoverability alone does not identify a lossless cut.
+
+**NOT assumed:** that alignment beats the probe head. It falls where it falls, per model. (Smoke: alignment > probe for C2 and TiRex; probe >> NOA for TimesFM-3.)
+
+**What changed in the code** (protocol `phase2/h3-v2`, so all earlier H3 cells are invalidated):
+- H3 records validation MASE for every arm and depth + native.
+- The probe's validation MASE is computed from Phase-1 `predictions_val.npz` through the pathway inverse. A probe inverse gate checks it against Phase 1's own probe test MASE (1e-4), and rows are checked element-wise.
+- New `frontier.json` per cell.
+- New tables: `h4_frontier_points / h4_frontier_summary / h4_budget_points / h4_budget_summary / h4_budget_physical`.
+- New figures `h4_frontier(_appendix).pdf`, and budget macros.
+- Contracts 26–27. **27 H3 + 31 H4 contracts pass.**
+
+**Next (unchanged order):**
+1. Optimizer check (running) -> freeze the converged adapter settings.
+2. Rerun the H3 smoke (the new cell schema).
+3. Full H3 run.
+4. H4: `evaluate --operating-points budget` (main) and `evaluate` (entrance, secondary).
+5. Latency, 9 jobs.
+6. Tables.
+
+**Contingency** (only if the frontier's knee is weak after converged training): a small nonlinear residual adapter as a declared variant. It cannot recover the cross-token mixing of the removed blocks.

@@ -30,7 +30,8 @@ import torch
 from probing import phase1
 from probing.phase1_metrics import raw_window_metrics
 from probing.phase2 import (ADAPTER_EPOCHS, ADAPTER_EVAL_EVERY, ADAPTER_LR, ADAPTER_WD_GRID,
-                            BOOT_B, BUDGET, FL_MODELS, FL_TIMESFM3_THEOREM, H3_FAMILIES,
+                            BOOT_B, BUDGET, BUDGET_RULE, FL_MODELS, FL_TIMESFM3_THEOREM,
+                            FRONTIER_BUDGETS, H3_FAMILIES, Phase1DependencyError, budget_depth,
                             HEADLINE_TOL, LOW_SKILL_RATIO, MEDIAN_INDEX, QUANTILES, RIDGE_KAPPAS,
                             SEED, TUNNEL_TOLS, array_sha256, cluster_replicates,
                             compatibility_tunnel, ratio_summary, standard_wql)
@@ -101,10 +102,33 @@ def _flat(a):
     return a.reshape(-1, a.shape[-1])
 
 
+def _check_probe_rows(pred: dict, split, name: str) -> None:
+    """The Phase-1 probe predictions must be the H3 split's rows, in order: same normalized
+    targets, same cluster ids. A mismatch is an error, never a silent re-alignment."""
+    if not pred:
+        return
+    tgt = np.asarray(pred.get("target"), np.float64)
+    ref = np.asarray(split.target, np.float64)
+    if tgt.shape != ref.shape:
+        raise Phase1DependencyError(f"Phase-1 {name} predictions cover {tgt.shape}, the H3 {name} "
+                                    f"split {ref.shape}: different rows")
+    cid = pred.get("cluster_ids")
+    if cid is not None and not np.array_equal(np.asarray(cid), np.asarray(split.cluster_ids)):
+        raise Phase1DependencyError(f"Phase-1 {name} predictions: cluster ids differ from H3's")
+    if not np.allclose(tgt, ref, rtol=1e-4, atol=1e-5, equal_nan=True):
+        raise Phase1DependencyError(f"Phase-1 {name} predictions: normalized targets differ from "
+                                    "H3's (rows are not aligned)")
+
+
 def run_h3_cell(pathway, data, phase1_arrays: dict, *, entrances: dict, families, depths=None,
                 device=None, fit_cfg=None, adapter_dir=None, floor_val_loss=None,
-                save_prediction_depths=(), log=print) -> dict:
-    """Compute one H3 cell. Returns every array and record the cell writer persists."""
+                save_prediction_depths=(), phase1_predictions=None, log=print) -> dict:
+    """Compute one H3 cell. Returns every array and record the cell writer persists.
+
+    ``phase1_predictions`` = {"val": ..., "test": ...} from ``Phase1Cell.predictions``: the frozen
+    probe's normalized forecasts, pushed through this pathway's inverse for the probe's
+    VALIDATION MASE (the H4 budget rule selects on it). Without them the probe arm has no
+    validation MASE and never qualifies for a budget."""
     cfg = {**DEFAULT_FIT_CFG, **(fit_cfg or {})}
     model, tag = data.model, data.tag
     spec = phase1.model_spec(model)
@@ -134,6 +158,8 @@ def run_h3_cell(pathway, data, phase1_arrays: dict, *, entrances: dict, families
     nat_test_loss = phase1.mean_pinball_per_window(nat["test"]["z"], te.target, q)
     nat_raw = pathway.to_raw(nat["test"]["z"], te)
     nat_m = raw_window_metrics(tag, te.X, te.y_raw, nat_raw, q, MEDIAN_INDEX)
+    nat_val_mase = raw_window_metrics(tag, va.X, va.y_raw, pathway.to_raw(nat["val"]["z"], va),
+                                      q, MEDIAN_INDEX)["mase_pw"]
     gate = native_gate(nat_test_loss, nat_m["mase_pw"], phase1_arrays, cfg["native_gate_rtol"])
     verification["native_gate"] = gate
     if gate.get("passed") is False:
@@ -159,7 +185,8 @@ def run_h3_cell(pathway, data, phase1_arrays: dict, *, entrances: dict, families
 
     # ---------------------------------------------------------------- per-window arrays
     shape_va, shape_te = (n_dep, n_va), (n_dep, n_te)
-    arr = {f: {"val_loss": np.full(shape_va, np.nan), "test_loss": np.full(shape_te, np.nan),
+    arr = {f: {"val_loss": np.full(shape_va, np.nan), "val_mase": np.full(shape_va, np.nan),
+               "test_loss": np.full(shape_te, np.nan),
                "test_mase": np.full(shape_te, np.nan), "test_mae": np.full(shape_te, np.nan),
                "test_wql_num": np.full(shape_te, np.nan)} for f in fams}
     preds = {}
@@ -172,6 +199,8 @@ def run_h3_cell(pathway, data, phase1_arrays: dict, *, entrances: dict, families
         m = raw_window_metrics(tag, te.X, te.y_raw, raw, q, MEDIAN_INDEX)
         a = arr[fam]
         a["val_loss"][l] = phase1.mean_pinball_per_window(zv, va.target, q)
+        a["val_mase"][l] = raw_window_metrics(tag, va.X, va.y_raw, pathway.to_raw(zv, va), q,
+                                             MEDIAN_INDEX)["mase_pw"]
         a["test_loss"][l] = phase1.mean_pinball_per_window(zt, te.target, q)
         a["test_mase"][l], a["test_mae"][l] = m["mase_pw"], m["mae_pw"]
         a["test_wql_num"][l] = m["wql_num_pw"]
@@ -297,6 +326,38 @@ def run_h3_cell(pathway, data, phase1_arrays: dict, *, entrances: dict, families
                       ("test_wql_num_window", "test_wql_num")):
         if key in phase1_arrays:
             probe[dest] = np.asarray(phase1_arrays[key], np.float64)[dep_rows]
+    if phase1_predictions:
+        pv, pt = phase1_predictions.get("val") or {}, phase1_predictions.get("test") or {}
+        _check_probe_rows(pv, va, "val")
+        _check_probe_rows(pt, te, "test")
+        vm = np.full(shape_va, np.nan)
+        for l in all_depths:
+            z = pv.get(f"pred__{labels[l]}")
+            if z is not None:
+                vm[l] = raw_window_metrics(tag, va.X, va.y_raw,
+                                           pathway.to_raw(np.asarray(z, np.float32), va), q,
+                                           MEDIAN_INDEX)["mase_pw"]
+        probe["val_mase"] = vm
+        # the SAME inverse must reproduce Phase 1's own probe TEST MASE, or the validation MASE
+        # above is on a different scale from everything it is compared with
+        if pt and "test_mase" in probe:
+            worst = 0.0
+            for l in all_depths:
+                z = pt.get(f"pred__{labels[l]}")
+                if z is None:
+                    continue
+                mt = raw_window_metrics(tag, te.X, te.y_raw,
+                                        pathway.to_raw(np.asarray(z, np.float32), te), q,
+                                        MEDIAN_INDEX)["mase_pw"]
+                ref = float(np.mean(probe["test_mase"][l]))
+                worst = max(worst, abs(float(np.mean(mt)) - ref) / max(abs(ref), 1e-12))
+            verification["probe_inverse_gate"] = {
+                "max_rel_diff_mean_test_mase": worst, "rtol": cfg["native_gate_rtol"],
+                "passed": bool(worst <= cfg["native_gate_rtol"])}
+            if not verification["probe_inverse_gate"]["passed"]:
+                raise RuntimeError(f"{model}/{tag}: the pathway inverse does not reproduce the "
+                                   f"Phase-1 probe's test MASE ({worst:.2e} rel.); the probe's "
+                                   "validation MASE would be on the wrong scale")
     wql_den = nat_m["wql_den_pw"]
     if "test_wql_den_window" in phase1_arrays:
         verification["wql_denominator_equals_phase1"] = bool(np.allclose(
@@ -379,6 +440,47 @@ def run_h3_cell(pathway, data, phase1_arrays: dict, *, entrances: dict, families
     else:
         tunnels["note"] = "depth subset (smoke): compatibility tunnels need every depth"
 
+    # ---------------------------------------------------------------- the H4 frontier
+    # How much accuracy survives each cut, and, per accuracy budget, the earliest cut chosen on
+    # VALIDATION MASE only (BUDGET_RULE). Test is read once, at the frozen depth.
+    nv = float(np.mean(nat_val_mase))
+    frontier = {"rule": BUDGET_RULE, "complete_depth_sweep": complete,
+                "native_val_mase": nv, "native_test_mase": float(points["mase"][0]),
+                "depth_labels": list(labels), "reference_index": L, "arms": {}}
+    if complete:
+        for f in arms:
+            if "val_mase" not in arms[f]:
+                continue
+            with np.errstate(invalid="ignore"):
+                vcurve = np.array([np.mean(arms[f]["val_mase"][l]) for l in all_depths]) / nv
+            tstats = [stat("mase", f, l) for l in all_depths]
+            rec = {"val_mase_ratio_by_depth": [None if not np.isfinite(v) else float(v)
+                                                for v in vcurve],
+                   "test_mase_ratio_by_depth": [None if t is None else t["ratio"]
+                                                 for t in tstats],
+                   "budgets": {}}
+            for eps in FRONTIER_BUDGETS:
+                dsel = budget_depth(vcurve, eps)
+                if dsel == L:
+                    op = {"depth_index": L, "label": labels[L], "truncated": False,
+                          "blocks_removed": 0, "operating_model": "native",
+                          "val_mase_ratio": 1.0, "test_mase_ratio": 1.0,
+                          "test_mase_ci": [1.0, 1.0], "test_wql_ratio": 1.0,
+                          "within_budget_test": True}
+                else:
+                    sm, sw = stat("mase", f, dsel), stat("wql", f, dsel)
+                    op = {"depth_index": dsel, "label": labels[dsel], "truncated": True,
+                          "blocks_removed": L - dsel, "operating_model": f,
+                          "val_mase_ratio": float(vcurve[dsel]),
+                          "test_mase_ratio": sm["ratio"],
+                          "test_mase_ci": [sm["ratio_ci_lo"], sm["ratio_ci_hi"]],
+                          "test_wql_ratio": None if sw is None else sw["ratio"],
+                          "within_budget_test": bool(sm["ratio"] - 1.0 <= eps)}
+                rec["budgets"][f"eps_{eps:g}"] = op
+            frontier["arms"][f] = rec
+    else:
+        frontier["note"] = "depth subset (smoke): the frontier and the budget rule need every depth"
+
     # ---------------------------------------------------------------- the ladder at l_rec
     ladder = {"operating_point": "frozen Phase-1 sustained 5% tunnel entrance (validation)",
               "by_tolerance": {}}
@@ -418,6 +520,10 @@ def run_h3_cell(pathway, data, phase1_arrays: dict, *, entrances: dict, families
                 "is_phase1_entrance": l == entrances[HEADLINE_TOL]["depth_axis_index"],
                 "val_loss": float(np.nanmean(arms[f]["val_loss"][l])) if "val_loss" in arms[f]
                 else "",
+                "val_mase": float(np.mean(arms[f]["val_mase"][l]))
+                if "val_mase" in arms[f] and np.all(np.isfinite(arms[f]["val_mase"][l])) else "",
+                "val_mase_ratio_vs_native": float(np.mean(arms[f]["val_mase"][l])) / nv
+                if "val_mase" in arms[f] and np.all(np.isfinite(arms[f]["val_mase"][l])) else "",
                 "test_loss": float(points["loss"][i]), "test_mase": float(points["mase"][i]),
                 "test_mae": float(points["mae"][i]), "test_wql": float(points["wql"][i]),
                 "mase_ratio_vs_native": s_m["ratio"], "mase_ratio_ci_lo": s_m["ratio_ci_lo"],
@@ -448,7 +554,8 @@ def run_h3_cell(pathway, data, phase1_arrays: dict, *, entrances: dict, families
                         "cluster_ids_test": np.asarray(te.cluster_ids, np.int64),
                         "cluster_ids_val": np.asarray(va.cluster_ids, np.int64),
                         "rows_test": te.rows, "rows_val": va.rows,
-                        "native_val_loss": nat_val_loss, "native_test_loss": nat_test_loss,
+                        "native_val_loss": nat_val_loss, "native_val_mase": nat_val_mase,
+                        "native_test_loss": nat_test_loss,
                         "native_test_mase": nat_m["mase_pw"], "native_test_mae": nat_m["mae_pw"],
                         "native_test_wql_num": nat_m["wql_num_pw"], "test_wql_den": wql_den,
                         "mase_denominator_test": nat_m["denominator"]}
@@ -465,7 +572,8 @@ def run_h3_cell(pathway, data, phase1_arrays: dict, *, entrances: dict, families
     return {"model": model, "dataset": tag, "families": list(arms), "fitted_families": fams,
             "dropped_families": dropped, "depths_evaluated": depths, "depth_labels": labels,
             "reference_index": L, "verification": verification, "fits": fits,
-            "tunnels": tunnels, "ladder": ladder, "rows": rows, "low_skill": low_skill,
+            "tunnels": tunnels, "ladder": ladder, "frontier": frontier, "rows": rows,
+            "low_skill": low_skill,
             "bootstrap_inputs": bootstrap_inputs, "predictions": preds, "timings": timings,
             "fit_cfg": cfg, "pathway": pathway.describe(), "budget": BUDGET}
 
@@ -485,6 +593,7 @@ def save_h3_cell(stage, res: dict, cell_cfg: dict, config_hash: str, dependency:
     atomic_write_json(stage / "ladder_at_tunnel.json", res["ladder"])
     atomic_write_json(stage / "verification.json", res["verification"])
     atomic_write_json(stage / "fits.json", res["fits"])
+    atomic_write_json(stage / "frontier.json", res["frontier"])
     np.savez_compressed(stage / "bootstrap_inputs.npz", **res["bootstrap_inputs"])
     np.savez_compressed(stage / "predictions_selected.npz", **res["predictions"])
     head = res["ladder"]["headline"]
@@ -506,6 +615,10 @@ def save_h3_cell(stage, res: dict, cell_cfg: dict, config_hash: str, dependency:
         "ladder_at_entrance": rung_view,
         "compatibility_gap_exists_at_entrance": head["compatibility_gap_exists"],
         "native": res["ladder"]["native"], "low_skill": res["low_skill"],
+        "frontier_budgets": {f: {k: {"label": v["label"], "truncated": v["truncated"],
+                                     "test_mase_ratio": v["test_mase_ratio"]}
+                                 for k, v in rec["budgets"].items()}
+                             for f, rec in res["frontier"]["arms"].items()},
         "verification": {k: (v.get("passed") if isinstance(v, dict) and "passed" in v else v)
                          for k, v in res["verification"].items()},
         "timings": res["timings"], "fit_cfg": res["fit_cfg"], "pathway": res["pathway"],

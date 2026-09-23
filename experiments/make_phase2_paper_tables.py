@@ -9,9 +9,14 @@ Writes (every value read from <output-root>/combined/*.csv -- nothing is typed b
     h3_depth_curves.pdf      Figure H3-1: representative datasets x models, test MASE / native over
                              depth for the hard cut, NOA, FL and the probe (native = 1)
     h3_ladder_at_entrance.pdf  the ladder at the entrance, every dataset, per model
-    h4_truncation_table.tex  Table H4-1: physically truncated models at the entrance, measured
-                             speedup / throughput / memory / active parameters
-    h4_outcome_table.tex     Table H4-2: the pre-registered verdict per model (success / failure
+    h4_frontier.pdf          Figure H4-1 (THE H4 result): accuracy-compute frontier per model --
+                             median [IQR] test MASE degradation vs measured speedup, every depth,
+                             hard / label-free aligned / supervised aligned / probe-head truncation
+    h4_frontier_appendix.pdf the frontier vs throughput (B=256) and vs parameters removed
+    h4_budget_table.tex      Table H4-1: per accuracy budget (2/5/10/20%), the VALIDATION-chosen
+                             cut -- median measured speedup, cut / within-budget-on-test counts
+    h4_truncation_table.tex  physically truncated models at the frozen entrance (secondary)
+    h4_outcome_table.tex     the frozen-entrance verdict (secondary test): success / failure
                              (fragile) / entrance = final block); failures are counted, not hidden
     phase2_macros.tex        \\newcommand macros for numbers the prose quotes
 
@@ -137,6 +142,158 @@ def truncation_table(joined, out: Path):
     out.write_text("\n".join(lines) + "\n")
 
 
+FRONTIER_ARMS = [("hard", "Hard truncation"), ("noa", "Label-free alignment + native head"),
+                 ("fl", "Supervised alignment + native head"), ("probe", "Probe head")]
+FRONTIER_COLORS = {"hard": "#9E9E9E", "noa": "#1B7837", "fl": "#5E3C99", "probe": "#E08A00"}
+BUDGET_WORD = {0.02: "Two", 0.05: "Five", 0.1: "Ten", 0.2: "Twenty"}
+
+
+def _frontier_panels(summary, axes, xkey, xlabel_ok, xlabel_fallback, small=None,
+                     speedup_axis=True):
+    """One panel per model: median test MASE degradation (IQR band) against the cost axis.
+
+    ``speedup_axis``: x is a measured speedup (log scale, the full model at 1x). Otherwise x is a
+    removed FRACTION (linear, the full model at 0). A cost not measured yet falls back to the
+    fraction of blocks removed, and the axis label says so."""
+    import matplotlib.ticker as mt
+    rows = [r for r in summary if r["includes_low_skill"] == "True"]
+    y_ticks = [-10, 0, 5, 10, 20, 50, 100, 1000, 10000, 100000]
+    for ax, m in zip(axes, phase1.MODELS):
+        rm = [r for r in rows if r["model"] == m]
+        ax.set_title(MODEL_NAMES[m], fontsize=9)
+        if not rm:
+            ax.text(0.5, 0.5, "no data yet", transform=ax.transAxes, ha="center", va="center",
+                    fontsize=8, color="#777777")
+            ax.set_xticks([])
+            ax.set_yticks([])
+            continue
+        use_cost = all(_f(r[xkey]) is not None for r in rm)
+        log_x = use_cost and speedup_axis
+        x0 = 1.0 if log_x else 0.0
+        ys, xs_all = [0.0], [x0]
+        for arm, name in FRONTIER_ARMS:
+            ra = sorted((r for r in rm if r["arm"] == arm), key=lambda r: int(r["depth_index"]),
+                        reverse=True)
+            if not ra:
+                continue
+            xx = [x0] + [(_f(r[xkey]) if use_cost else _f(r["fraction_blocks_removed"]))
+                         for r in ra]
+            med = [0.0] + [100 * _f(r["degradation_median"]) for r in ra]
+            lo = [0.0] + [100 * _f(r["degradation_q25"]) for r in ra]
+            hi = [0.0] + [100 * _f(r["degradation_q75"]) for r in ra]
+            order = np.argsort(xx)
+            xx, med, lo, hi = (np.asarray(v, float)[order] for v in (xx, med, lo, hi))
+            ax.plot(xx, med, color=FRONTIER_COLORS[arm], lw=1.4, marker=".", ms=3, label=name)
+            ax.fill_between(xx, lo, hi, color=FRONTIER_COLORS[arm], alpha=0.15, lw=0)
+            ys += list(hi) + list(lo)
+            xs_all += list(xx)
+        for b in phase2.FRONTIER_BUDGETS:          # the Table H4-1 budgets, as faint guides
+            ax.axhline(100 * b, color="#BBBBBB", lw=0.6, ls=":", zorder=0)
+        ax.axhline(0, color="black", lw=0.6)
+        ax.plot([x0], [0.0], marker="*", ms=9, color="black", ls="none", label="Full model",
+                zorder=5)
+        if small and m == "chronos2" and log_x and small.get(xkey) is not None:
+            ax.plot([small[xkey]], [100 * small["degradation"]], marker="D", ms=5,
+                    color="#2166AC", ls="none", label="Chronos-2-small", zorder=5)
+            ys.append(100 * small["degradation"])
+            xs_all.append(small[xkey])
+        ax.set_yscale("symlog", linthresh=20, linscale=2.0)   # 0-20% (the budgets) gets room
+        lo_y, hi_y = min(min(ys), 0.0), max(max(ys), 10.0)
+        ax.set_ylim(lo_y - 1, hi_y * 1.3 + 1)
+        ax.yaxis.set_major_locator(mt.FixedLocator([t for t in y_ticks if lo_y - 1 <= t <= hi_y * 1.3 + 1]))
+        ax.yaxis.set_major_formatter(mt.FuncFormatter(lambda v, _: "0%" if v == 0 else f"{v:+g}%"))
+        ax.yaxis.set_minor_formatter(mt.NullFormatter())
+        if log_x:
+            ax.set_xscale("log")
+            xmax = max(xs_all)
+            ax.set_xlim(0.95, xmax * 1.1)
+            x_ticks = ([1, 1.25, 1.5, 2, 3, 4] if xmax <= 4 else [1, 2, 3, 4, 6, 8, 12, 16, 24, 32])
+            ax.xaxis.set_major_locator(mt.FixedLocator([t for t in x_ticks if t <= xmax * 1.1]))
+            ax.xaxis.set_major_formatter(mt.FuncFormatter(lambda v, _: f"{v:g}x"))
+            ax.xaxis.set_minor_formatter(mt.NullFormatter())
+            ax.xaxis.set_minor_locator(mt.NullLocator())
+        ax.set_xlabel(xlabel_ok if use_cost else xlabel_fallback, fontsize=8)
+        ax.tick_params(labelsize=7)
+
+
+def frontier_figure(summary, out: Path, small=None):
+    """Figure H4-1 (the main H4 result): accuracy-compute frontier, one panel per model."""
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    if not summary:
+        return _missing(out.with_suffix(".tex"), "h4_frontier")
+    fig, axes = plt.subplots(1, 3, figsize=(7.0, 2.6), layout="constrained")
+    _frontier_panels(summary, axes, "speedup_e2e_b1", "measured speedup (end-to-end, B=1)",
+                     "blocks removed (latency pending)", small=small)
+    axes[0].set_ylabel("test MASE degradation\n(median, IQR over datasets)", fontsize=8)
+    h, l = axes[-1].get_legend_handles_labels()
+    fig.legend(h, l, loc="lower center", ncol=3, fontsize=7, bbox_to_anchor=(0.5, -0.12))
+    fig.savefig(out, bbox_inches="tight")
+    plt.close(fig)
+
+
+def frontier_appendix(summary, out: Path):
+    """The same frontier against throughput (B=256) and parameters removed."""
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    if not summary:
+        return _missing(out.with_suffix(".tex"), "h4_frontier_appendix")
+    fig, axes = plt.subplots(2, 3, figsize=(7.0, 4.8), layout="constrained")
+    _frontier_panels(summary, axes[0], "speedup_e2e_b256", "throughput gain (B=256)",
+                     "blocks removed (latency pending)")
+    _frontier_panels(summary, axes[1], "params_removed_fraction",
+                     "parameters removed (fraction)", "blocks removed (fraction)",
+                     speedup_axis=False)
+    h, l = axes[0][-1].get_legend_handles_labels()
+    fig.legend(h, l, loc="lower center", ncol=3, fontsize=7, bbox_to_anchor=(0.5, -0.06))
+    fig.savefig(out, bbox_inches="tight")
+    plt.close(fig)
+
+
+def budget_table(budget_summary, out: Path, physical=()):
+    """Table H4-1 (the main H4 table): for each accuracy budget, the VALIDATION-selected cut --
+    median measured speedup over all datasets, and cut / within-budget-on-test counts."""
+    rows = [r for r in budget_summary if r["includes_low_skill"] == "True"]
+    if not rows:
+        return _missing(out, "h4_budget_table")
+    eps = sorted({float(r["budget"]) for r in rows})
+    lines = ["% generated by experiments.make_phase2_paper_tables -- do not edit",
+             "% per budget: median measured speedup (end-to-end, B=1) over ALL datasets (no cut = "
+             "1x) ; cut datasets / of which within the budget on held-out test. The cut depth is "
+             "chosen on VALIDATION MASE only (probing.phase2.BUDGET_RULE)",
+             f"% physically instantiated + V3-verified operating points: "
+             f"{sum(r['V3_passed'] == 'True' for r in physical)}/{len(physical)}"
+             + ("" if physical else " (physical evaluation pending: numbers are the offline H3 "
+                                    "computation, V3-verified at every depth on synthetic input)"),
+             "\\begin{tabular}{ll" + "rr" * len(eps) + "}", "\\toprule",
+             "Model & Arm & " + " & ".join(f"\\multicolumn{{2}}{{c}}{{{100 * e:g}\\% budget}}"
+                                            for e in eps) + " \\\\",
+             " & & " + " & ".join("speedup & cut/within" for _ in eps) + " \\\\", "\\midrule"]
+    x = "$\\times$"
+    for m in phase1.MODELS:
+        for arm, name in FRONTIER_ARMS:
+            cells = []
+            for e in eps:
+                r = next((x_ for x_ in rows if x_["model"] == m and x_["arm"] == arm
+                          and float(x_["budget"]) == e), None)
+                if r is None:
+                    cells.append("-- & --")
+                    continue
+                sp = _f(r["median_speedup_e2e_b1"])
+                cells.append(("--" if sp is None else f"{sp:.2f}{x}") +
+                             f" & {r['n_cut']}/{r['n_within_budget_test_cut']}")
+            if all(c == "-- & --" for c in cells):
+                continue
+            lines.append(f"{MODEL_NAMES[m]} & {name} & " + " & ".join(cells) + " \\\\")
+        if lines[-1] != "\\midrule":
+            lines.append("\\midrule")
+    lines[-1] = "\\bottomrule"
+    lines.append("\\end{tabular}")
+    out.write_text("\n".join(lines) + "\n")
+
+
 def outcome_table(outcome_summary, out: Path):
     """Table H4-2: the pre-registered verdict at the frozen Phase-1 entrance, per model. Failures
     are counted, never hidden; a cell that could not be truncated is its own column."""
@@ -227,7 +384,7 @@ def ladder_figure(ladder, out: Path):
     plt.close(fig)
 
 
-def macros(summary, outcome_summary, out: Path):
+def macros(summary, outcome_summary, out: Path, budget_summary=()):
     lines = ["% generated by experiments.make_phase2_paper_tables -- do not edit",
              "\\providecommand{\\PhaseTwoMissing}[1]{\\errmessage{Phase-2 artifact missing: #1}}"]
     for r in summary:
@@ -246,6 +403,23 @@ def macros(summary, outcome_summary, out: Path):
         lines.append(f"\\newcommand{{\\{base}HfourSuccess}}{{{r['n_success']}/{r['n_truncatable']}}}")
         lines.append(f"\\newcommand{{\\{base}HfourFailure}}{{{r['n_failure']}/{r['n_truncatable']}}}")
         lines.append(f"\\newcommand{{\\{base}HfourNoTruncation}}{{{r['n_no_truncation_possible']}}}")
+    # the budget sentence: "with a 10% validation budget, <arm> removes a median of X% of the
+    # backbone for a Y x median measured speedup; Z of the n cut datasets stay within budget on test"
+    for r in budget_summary:
+        if r["includes_low_skill"] != "True":
+            continue
+        word = BUDGET_WORD.get(round(float(r["budget"]), 4))
+        if word is None:
+            continue
+        base = (f"phtwo{r['model']}{r['arm']}".replace("chronos2", "chronos")
+                .replace("timesfm3", "timesfm").replace("_", "") + f"Budget{word}")
+        fr, sp = _f(r["median_fraction_blocks_removed"]), _f(r["median_speedup_e2e_b1"])
+        rem = "--" if fr is None else f"{100 * fr:.0f}" + "\\%"   # no backslash in an f-expr
+        spd = "--" if sp is None else f"{sp:.2f}"
+        lines.append(f"\\newcommand{{\\{base}Removed}}{{{rem}}}")
+        lines.append(f"\\newcommand{{\\{base}Speedup}}{{{spd}}}")
+        lines.append(f"\\newcommand{{\\{base}Within}}{{{r['n_within_budget_test_cut']}/{r['n_cut']}}}")
+        lines.append(f"\\newcommand{{\\{base}Cut}}{{{r['n_cut']}/{r['n_datasets']}}}")
     out.write_text("\n".join(lines) + "\n")
 
 
@@ -258,6 +432,19 @@ def build(output_root, gen_dir=GEN) -> dict:
     depth_rows = _rows(comb / "h3_depth_metrics.csv")
     joined = _rows(comb / "h4_with_latency.csv")
     outcomes = _rows(comb / "h4_outcome_summary.csv")
+    fr_summ = _rows(comb / "h4_frontier_summary.csv")
+    bud_summ = _rows(comb / "h4_budget_summary.csv")
+    small = None
+    srows = [r for r in joined if r.get("arm") == "chronos2_small"]
+    if srows:
+        deg = [_f(r["mase_ratio"]) - 1 for r in srows if _f(r.get("mase_ratio")) is not None]
+        sp = [_f(r.get("api_e2e_B1_speedup")) for r in srows]
+        tp = [_f(r.get("api_e2e_B256_speedup")) for r in srows]
+        small = {"degradation": float(np.median(deg)) if deg else None,
+                 "speedup_e2e_b1": float(np.median(sp)) if sp and None not in sp else None,
+                 "speedup_e2e_b256": float(np.median(tp)) if tp and None not in tp else None}
+        if small["degradation"] is None:
+            small = None
     ladder_table(summary, gen / "h3_ladder_table.tex")
     invalid = [f"{r['model']}: {r['invalid_datasets']}" for r in outcomes
                if r["includes_low_skill"] == "True" and int(r["n_invalid_v3"]) > 0]
@@ -269,9 +456,21 @@ def build(output_root, gen_dir=GEN) -> dict:
     else:
         truncation_table(joined, gen / "h4_truncation_table.tex")
         outcome_table(outcomes, gen / "h4_outcome_table.tex")
+    frontier_figure(fr_summ, gen / "h4_frontier.pdf", small=small)
+    frontier_appendix(fr_summ, gen / "h4_frontier_appendix.pdf")
+    phys = _rows(comb / "h4_budget_physical.csv")
+    bad = [f"{r['model']}/{r['dataset']}/{r['arm']}@{r['label']}" for r in phys
+           if r["V3_passed"] != "True"]
+    if bad:
+        _missing(gen / "h4_budget_table.tex",
+                 ("h4_budget_table: operating points failed V3 " + "; ".join(bad)).replace("_", "-"),
+                 "A PHYSICAL OPERATING POINT DOES NOT REPRODUCE ITS OFFLINE METRICS -- fix before "
+                 "any H4 table is built")
+    else:
+        budget_table(bud_summ, gen / "h4_budget_table.tex", physical=phys)
     depth_curves(depth_rows, ladder, gen / "h3_depth_curves.pdf")
     ladder_figure(ladder, gen / "h3_ladder_at_entrance.pdf")
-    macros(summary, outcomes, gen / "phase2_macros.tex")
+    macros(summary, outcomes, gen / "phase2_macros.tex", budget_summary=bud_summ)
     return {"out": str(gen), "files": sorted(p.name for p in gen.iterdir())}
 
 

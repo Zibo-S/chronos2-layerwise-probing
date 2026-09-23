@@ -27,7 +27,9 @@ set -euo pipefail
 #   sbatch --time=01:00:00 -J p2h4-verify job_phase2_h4.sh verify \
 #          --cache-dataset monash_electricity_hourly        # also V1 vs the Phase-1 cache
 #   sbatch --time=01:00:00 -J p2h4-eval-chronos2 job_phase2_h4.sh evaluate --models chronos2
-#   (one evaluate job per model; resubmitting the same line skips COMPLETE cells)
+#   sbatch --time=01:00:00 -J p2h4-bud-chronos2  job_phase2_h4.sh evaluate --operating-points budget \
+#          --models chronos2       # the MAIN H4 result: the validation-chosen budget cuts, physical
+#   (one job per model and mode; resubmitting the same line skips COMPLETE cells)
 #   (Chronos-2-small must be pre-downloaded on the LOGIN node, which has internet -- a download
 #    only, the model is not loaded, so it is seconds of network I/O at ~0% CPU:
 #      python -c "from huggingface_hub import snapshot_download; snapshot_download('autogluon/chronos-2-small')"

@@ -29,10 +29,17 @@ The operating point is the frozen Phase-1 entrance, NOT a newly optimized compat
 (that stays an appendix analysis). Latency comes from ``run_phase2_latency`` (a dataset-independent
 lookup by model x configuration x depth), joined by the table builders.
 
-THE H4 OUTCOME (``probing.phase2.H4_OUTCOME_RULE``, pre-registered): candidate depth = the frozen
-Phase-1 entrance; successful truncation = the label-free aligned truncation's test-MASE degradation
-<= 5%. A failure is written and reported as a failure -- ``evaluate`` has no depth option, and no
-other depth is ever tried for H4.
+THE H4 MAIN RESULT (``--operating-points budget``): the accuracy-compute frontier. For each budget
+(2/5/10/20%) the H3 cell's VALIDATION rule (``probing.phase2.BUDGET_RULE``) froze the earliest
+usable cut per arm; this stage physically instantiates exactly those cuts, scores them on test
+once, and V3-checks each against the offline H3 per-window MASE. It chooses nothing itself.
+
+    python -m experiments.run_phase2_truncation evaluate --operating-points budget --models tirex
+
+THE SECONDARY TEST (``--operating-points entrance``, the default; ``H4_OUTCOME_RULE``,
+pre-registered): candidate depth = the frozen Phase-1 entrance; success = the label-free aligned
+truncation's test-MASE degradation <= 5%. A failure is reported as a failure. Neither mode has a
+depth option.
 """
 
 from __future__ import annotations
@@ -386,12 +393,120 @@ def run_evaluate(model: str, tag: str, args) -> dict:
     return out
 
 
+H4_BUDGET_REQUIRED = ("operating_points.json", "physical_metrics.npz", "COMPLETE_INPUTS.json")
+
+
+def run_budget_evaluate(model: str, tag: str, args) -> dict:
+    """The H4 MAIN result, physically: instantiate every truncated operating point the H3 cell's
+    VALIDATION budget rule selected (``phase2.budget_operating_points``), score it on test once,
+    and verify (V3, metric level) that the physical model reproduces the offline H3 per-window
+    MASE. The depths come from the frozen H3 artifact -- nothing is chosen here."""
+    import torch
+    from experiments.run_phase2_h3 import windows_readonly
+    from probing import phase2_truncate as T
+    from probing.phase1_metrics import raw_window_metrics
+    from probing.phase2_align import load_adapter
+    from probing.phase2_env import set_precision_flags
+    set_precision_flags(deterministic=True)
+    h3 = Path(args.output_root) / "h3" / model / tag
+    if not (h3 / "COMPLETE").exists():
+        raise phase2.Phase1DependencyError(f"no COMPLETE H3 cell at {h3}; run H3 first")
+    frontier = json.loads((h3 / "frontier.json").read_text())
+    ops = phase2.budget_operating_points(frontier)
+    h_hash = phase1._digest({
+        "h3_config_hash": json.loads((h3 / "COMPLETE").read_text()).get("config_hash"),
+        "rule": phase2.BUDGET_RULE["version"], "v3_rtol": args.v3_rtol})
+    store = Phase2CellStore(args.output_root, "h4_budget", model, tag, required=H4_BUDGET_REQUIRED)
+    status, reason = store.status(h_hash)
+    if status == "complete" and not args.force_recompute:
+        print(f"[skip] h4_budget {model}/{tag}: COMPLETE ({reason})")
+        return json.loads((store.final / "operating_points.json").read_text())
+    if status == "incompatible" and not args.force_recompute:
+        raise RuntimeError(f"h4_budget {model}/{tag} exists under a different configuration "
+                           f"({reason}); pass --force-recompute or a new --output-root")
+    fits = json.loads((h3 / "fits.json").read_text())
+    with np.load(h3 / "bootstrap_inputs.npz", allow_pickle=True) as z:
+        bi = {k: z[k] for k in z.files}
+    with np.load(h3 / "predictions_selected.npz", allow_pickle=True) as z:
+        y_raw = np.asarray(z["y_raw"], np.float64)
+    root = resolve_phase1_root(tag, args.phase1_root, parse_overrides(args.phase1_override))
+    p1 = Phase1Cell(root, model, tag)
+    w = windows_readonly(tag, args)
+    X = np.asarray(w["X_test"], np.float32)[np.asarray(bi["rows_test"], np.int64)]
+    B, L = EVAL_BATCH[model], int(frontier["reference_index"])
+    fresh = Fresh(model, args) if ops else None
+    native_params = T.param_breakdown(fresh.base, model)["active_params"] if ops else None
+    records, per_window = [], {}
+    for op in ops:
+        arm, d, lab = op["arm"], op["depth_index"], op["label"]
+        h = fresh()
+        rec = {**op}
+        if arm == "probe":
+            slug = lab.replace("+", "_").replace(" ", "_")
+            with np.load(p1.path / "probe_artifacts" / f"probe__{slug}.npz") as z:
+                probe = {k: z[k] for k in z.files}
+            T.truncate(h, model, d)
+            T.install_probe_head(h, model, probe, native_quantiles=getattr(h, "quantiles", None))
+        elif arm in ("noa", "fl"):
+            f = fits[arm][lab]
+            ad, meta = load_adapter(f["adapter_file"]["path"],
+                                    device=next(T.core_of(h, model).parameters()).device)
+            if meta.get("sha256") != f["adapter_sha256"]:
+                raise RuntimeError(f"{arm}@{lab} adapter checksum differs from the H3 fit record")
+            T.truncate(h, model, d, adapter=ad)
+            rec["adapter_params"] = ad.n_params
+        else:
+            T.truncate(h, model, d)
+        rec["active_params"] = T.param_breakdown(h, model)["active_params"]
+        rec["fraction_params_removed"] = 1.0 - rec["active_params"] / native_params
+        m = raw_window_metrics(tag, X, y_raw, _forecast(h, model, X, B), QUANTILES, MEDIAN_INDEX)
+        ref = np.asarray(bi[f"{arm}__test_mase"], np.float64)[d]
+        g = T.elementwise_gate(m["mase_pw"], ref, atol=args.v3_rtol * float(np.abs(ref).mean()),
+                               rtol=args.v3_rtol)
+        g["mase_mean_rel_diff"] = float(abs(m["mase_pw"].mean() - ref.mean()) / ref.mean())
+        rec.update(physical_test_mase=float(m["mase_pw"].mean()),
+                   offline_test_mase=float(ref.mean()),
+                   V3={"check": "V3 (per-window MASE, physical vs offline H3)", **g},
+                   V3_passed=bool(g["passed"] and g["mase_mean_rel_diff"] <= args.v3_rtol))
+        per_window[f"{arm}__{lab}__mase"] = m["mase_pw"]
+        records.append(rec)
+        print(f"  [{model}/{tag}] budget point {arm:<5} {lab:<4} ({op['blocks_removed']} blocks "
+              f"removed; budgets {op['budgets']}) physical MASE {rec['physical_test_mase']:.4f} "
+              f"offline {rec['offline_test_mase']:.4f} V3 {rec['V3_passed']}")
+        del h
+        gc.collect()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+    out = {"model": model, "dataset": tag, "rule": phase2.BUDGET_RULE, "blocks_total": L,
+           "operating_points": records, "n_points": len(records),
+           "all_V3_passed": all(r["V3_passed"] for r in records), "h3_cell": str(h3)}
+    stage = store.begin()
+    try:
+        phase2.atomic_write_json(stage / "operating_points.json", out)
+        np.savez_compressed(stage / "physical_metrics.npz",
+                            cluster_ids_test=np.asarray(bi["cluster_ids_test"], np.int64),
+                            **per_window)
+        phase2.atomic_write_json(stage / "COMPLETE_INPUTS.json", {
+            "h3_complete": json.loads((h3 / "COMPLETE").read_text()),
+            "phase1": p1.dependency_record()})
+        store.commit(stage, h_hash)
+    except Exception:
+        store.abandon(stage)
+        raise
+    if not out["all_V3_passed"]:
+        print(f"[WARN] {model}/{tag}: a budget operating point does NOT reproduce its offline H3 "
+              "metrics -- the H4 budget table will refuse to build until this is fixed")
+    return out
+
+
 def main(argv=None) -> int:
     args = parse_args(argv)
     if args.stage == "evaluate" and args.depths:
-        raise SystemExit("evaluate has exactly one operating point per model x dataset -- the "
-                         "frozen Phase-1 entrance (probing.phase2.H4_OUTCOME_RULE); --depths is "
-                         "for verify only")
+        raise SystemExit("evaluate has no depth option: it evaluates exactly one operating point "
+                         "per model x dataset -- the frozen Phase-1 entrance "
+                         "(probing.phase2.H4_OUTCOME_RULE) or, with --operating-points budget, "
+                         "the cuts the H3 cell's VALIDATION budget rule froze; --depths is for "
+                         "verify only")
     fails = []
     if args.stage == "verify":
         for m in args.models:
@@ -406,7 +521,8 @@ def main(argv=None) -> int:
         for m in args.models:
             for t in tags:
                 try:
-                    run_evaluate(m, t, args)
+                    (run_budget_evaluate if args.operating_points == "budget"
+                     else run_evaluate)(m, t, args)
                 except Exception as e:
                     import traceback
                     traceback.print_exc()
@@ -446,6 +562,10 @@ def parse_args(argv=None):
     p.add_argument("--v3-rtol", type=float, default=1e-4)
     p.add_argument("--boot-b", type=int, default=phase2.BOOT_B)
     p.add_argument("--no-small", action="store_true", help="skip Chronos-2-small")
+    p.add_argument("--operating-points", choices=["entrance", "budget"], default="entrance",
+                   help="evaluate: 'entrance' = the frozen Phase-1 entrance + the pre-registered "
+                        "5%% test (secondary); 'budget' = the validation-selected cuts of the H4 "
+                        "frontier (main result), physically instantiated and V3-verified")
     p.add_argument("--force-recompute", action="store_true",
                    help="evaluate: rebuild H4 cells that are already COMPLETE (default: skip them, "
                         "so resubmitting the same line resumes)")

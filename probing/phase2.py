@@ -70,6 +70,8 @@ __all__ = [
     "PHASE1_REROUTES",
     "assert_adapter_wd_grid", "standard_wql", "compatibility_tunnel", "cluster_replicates",
     "ratio_summary", "H4_OUTCOME_RULE", "H4_STATUSES", "h4_outcome",
+    "FRONTIER_BUDGETS", "FRONTIER_ARMS", "LATENCY_KIND_FOR_ARM", "BUDGET_RULE", "budget_depth",
+    "budget_operating_points",
     "Phase2CellStore", "clean_staging", "file_sha256", "array_sha256",
     "atomic_write_json", "write_csv",
 ]
@@ -78,7 +80,7 @@ __all__ = [
 # the frozen Phase-2 protocol
 # --------------------------------------------------------------------------- #
 #: Bumped BY HAND when the scientific meaning of an H3 cell changes. Part of the config hash.
-PHASE2_PROTOCOL_VERSION = "phase2/h3-v1"
+PHASE2_PROTOCOL_VERSION = "phase2/h3-v2"      # v2: validation MASE + the H4 frontier
 
 QUANTILES = phase1.PHASE1_QUANTILES                  # the nine canonical levels, unchanged
 MEDIAN_INDEX = 4                                     # tau = 0.5 inside QUANTILES
@@ -242,6 +244,20 @@ class Phase1Cell:
         with np.load(self.path / "bootstrap_inputs.npz", allow_pickle=True) as z:
             return {k: z[k] for k in z.files}
 
+    def predictions(self, split: str) -> dict:
+        """The frozen probe's saved (n, Q, H) predictions in the model's NORMALIZED target space
+        (``pred__<label>``), with the normalized ``target`` and ``cluster_ids`` used to prove row
+        alignment. H3 pushes them through the pathway's own inverse to get the probe's raw-unit
+        VALIDATION MASE -- the quantity the H4 budget rule selects on."""
+        if split not in ("val", "test"):
+            raise ValueError(split)
+        p = self.path / f"predictions_{split}.npz"
+        if not p.exists():
+            raise Phase1DependencyError(f"{p} missing: the Phase-1 cell did not save {split} "
+                                        "predictions (needed for the probe's validation MASE)")
+        with np.load(p, allow_pickle=True) as z:
+            return {k: z[k] for k in z.files}
+
     def floor_val_loss(self):
         """The closed-form no-information floor's VALIDATION loss (Phase-1 probe_hparams.json)."""
         p = self.path / "probe_hparams.json"
@@ -261,7 +277,8 @@ class Phase1Cell:
                "protocol": mk.get("protocol"), "tunnel_definition": mk.get("tunnel_definition"),
                "window_digest": cfg.get("window_digest"), "checkpoint": cfg.get("checkpoint"),
                "quantile_set": cfg.get("quantile_set")}
-        for name in ("bootstrap_inputs.npz", "tunnel.json", "cell_config.json"):
+        for name in ("bootstrap_inputs.npz", "tunnel.json", "cell_config.json",
+                     "predictions_val.npz", "predictions_test.npz"):
             p = self.path / name
             rec[f"sha256_{name}"] = file_sha256(p) if p.exists() else None
         if cfg.get("quantile_set") != "q9":
@@ -446,6 +463,75 @@ def h4_outcome(arms: dict, *, candidate_depth: int, phase1_entrance: int, n_bloc
 
 
 # --------------------------------------------------------------------------- #
+# THE H4 main result -- the accuracy-compute frontier (pre-registered 2026-09-23, before any
+# full Phase-2 result): how much accuracy survives a given cut, and, for an accuracy BUDGET, the
+# earliest usable cut chosen on VALIDATION ONLY
+# --------------------------------------------------------------------------- #
+FRONTIER_BUDGETS = (0.02, 0.05, 0.10, 0.20)
+#: The truncation arms on the frontier. ``ra`` (hidden-space ridge) is a diagnostic and is kept
+#: in the CSVs only. Which arm gives the best frontier is NOT assumed -- it is reported per model.
+FRONTIER_ARMS = ("hard", "noa", "fl", "probe")
+#: The latency-harness configuration that times each arm at a given depth.
+LATENCY_KIND_FOR_ARM = {"hard": "hard", "noa": "adapter", "fl": "adapter", "ra": "adapter",
+                        "probe": "probe_head"}
+BUDGET_RULE = {
+    "version": "h4-frontier/v1",
+    "question": "how much forecasting accuracy survives a given reduction in inference cost?",
+    "operating_point": "per model x dataset x arm x budget eps: the SHALLOWEST block depth l < L "
+                       "whose VALIDATION MASE ratio to the full native model is <= 1 + eps at "
+                       "EVERY truncation depth j in [l, L-1] (sustained, the Phase-1 operator)",
+    "fallback": "no qualifying depth -> no truncation: the full native model (speedup 1)",
+    "budgets": list(FRONTIER_BUDGETS),
+    "selection_data": "validation only; the selected depth is frozen, then test is read once",
+    "entrance_test": "the frozen Phase-1 entrance test (H4_OUTCOME_RULE) is kept unchanged as "
+                     "the stricter secondary hypothesis test",
+}
+
+
+def budget_operating_points(frontier: dict, arms=FRONTIER_ARMS) -> list[dict]:
+    """The distinct truncated (arm, depth) operating points a cell's ``frontier.json`` selected
+    (on validation) over all budgets -- exactly what H4 physically instantiates and verifies.
+    Budgets that selected no cut (the full model) add no point."""
+    if not frontier.get("complete_depth_sweep"):
+        raise ValueError("the frontier needs a complete depth sweep (a smoke cell has none)")
+    pts = {}
+    for arm in arms:
+        rec = frontier.get("arms", {}).get(arm)
+        if not rec:
+            continue
+        for key, op in rec["budgets"].items():
+            if not op["truncated"]:
+                continue
+            p = pts.setdefault((arm, int(op["depth_index"])),
+                               {"arm": arm, "depth_index": int(op["depth_index"]),
+                                "label": op["label"], "blocks_removed": op["blocks_removed"],
+                                "budgets": []})
+            p["budgets"].append(float(key.split("_")[1]))
+    return [pts[k] for k in sorted(pts)]
+
+
+def budget_depth(val_ratio, eps: float) -> int:
+    """The H4 operating-point rule, for ONE arm of ONE cell (``BUDGET_RULE``).
+
+    ``val_ratio[j]`` = the arm's mean VALIDATION MASE at block depth j / the full native model's,
+    for j = 0..L (entry L is ignored: depth L is the full model, the fallback). Returns the
+    shallowest l in [0, L-1] with ``val_ratio[j] <= 1 + eps`` for every j in [l, L-1], else L.
+    A non-finite ratio never qualifies. Takes validation numbers only -- there is no test input.
+    """
+    r = np.asarray(val_ratio, np.float64)
+    L = len(r) - 1
+    if L < 1:
+        raise ValueError("need at least one truncation depth")
+    ok = np.isfinite(r[:L]) & (r[:L] <= 1.0 + float(eps))
+    depth = L
+    for j in range(L - 1, -1, -1):
+        if not ok[j]:
+            break
+        depth = j
+    return int(depth)
+
+
+# --------------------------------------------------------------------------- #
 # atomic, resumable Phase-2 cell store
 # --------------------------------------------------------------------------- #
 atomic_write_json = phase1.atomic_write_json
@@ -453,7 +539,7 @@ write_csv = phase1.write_csv
 
 H3_REQUIRED = ("cell_config.json", "summary.json", "depth_metrics.csv", "tunnels.json",
                "ladder_at_tunnel.json", "bootstrap_inputs.npz", "verification.json",
-               "fits.json", "predictions_selected.npz")
+               "fits.json", "predictions_selected.npz", "frontier.json")
 
 
 class Phase2CellStore:

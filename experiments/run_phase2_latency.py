@@ -245,6 +245,10 @@ def run_child(cfg: dict) -> dict:
                 rec = {"status": "oom", "error": str(e)[:300]}
                 if cuda:
                     torch.cuda.empty_cache()
+            except Exception as e:                  # one broken level must not erase the others
+                import traceback
+                traceback.print_exc()
+                rec = {"status": "error", "error": f"{type(e).__name__}: {e}"[:500]}
             out["levels"][key] = rec
     out["raw_timings_ns"] = raw
     return out
@@ -332,6 +336,10 @@ def main(argv=None) -> int:
                            timeout=args.config_timeout)
         status = "ok" if r.returncode == 0 and (dest / "summary.json").exists() else "failed"
         s = json.loads((dest / "summary.json").read_text()) if status == "ok" else {}
+        bad = sorted(k for k, v in s.get("levels", {}).items() if v.get("status") != "ok")
+        if status == "ok" and bad:
+            status = "partial"                      # visible in the log and in index.json
+            print(f"  [partial] {cid}: levels not measured: {bad} (see the traceback above)")
         med = {k: v.get("median_ms") for k, v in s.get("levels", {}).items()}
         print(f"  [{status}] {cid} ({time.time() - t0:.0f}s) " +
               " ".join(f"{k}={v:.2f}ms" for k, v in med.items() if v is not None))

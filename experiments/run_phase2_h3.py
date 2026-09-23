@@ -126,6 +126,8 @@ def cell_config(model, tag, dep, families, depths, fit_cfg, args) -> dict:
             # postprocess
             "tunnel_tols": [float(t) for t in phase2.TUNNEL_TOLS],
             "headline_tol": phase2.HEADLINE_TOL, "budget": phase2.BUDGET,
+            "frontier_budgets": [float(e) for e in phase2.FRONTIER_BUDGETS],
+            "frontier_rule": phase2.BUDGET_RULE["version"],
             "boot_b": fit_cfg["boot_b"], "boot_seed": fit_cfg["boot_seed"]}
 
 
@@ -236,6 +238,7 @@ def main(argv=None) -> int:
                       f"(fit hash {dep['fit_hash']})")
                 handle = bb.pathway(model, p1.config())
                 arrays = p1.arrays()
+                p1_preds = {"val": p1.predictions("val"), "test": p1.predictions("test")}
                 t0 = time.time()
                 data = load_cell_data(model, tag, w, arrays, p1.config(), handle, args)
                 print(f"  [data] loaded in {time.time() - t0:.1f}s; rows train/val/test = "
@@ -246,7 +249,7 @@ def main(argv=None) -> int:
                     adapter_dir=Path(args.adapter_root),
                     floor_val_loss=p1.floor_val_loss(),
                     save_prediction_depths=[ent[t]["depth_axis_index"] for t in ent],
-                    log=print)
+                    phase1_predictions=p1_preds, log=print)
                 stage = store.begin()
                 try:
                     save_h3_cell(stage, res, ccfg, chash, dep, data.provenance,

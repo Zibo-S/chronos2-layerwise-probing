@@ -277,7 +277,12 @@ def device_forward(handle, model: str, X, horizon: int = 64):
     -> device quantiles. The uniform-semantics latency level (``device_forward``)."""
     core = core_of(handle, model)
     dev = next(core.parameters()).device
-    x = torch.as_tensor(np.asarray(X, np.float32), device=dev)
+    if torch.is_tensor(X):
+        # already device-resident (the latency level): no host round trip -- np.asarray on a
+        # CUDA/MPS tensor raises, and a copy here would also land inside the timed region
+        x = X.to(device=dev, dtype=torch.float32)
+    else:
+        x = torch.as_tensor(np.asarray(X, np.float32), device=dev)
     if model == "chronos2":
         return core(context=x, num_output_patches=int(np.ceil(horizon / 16))).quantile_preds
     if model == "timesfm3":

@@ -529,6 +529,28 @@ FAST = {"epochs": 40, "eval_every": 10, "wd_grid": [0.0, 1e-2], "kappas": [1e-6,
         "boot_b": 200}
 
 
+def _mock_probe_predictions(pw, data, arrays):
+    """Phase-1-style probe predictions for the mock cell (normalized (n, 9, H) per depth label),
+    made CONSISTENT with the mock Phase-1 arrays: the probe's test MASE rows are recomputed from
+    the same predictions through the same inverse, as the real Phase-1 cells were."""
+    from probing.phase1_metrics import raw_window_metrics
+    spec = phase1.model_spec("tirex")
+    out = {}
+    for s in ("val", "test"):
+        sd = data.splits[s]
+        pr = {"target": sd.target, "cluster_ids": sd.cluster_ids}
+        for l, lab in enumerate(data.depth_labels):
+            with torch.no_grad():
+                _, z = pw.run(sd.feats[l])
+            pr[f"pred__{lab}"] = np.asarray(z, np.float32)
+            if s == "test":
+                m = raw_window_metrics(data.tag, sd.X, sd.y_raw, pw.to_raw(pr[f"pred__{lab}"], sd),
+                                       QUANTILES, 4)
+                arrays["test_mase_window"][spec.depth_indices[l]] = m["mase_pw"]
+        out[s] = pr
+    return out
+
+
 def test_20_whole_cell_end_to_end_on_a_mock_pathway():
     from probing.phase2_h3 import run_h3_cell, save_h3_cell
     pw, data, arrays, ent = _mock_cell()
@@ -766,6 +788,191 @@ def test_25_h4_outcome_is_preregistered_and_failures_are_reported():
         shutil.rmtree(tmp, ignore_errors=True)
     print("25  H4 outcome: one frozen candidate depth, success = aligned dMASE <= 5%, failures "
           "reported and counted, no depth search, invalid cells block the tables OK")
+
+
+def test_26_frontier_budget_rule_is_validation_only_and_sustained():
+    """The H4 main result's operating points: shallowest SUSTAINED depth within the validation
+    MASE budget, the full model when none qualifies, never a test number."""
+    from probing.phase2_h3 import run_h3_cell
+    bd = phase2.budget_depth
+    # sustained: an early lucky depth does not open the budget if a deeper cut breaks it
+    r = [1.02, 1.30, 1.04, 1.03, 1.01, 1.0]           # depths 0..4 are cuts, 5 = the full model
+    assert bd(r, 0.05) == 2 and bd(r, 0.35) == 0 and bd(r, 0.005) == 5
+    assert bd([1.5, np.nan, 1.01, 1.0], 0.05) == 2 and bd([1.0, 1.0, np.nan, 1.0], 0.5) == 3
+    assert bd([1.2, 1.1, 1.0], 0.0) == 2               # no cut fits a zero budget: full model
+    assert bd([1.2, 1.0, 1.0], 0.0) == 1               # a ratio of exactly 1 + eps qualifies
+    rng = np.random.default_rng(0)
+    for _ in range(300):                               # monotone: a bigger budget never cuts later
+        v = np.r_[1.0 + np.abs(rng.normal(0, 0.2, 9)), 1.0]
+        ds = [bd(v, e) for e in phase2.FRONTIER_BUDGETS]
+        assert ds == sorted(ds, reverse=True), (v, ds)
+
+    # the whole cell: every arm gets a frontier; the probe's validation MASE comes through the
+    # SAME inverse that reproduces Phase 1's probe test MASE (the probe inverse gate)
+    pw, data, arrays, ent = _mock_cell()
+    preds = _mock_probe_predictions(pw, data, arrays)
+    res = run_h3_cell(pw, data, arrays, entrances=ent, families=["hard", "noa", "fl"],
+                      device="cpu", fit_cfg=FAST, phase1_predictions=preds, log=lambda *a: None)
+    assert res["verification"]["probe_inverse_gate"]["passed"]
+    fr = res["frontier"]
+    assert fr["complete_depth_sweep"] and set(fr["arms"]) == {"hard", "noa", "fl", "probe"}
+    L = fr["reference_index"]
+    for f, rec in fr["arms"].items():
+        v = rec["val_mase_ratio_by_depth"]
+        for key, op in rec["budgets"].items():
+            eps = float(key.split("_")[1])
+            if op["truncated"]:
+                assert all(v[j] is not None and v[j] <= 1 + eps for j in range(op["depth_index"], L))
+                assert np.isclose(op["test_mase_ratio"],
+                                  rec["test_mase_ratio_by_depth"][op["depth_index"]])
+            else:
+                assert op["depth_index"] == L and op["operating_model"] == "native"
+    # validation-only: poisoning the TEST split moves no budget depth
+    pw2, data2, arrays2, ent2 = _mock_cell(poison_test=True)
+    arrays2["native_loss_window"] = arrays2["native_mase_window"] = None
+    preds2 = _mock_probe_predictions(pw2, data2, arrays2)
+    res2 = run_h3_cell(pw2, data2, arrays2, entrances=ent2, families=["hard", "noa", "fl"],
+                       device="cpu", fit_cfg=FAST, phase1_predictions=preds2, log=lambda *a: None)
+    sel = lambda rr: {(f, k): op["depth_index"] for f, rec in rr["frontier"]["arms"].items()  # noqa
+                      for k, op in rec["budgets"].items()}
+    assert sel(res) == sel(res2), "a test-split change moved a budget operating point"
+    # the inverse gate has teeth: a 1% scale error between the pathway inverse and Phase 1 aborts
+    arrays_bad = dict(arrays)
+    arrays_bad["test_mase_window"] = arrays["test_mase_window"] * 1.01
+    try:
+        run_h3_cell(pw, data, arrays_bad, entrances=ent, families=["hard"], device="cpu",
+                    fit_cfg=FAST, phase1_predictions=preds, log=lambda *a: None)
+        raise AssertionError("a 1% probe-MASE mismatch passed the inverse gate")
+    except RuntimeError as exc:
+        assert "inverse" in str(exc)
+    # misaligned Phase-1 rows are refused, never silently re-aligned
+    bad = {s: dict(p) for s, p in preds.items()}
+    bad["val"]["target"] = bad["val"]["target"][::-1].copy()
+    try:
+        run_h3_cell(pw, data, arrays, entrances=ent, families=["hard"], device="cpu",
+                    fit_cfg=FAST, phase1_predictions=bad, log=lambda *a: None)
+        raise AssertionError("misaligned probe predictions were accepted")
+    except phase2.Phase1DependencyError:
+        pass
+    print("26  frontier budgets: shallowest SUSTAINED depth within the validation-MASE budget, "
+          "full-model fallback, monotone in the budget, test-blind; probe via the gated inverse OK")
+
+
+def test_27_frontier_tables_and_figure_from_artifacts():
+    """The H4 main outputs rebuild from saved cells only: frontier points / summary, budget
+    points / summary, Figure H4-1, Table H4-1 and the budget macros -- first with no latency yet
+    (the axis falls back to blocks removed), then joined with a headline latency job."""
+    import csv
+    from experiments import make_phase2_paper_tables as MP
+    from experiments import make_phase2_tables as MT
+    from probing.phase2_h3 import run_h3_cell, save_h3_cell
+    tmp = Path(tempfile.mkdtemp())
+    try:
+        for tag in ("monash_electricity_hourly", "uber_tlc_hourly"):
+            pw, data, arrays, ent = _mock_cell(seed=1)
+            data.tag = tag
+            preds = _mock_probe_predictions(pw, data, arrays)
+            res = run_h3_cell(pw, data, arrays, entrances=ent, families=["hard", "noa", "fl"],
+                              device="cpu", fit_cfg=FAST, phase1_predictions=preds,
+                              log=lambda *a: None)
+            st = Phase2CellStore(tmp, "h3", "tirex", tag)
+            stage = st.begin()
+            save_h3_cell(stage, res, {"x": 1}, "h", {"fit_hash": "f"}, {})
+            st.commit(stage, "h")
+        comb, gen = tmp / "combined", tmp / "generated"
+        MT.build(tmp)
+        for f in ("h4_frontier_points.csv", "h4_frontier_summary.csv", "h4_budget_points.csv",
+                  "h4_budget_summary.csv"):
+            assert (comb / f).exists(), f
+        MP.build(tmp, gen)
+        assert (gen / "h4_frontier.pdf").stat().st_size > 1000
+        assert (gen / "h4_frontier_appendix.pdf").stat().st_size > 1000
+        tab = (gen / "h4_budget_table.tex").read_text()
+        assert "TiRex" in tab and "10\\% budget" in tab and "Probe head" in tab, tab
+        assert "\\phtwotirexnoaBudgetTenCut" in (gen / "phase2_macros.tex").read_text()
+
+        # the mock's arms never fit a budget; give one cell two real cuts so the join is exercised
+        fp = tmp / "h3" / "tirex" / "uber_tlc_hourly" / "frontier.json"
+        fr = json.loads(fp.read_text())
+        for key, d in (("eps_0.1", 9), ("eps_0.2", 6)):
+            fr["arms"]["noa"]["budgets"][key] = {
+                "depth_index": d, "label": f"L{d}", "truncated": True, "blocks_removed": 12 - d,
+                "operating_model": "noa", "val_mase_ratio": 1.05, "test_mase_ratio": 1.07,
+                "test_mase_ci": [1.03, 1.11], "test_wql_ratio": 1.06, "within_budget_test": True}
+        fp.write_text(json.dumps(fr))
+        # a headline latency job: time = 10 ms x (0.2 + 0.8 d / L) for every truncated config
+        L, jd = 12, tmp / "latency" / "job1"
+
+        def config(cid, kind, depth, ms):
+            (jd / cid).mkdir(parents=True)
+            lv = {k: {"status": "ok", "median_ms": ms, "p95_ms": ms, "iqr_ms": 0.0,
+                      "throughput_series_per_s": 1.0, "peak_allocated_bytes": 1}
+                  for k in ("api_e2e__B1", "api_e2e__B256", "device_forward__B1")}
+            (jd / cid / "summary.json").write_text(json.dumps({
+                "config": {"model": "tirex", "kind": kind, "depth": depth}, "levels": lv,
+                "params": {"active_params": int(1000 * ms / 10)}}))
+        config("000_native", "native", L, 10.0)
+        for d in range(L + 1):
+            for kind in ("hard", "adapter", "probe_head"):
+                config(f"{kind}_{d:02d}", kind, d, 10.0 * (0.2 + 0.8 * d / L))
+        (jd / "index.json").write_text(json.dumps({"job_tag": "job1", "headline_eligible": True,
+                                                   "ineligible_reasons": [], "configs": []}))
+        MT.build(tmp)
+        with open(comb / "h4_budget_points.csv") as fh:
+            rows = list(csv.DictReader(fh))
+        assert sum(r["truncated"] == "True" for r in rows) == 2
+        for r in rows:
+            sp = float(r["speedup_e2e_b1"])
+            if r["truncated"] == "True":                 # a cut is measured, and it is faster
+                assert sp > 1.0 and np.isclose(
+                    sp, 1.0 / (0.2 + 0.8 * int(r["depth_index"]) / L)), r
+            else:                                        # no qualifying cut: the full model, 1x
+                assert sp == 1.0 and int(r["depth_index"]) == L
+        MP.build(tmp, gen)
+        assert (gen / "h4_frontier.pdf").stat().st_size > 1000
+
+        # the physical stage instantiates exactly the frozen truncated points, nothing else
+        ops = phase2.budget_operating_points(json.loads(fp.read_text()))
+        assert [(o["arm"], o["depth_index"], o["budgets"]) for o in ops] == [
+            ("noa", 6, [0.2]), ("noa", 9, [0.1])], ops
+        try:
+            phase2.budget_operating_points({"complete_depth_sweep": False, "arms": {}})
+            raise AssertionError("a smoke (depth-subset) frontier yielded operating points")
+        except ValueError:
+            pass
+        from experiments import run_phase2_truncation as RT
+        for mode in ("entrance", "budget"):
+            try:
+                RT.main(["evaluate", "--operating-points", mode, "--depths", "3"])
+                raise AssertionError("evaluate accepted --depths")
+            except SystemExit as exc:
+                assert "no depth option" in str(exc)
+
+        # physical verification gates the main table: one failed V3 point blocks it
+        def phys_cell(ok):
+            d = tmp / "h4_budget" / "tirex" / "uber_tlc_hourly"
+            shutil.rmtree(d, ignore_errors=True)
+            d.mkdir(parents=True)
+            pts = [{**o, "physical_test_mase": 1.0, "offline_test_mase": 1.0,
+                    "V3": {"mase_mean_rel_diff": 0.0 if ok else 0.02}, "V3_passed": ok,
+                    "active_params": 800, "fraction_params_removed": 0.2} for o in ops]
+            (d / "operating_points.json").write_text(json.dumps({
+                "model": "tirex", "dataset": "uber_tlc_hourly", "operating_points": pts}))
+            (d / "COMPLETE").write_text("{}")
+        phys_cell(True)
+        MT.build(tmp)
+        MP.build(tmp, gen)
+        assert "verified operating points: 2/2" in (gen / "h4_budget_table.tex").read_text()
+        phys_cell(False)
+        MT.build(tmp)
+        MP.build(tmp, gen)
+        t = (gen / "h4_budget_table.tex").read_text()
+        assert "PhaseTwoMissing" in t and "failed V3" in t, t
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+    print("27  H4 frontier + budget tables, Figure H4-1 and macros rebuild from artifacts; "
+          "speedups join by (model, configuration, depth); no-cut = the full model at 1x; the "
+          "physical stage takes only the frozen points and a V3 failure blocks the table OK")
 
 
 # =========================================================================== #

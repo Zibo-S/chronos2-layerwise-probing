@@ -19,6 +19,8 @@ What is pinned, per model:
     V6  (TiRex) every retained block and the adapter run once per pass
     PH  the folded probe head == scaler + probe, through the public API
     AP  active parameters == full - removed blocks + adapter (measured == analytic)
+    LH  the latency child: raw ns vectors, throughput = B / median, OOM recorded not substituted
+    DF  device_forward takes a device-resident tensor as is (no host round trip)
 """
 
 from __future__ import annotations
@@ -269,9 +271,33 @@ def contract_LH(model):
     return "latency child: raw ns vectors, throughput = B/median, OOM recorded not substituted"
 
 
+def contract_DF(model):
+    """device_forward takes a DEVICE-RESIDENT tensor as it is. The latency level hands it a
+    CUDA tensor; a numpy round trip raises there ("can't convert cuda:0 device type tensor to
+    numpy" -- the first Narval latency smoke lost all 28 configurations to it) and would also put
+    two host copies inside the timed region. On a CPU, a tensor that requires grad is refused by
+    np.asarray in the same way, so the old bug reproduces on any login node."""
+    h = BUILDERS[model]()
+    X = _contexts(3)
+    ref = T.device_forward(h, model, X)
+    got = T.device_forward(h, model, torch.as_tensor(X).requires_grad_(True))
+    assert torch.equal(got.detach(), ref), "tensor input != numpy input"
+    acc = ("cuda" if torch.cuda.is_available() else
+           "mps" if getattr(torch.backends, "mps", None) and torch.backends.mps.is_available()
+           else None)
+    if acc:
+        hd = h.to(acc) if isinstance(h, nn.Module) else h
+        if not isinstance(h, nn.Module):
+            T.core_of(hd, model).to(acc)
+        out = T.device_forward(hd, model, torch.as_tensor(X, device=acc))
+        assert out.device.type == acc
+    return "device-resident tensor input: no host round trip; == numpy input" + (
+        f" (also on {acc})" if acc else "")
+
+
 CONTRACTS = [("P ", contract_P), ("V1", contract_V1), ("V2", contract_V2), ("V3", contract_V3),
              ("V4", contract_V4), ("V5", contract_V5), ("V6", contract_V6), ("PH", contract_PH),
-             ("AP", contract_AP), ("LH", contract_LH)]
+             ("AP", contract_AP), ("LH", contract_LH), ("DF", contract_DF)]
 
 
 def main(argv=None):

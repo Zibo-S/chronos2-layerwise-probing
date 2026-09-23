@@ -10,7 +10,14 @@ latency job under <output-root>/latency, and writes <output-root>/combined/:
     h3_tunnels.csv             compatibility entrances + compatibility lag (secondary diagnostic)
     h3_summary_by_model.csv    per model x rung: median [IQR] degradation, counts within 5%, ...
     h4_truncation.csv          physically truncated models at the entrance (+ V3 flags)
-    h4_outcomes.csv            THE pre-registered H4 verdict per model x dataset (success /
+    h4_frontier_points.csv     THE H4 main result: every model x dataset x arm x depth, test MASE
+                               ratio + measured speedup / throughput / parameters removed
+    h4_frontier_summary.csv    per model x arm x depth: median [IQR] degradation over datasets
+    h4_budget_points.csv       per model x dataset x arm x budget: the VALIDATION-selected cut
+    h4_budget_summary.csv      per model x arm x budget: cut / within-budget-on-test counts,
+                               median speedup and backbone removed (the main H4 table)
+    h4_budget_physical.csv     those operating points PHYSICALLY instantiated, with V3 verdicts
+    h4_outcomes.csv            the pre-registered frozen-entrance verdict (secondary): success /
                                failure / no_truncation_possible / invalid_v3) -- failures kept
     h4_outcome_summary.csv     those verdicts counted per model, with / without low-skill cells
     latency_jobs.csv           every (job, config, level, batch) median, raw-vector stats
@@ -231,6 +238,145 @@ def summarize_h4_outcomes(rows):
     return out
 
 
+def build_frontier(root: Path, lookup):
+    """THE H4 main result: every (model, dataset, arm, depth) accuracy point and every
+    validation-selected budget operating point (``phase2.BUDGET_RULE``), each joined with its
+    MEASURED cost. Latency depends on (model, configuration, depth), not on the dataset."""
+    lat = {(r["model"], r["kind"], r["depth"], r["level"], r["batch"]): r for r in lookup}
+
+    def cost(model, kind, depth):
+        def get(level, b, field):
+            r = lat.get((model, kind, depth, level, b))
+            return None if r is None else r.get(field)
+        nat = lat.get((model, "native", None, "api_e2e", 1)) or next(
+            (r for k, r in lat.items() if k[0] == model and k[1] == "native"
+             and k[3] == "api_e2e" and k[4] == 1), None)
+        act = get("api_e2e", 1, "active_params")
+        nat_act = None if nat is None else nat.get("active_params")
+        return {"speedup_e2e_b1": get("api_e2e", 1, "speedup_vs_native"),
+                "speedup_e2e_b256": get("api_e2e", 256, "speedup_vs_native"),
+                "speedup_device_b1": get("device_forward", 1, "speedup_vs_native"),
+                "active_params": act,
+                "params_removed_fraction": (1.0 - act / nat_act) if act and nat_act else None}
+
+    def full_model_cost():
+        return {"speedup_e2e_b1": 1.0, "speedup_e2e_b256": 1.0, "speedup_device_b1": 1.0,
+                "active_params": None, "params_removed_fraction": 0.0}
+
+    points, budgets = [], []
+    for cell in _cells(root, "h3"):
+        summ = json.loads((cell / "summary.json").read_text())
+        if summ.get("smoke"):
+            continue
+        fr = json.loads((cell / "frontier.json").read_text())
+        if not fr.get("complete_depth_sweep"):
+            continue
+        model, tag, L = summ["model"], summ["dataset"], int(fr["reference_index"])
+        labels, low = fr["depth_labels"], (summ.get("low_skill") or {}).get("flag")
+        for arm, rec in fr["arms"].items():
+            kind = phase2.LATENCY_KIND_FOR_ARM.get(arm, arm)
+            for d, (vr, tr) in enumerate(zip(rec["val_mase_ratio_by_depth"],
+                                             rec["test_mase_ratio_by_depth"])):
+                if d == L:
+                    continue                                   # the full model is (1x, 0)
+                points.append({"model": model, "dataset": tag, "arm": arm, "depth_index": d,
+                               "label": labels[d], "blocks_removed": L - d,
+                               "fraction_blocks_removed": (L - d) / L,
+                               "val_mase_ratio": vr, "test_mase_ratio": tr,
+                               "test_mase_degradation": None if tr is None else tr - 1.0,
+                               "low_skill": low, **cost(model, kind, d)})
+            for key, op in rec["budgets"].items():
+                eps = float(key.split("_")[1])
+                c = cost(model, kind, op["depth_index"]) if op["truncated"] else full_model_cost()
+                budgets.append({"model": model, "dataset": tag, "arm": arm, "budget": eps,
+                                "truncated": op["truncated"], "depth_index": op["depth_index"],
+                                "label": op["label"], "blocks_removed": op["blocks_removed"],
+                                "fraction_blocks_removed": op["blocks_removed"] / L,
+                                "val_mase_ratio": op["val_mase_ratio"],
+                                "test_mase_ratio": op["test_mase_ratio"],
+                                "test_mase_ci_lo": op["test_mase_ci"][0],
+                                "test_mase_ci_hi": op["test_mase_ci"][1],
+                                "within_budget_test": op["within_budget_test"],
+                                "low_skill": low, **c})
+    return points, budgets
+
+
+def build_budget_physical(root: Path):
+    """The budget operating points as PHYSICALLY instantiated by
+    ``run_phase2_truncation evaluate --operating-points budget``, with their V3 verdicts."""
+    rows = []
+    for cell in _cells(root, "h4_budget"):
+        o = json.loads((cell / "operating_points.json").read_text())
+        for r in o["operating_points"]:
+            rows.append({"model": o["model"], "dataset": o["dataset"], "arm": r["arm"],
+                         "depth_index": r["depth_index"], "label": r["label"],
+                         "blocks_removed": r["blocks_removed"],
+                         "budgets": ";".join(f"{b:g}" for b in r["budgets"]),
+                         "physical_test_mase": r["physical_test_mase"],
+                         "offline_test_mase": r["offline_test_mase"],
+                         "mase_mean_rel_diff": r["V3"]["mase_mean_rel_diff"],
+                         "V3_passed": r["V3_passed"],
+                         "active_params": r["active_params"],
+                         "fraction_params_removed": r["fraction_params_removed"]})
+    return rows
+
+
+def summarize_frontier(points):
+    """Per model x arm x depth: the median [IQR] test MASE degradation across datasets, with the
+    (dataset-independent) measured cost -- the data behind the frontier figure."""
+    out = []
+    keys = sorted({(r["model"], r["arm"], r["depth_index"]) for r in points}, key=str)
+    for include_low in (True, False):
+        for m, a, d in keys:
+            rr = [r for r in points if (r["model"], r["arm"], r["depth_index"]) == (m, a, d)
+                  and (include_low or not r["low_skill"])]
+            if not rr:
+                continue
+            q = _q([r["test_mase_degradation"] for r in rr])
+            first = lambda k: next((r[k] for r in rr if r[k] is not None), None)  # noqa: E731
+            out.append({"model": m, "arm": a, "depth_index": d, "label": rr[0]["label"],
+                        "includes_low_skill": include_low, "n_datasets": len(rr),
+                        "blocks_removed": rr[0]["blocks_removed"],
+                        "fraction_blocks_removed": rr[0]["fraction_blocks_removed"],
+                        "degradation_q25": q[0], "degradation_median": q[1],
+                        "degradation_q75": q[2],
+                        "speedup_e2e_b1": first("speedup_e2e_b1"),
+                        "speedup_e2e_b256": first("speedup_e2e_b256"),
+                        "speedup_device_b1": first("speedup_device_b1"),
+                        "params_removed_fraction": first("params_removed_fraction")})
+    return out
+
+
+def summarize_budgets(budgets):
+    """Per model x arm x budget: the deployable recipe. Medians of speedup / backbone removed are
+    over ALL datasets (a dataset with no qualifying cut counts as 1x / 0%); test degradation and
+    'within budget on test' are over the datasets that were actually cut."""
+    out = []
+    keys = sorted({(r["model"], r["arm"], r["budget"]) for r in budgets}, key=str)
+    for include_low in (True, False):
+        for m, a, e in keys:
+            rr = [r for r in budgets if (r["model"], r["arm"], r["budget"]) == (m, a, e)
+                  and (include_low or not r["low_skill"])]
+            if not rr:
+                continue
+            cut = [r for r in rr if r["truncated"]]
+            sp = [r["speedup_e2e_b1"] for r in rr]
+            tp = [r["speedup_e2e_b256"] for r in rr]
+            qd = _q([r["test_mase_ratio"] - 1.0 for r in cut])
+            out.append({"model": m, "arm": a, "budget": e, "includes_low_skill": include_low,
+                        "n_datasets": len(rr), "n_cut": len(cut), "n_no_cut": len(rr) - len(cut),
+                        "n_within_budget_test_cut": sum(bool(r["within_budget_test"]) for r in cut),
+                        "median_fraction_blocks_removed": _q(
+                            [r["fraction_blocks_removed"] for r in rr])[1],
+                        "median_speedup_e2e_b1": _q(sp)[1] if all(v is not None for v in sp)
+                        else None,
+                        "median_speedup_e2e_b256": _q(tp)[1] if all(v is not None for v in tp)
+                        else None,
+                        "cut_degradation_q25": qd[0], "cut_degradation_median": qd[1],
+                        "cut_degradation_q75": qd[2]})
+    return out
+
+
 def build_latency(root: Path):
     """Only HEADLINE-protocol jobs enter the lookup. A smoke / tiny / unverified / CPU job
     (``index.json.headline_eligible`` false) or a killed one (no index.json) is excluded and
@@ -335,11 +481,17 @@ def build(output_root) -> dict:
     h4_out = build_h4_outcomes(root)
     h4_summ = summarize_h4_outcomes(h4_out)
     jobs, lookup, lat_excluded = build_latency(root)
+    fr_points, fr_budgets = build_frontier(root, lookup)
+    fr_summ, bud_summ = summarize_frontier(fr_points), summarize_budgets(fr_budgets)
+    bud_phys = build_budget_physical(root)
     joined = join_h4_latency(h4, lookup)
     for name, rows in (("h3_depth_metrics", depth_rows), ("h3_ladder", ladder_rows),
                        ("h3_tunnels", tunnel_rows), ("h3_summary_by_model", summ),
                        ("h4_truncation", h4), ("h4_outcomes", h4_out),
                        ("h4_outcome_summary", h4_summ), ("latency_jobs", jobs),
+                       ("h4_frontier_points", fr_points), ("h4_frontier_summary", fr_summ),
+                       ("h4_budget_points", fr_budgets), ("h4_budget_summary", bud_summ),
+                       ("h4_budget_physical", bud_phys),
                        ("latency_lookup", lookup), ("h4_with_latency", joined)):
         if rows:
             fields = list(dict.fromkeys(k for r in rows for k in r))
@@ -351,6 +503,13 @@ def build(output_root) -> dict:
              "smoke_cells_excluded": smoke,
              "latency_jobs_excluded": lat_excluded,
              "h3_summary_by_model": summ,
+             "h4_frontier_rule": phase2.BUDGET_RULE,
+             "h4_budget_summary": bud_summ,
+             "h4_budget_physical": {
+                 "n_points": len(bud_phys),
+                 "n_V3_passed": sum(bool(r["V3_passed"]) for r in bud_phys),
+                 "failed": [f"{r['model']}/{r['dataset']}/{r['arm']}@{r['label']}"
+                            for r in bud_phys if not r["V3_passed"]]},
              "h4_rule": phase2.H4_OUTCOME_RULE,
              "h4_outcome_summary": h4_summ,
              "h4_invalid_cells": [f"{r['model']}/{r['dataset']}" for r in h4_out
