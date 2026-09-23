@@ -1,7 +1,7 @@
 {
-  "timestamp_utc": "2026-09-22T14:38:19+00:00",
-  "hostname": "narval1",
-  "platform": "Linux-5.14.0-687.46.1.el9_8.x86_64-x86_64-AMD_EPYC_7532_32-Core_Processor-with-glibc2.37",
+  "timestamp_utc": "2026-09-23T08:15:36+00:00",
+  "hostname": "ng31006",
+  "platform": "Linux-5.14.0-687.42.1.el9_8.x86_64-x86_64-AMD_EPYC_7543_32-Core_Processor-with-glibc2.37",
   "python": "3.11.4",
   "torch": "2.12.1",
   "numpy": "1.26.4",
@@ -10,25 +10,19 @@
   "tirex-ts": "1.4.2",
   "chronos": "2.3.1",
   "datasets": "5.0.0+computecanada",
-  "gpu": null,
-  "cuda": null,
-  "device_requested": null,
-  "slurm_job_id": null,
-  "slurm_nodelist": null,
-  "cpus_per_task": null,
-  "omp_num_threads": null,
-  "hf_home": null,
-  "command_line": "/home/eserebri/repos/chronos2-layerwise-probing/experiments/run_three_model_phase1.py --plan --quantile-set q9 --suite paper14 --output-root results/three_model_phase1_q9_loop_lowlr --datasets LOOP_SEATTLE_5T --probe-lr 1e-3 --wd-grid 1e-5 1e-4 1e-3 1e-2 1e-1 0.3 1 3 10 30 45 65 90 150 300 450 650 900 950 975 990",
+  "gpu": "NVIDIA A100-SXM4-40GB",
+  "cuda": "13.2",
+  "device_requested": "cuda",
+  "slurm_job_id": "3701691",
+  "slurm_nodelist": "ng31006",
+  "cpus_per_task": "4",
+  "omp_num_threads": "4",
+  "hf_home": "/scratch/eserebri/chronos2/hf_cache",
+  "command_line": "/home/eserebri/repos/chronos2-layerwise-probing/experiments/run_three_model_phase1.py --output-root results/three_model_phase1_q9_expanded --cache-root /scratch/eserebri/chronos2/phase1_shared_cache --window-cache /scratch/eserebri/chronos2/phase1_shared_windows --quantile-set q9 --suite paper14 --tunnel-tol 0.05 --tunnel-tols 0.01 0.02 0.05 0.10 --device cuda --resume --output-root results/three_model_phase1_q9_loop_lowlr --datasets LOOP_SEATTLE_5T --probe-lr 1e-3 --wd-grid 1e-5 1e-4 1e-3 1e-2 1e-1 0.3 1 3 10 30 45 65 90 150 300 450 650 900 950 975 990",
   "git": {
-    "commit": "ec4554046eebc54ba85bcbaa7e26dc403b31d99c",
+    "commit": "4402605c41abc15184b9cbe2589d4a3ba484218d",
     "branch": "tirex-experiment",
-    "dirty": true,
-    "dirty_files": [
-      "ob_three_model_phase1_q1.sh",
-      "job_three_model_phase1_q9_expanded.sh",
-      "results/phase1_q1_q9_comparison/",
-      "results/three_model_phase1_q1/",
-      "results/three_model_phase1_q9_expanded/"
-    ]
+    "dirty": false,
+    "dirty_files": []
   }
 }

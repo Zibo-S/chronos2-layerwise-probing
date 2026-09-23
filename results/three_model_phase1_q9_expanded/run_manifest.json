@@ -17,20 +17,33 @@
     "adapters",
     "truncation"
   ],
-  "started_utc": "2026-09-22T14:33:09+00:00",
-  "command_line": "/home/eserebri/repos/chronos2-layerwise-probing/experiments/run_three_model_phase1.py --plan --quantile-set q9 --suite paper14 --datasets LOOP_SEATTLE_5T --probe-lr 1e-3 --wd-grid 1e-5 1e-4 1e-3 1e-2 1e-1 0.3 1 3 10 30 45 65 90 150 300 450 650 900",
-  "output_root": "/home/eserebri/repos/chronos2-layerwise-probing/results/three_model_phase1_q9_expanded",
-  "cache_root": "/scratch/eserebri/chronos2/three_model_final_cache",
+  "started_utc": "2026-09-23T08:15:36+00:00",
+  "command_line": "/home/eserebri/repos/chronos2-layerwise-probing/experiments/run_three_model_phase1.py --output-root results/three_model_phase1_q9_expanded --cache-root /scratch/eserebri/chronos2/phase1_shared_cache --window-cache /scratch/eserebri/chronos2/phase1_shared_windows --quantile-set q9 --suite paper14 --tunnel-tol 0.05 --tunnel-tols 0.01 0.02 0.05 0.10 --device cuda --resume",
+  "output_root": "results/three_model_phase1_q9_expanded",
+  "cache_root": "/scratch/eserebri/chronos2/phase1_shared_cache",
   "roster": "paper14",
   "datasets": [
-    "LOOP_SEATTLE_5T"
+    "monash_electricity_hourly",
+    "m4_hourly",
+    "uber_tlc_hourly",
+    "wind_farms_hourly",
+    "sg_carpark",
+    "coastal_ts",
+    "boom_hourly",
+    "LOOP_SEATTLE_5T",
+    "electricity_15min",
+    "SZ_TAXI_15T",
+    "monash_london_smart_meters",
+    "m5",
+    "wiki_daily_100k",
+    "monash_traffic"
   ],
   "models": [
     "chronos2",
     "timesfm3",
     "tirex"
   ],
-  "n_cells": 3,
+  "n_cells": 42,
   "C": 512,
   "H": 64,
   "quantile_set": "q9",
@@ -131,21 +144,16 @@
       30.0,
       45.0,
       65.0,
-      90.0,
-      150.0,
-      300.0,
-      450.0,
-      650.0,
-      900.0
+      90.0
     ],
-    "n_candidates": 18,
-    "is_project_default": false,
+    "n_candidates": 13,
+    "is_project_default": true,
     "shared_by": "all three models, both quantile sets",
-    "lr": 0.001,
+    "lr": 0.01,
     "max_lr_times_wd": 0.9,
     "decoupled_limit": 1.0,
     "null_wd_never_selectable": 100.0,
-    "ceiling_reason": "AdamW's decoupled decay multiplies the weight by (1 - lr*wd) each step. At lr=0.001 the candidate wd=100 gives lr*wd = 1 and zeroes the weight every step (that is the no-information NULL, not a stronger regularizer), and anything above it diverges with alternating sign. The grid therefore continues log-spaced UP TO the wall, not through it."
+    "ceiling_reason": "AdamW's decoupled decay multiplies the weight by (1 - lr*wd) each step. At lr=0.01 the candidate wd=100 gives lr*wd = 1 and zeroes the weight every step (that is the no-information NULL, not a stronger regularizer), and anything above it diverges with alternating sign. The grid therefore continues log-spaced UP TO the wall, not through it."
   },
   "bootstrap_B": 5000,
   "seed": 0,
@@ -161,7 +169,20 @@
   "registry_hash": "sha256:b3041cc47f0851c4f83a0187aec1403952c43195f4404485a6782fc2908c18bd",
   "mase_definition": "MASE is normalized by the seasonal-naive error computed over the 512-step context window using the dataset-specific seasonal period.",
   "seasonal_m_by_dataset": {
-    "LOOP_SEATTLE_5T": 288
+    "monash_electricity_hourly": 24,
+    "m4_hourly": 24,
+    "uber_tlc_hourly": 24,
+    "wind_farms_hourly": 24,
+    "sg_carpark": 24,
+    "coastal_ts": 24,
+    "boom_hourly": 24,
+    "LOOP_SEATTLE_5T": 288,
+    "electricity_15min": 96,
+    "SZ_TAXI_15T": 96,
+    "monash_london_smart_meters": 48,
+    "m5": 7,
+    "wiki_daily_100k": 7,
+    "monash_traffic": 24
   },
   "model_specs": {
     "chronos2": {
@@ -1070,14 +1091,14 @@
   },
   "probe": {
     "epochs": 300,
-    "lr": 0.001,
+    "lr": 0.01,
     "optimizer": "AdamW, full batch, weight decay on the WEIGHT only",
     "selection": "weight decay chosen on the DEDICATED validation split, no refit"
   },
   "environment": {
-    "timestamp_utc": "2026-09-22T14:33:09+00:00",
-    "hostname": "narval1",
-    "platform": "Linux-5.14.0-687.46.1.el9_8.x86_64-x86_64-AMD_EPYC_7532_32-Core_Processor-with-glibc2.37",
+    "timestamp_utc": "2026-09-23T08:15:36+00:00",
+    "hostname": "ng31006",
+    "platform": "Linux-5.14.0-687.42.1.el9_8.x86_64-x86_64-AMD_EPYC_7543_32-Core_Processor-with-glibc2.37",
     "python": "3.11.4",
     "torch": "2.12.1",
     "numpy": "1.26.4",
@@ -1086,26 +1107,20 @@
     "tirex-ts": "1.4.2",
     "chronos": "2.3.1",
     "datasets": "5.0.0+computecanada",
-    "gpu": null,
-    "cuda": null,
-    "device_requested": null,
-    "slurm_job_id": null,
-    "slurm_nodelist": null,
-    "cpus_per_task": null,
-    "omp_num_threads": null,
-    "hf_home": null,
-    "command_line": "/home/eserebri/repos/chronos2-layerwise-probing/experiments/run_three_model_phase1.py --plan --quantile-set q9 --suite paper14 --datasets LOOP_SEATTLE_5T --probe-lr 1e-3 --wd-grid 1e-5 1e-4 1e-3 1e-2 1e-1 0.3 1 3 10 30 45 65 90 150 300 450 650 900",
+    "gpu": "NVIDIA A100-SXM4-40GB",
+    "cuda": "13.2",
+    "device_requested": "cuda",
+    "slurm_job_id": "3698458",
+    "slurm_nodelist": "ng31006",
+    "cpus_per_task": "4",
+    "omp_num_threads": "4",
+    "hf_home": "/scratch/eserebri/chronos2/hf_cache",
+    "command_line": "/home/eserebri/repos/chronos2-layerwise-probing/experiments/run_three_model_phase1.py --output-root results/three_model_phase1_q9_expanded --cache-root /scratch/eserebri/chronos2/phase1_shared_cache --window-cache /scratch/eserebri/chronos2/phase1_shared_windows --quantile-set q9 --suite paper14 --tunnel-tol 0.05 --tunnel-tols 0.01 0.02 0.05 0.10 --device cuda --resume",
     "git": {
-      "commit": "ec4554046eebc54ba85bcbaa7e26dc403b31d99c",
+      "commit": "4402605c41abc15184b9cbe2589d4a3ba484218d",
       "branch": "tirex-experiment",
-      "dirty": true,
-      "dirty_files": [
-        "ob_three_model_phase1_q1.sh",
-        "job_three_model_phase1_q9_expanded.sh",
-        "results/phase1_q1_q9_comparison/",
-        "results/three_model_phase1_q1/",
-        "results/three_model_phase1_q9_expanded/"
-      ]
+      "dirty": false,
+      "dirty_files": []
     }
   },
   "cross_model_loss_caveat": "Each model is probed where its OWN head reads, in its OWN normalized target space (Chronos-2: context-standardized + arcsinh at the K=4 forecast slots; TimesFM-3: detrend + RevIN at the last real context token; TiRex: per-pass loc/scale at the two native forecast-producing states). The absolute Q=9 mean pinball loss is therefore NOT comparable ACROSS models. Cross-model comparison is valid for (a) the tunnel entrance, which is a within-model ratio against that model's own final depth, and (b) MASE, which is in raw units under one shared in-context seasonal-naive denominator.",
