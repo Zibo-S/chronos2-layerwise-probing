@@ -276,7 +276,8 @@ CONTRACTS = [("P ", contract_P), ("V1", contract_V1), ("V2", contract_V2), ("V3"
 
 def main(argv=None):
     print("\nPHASE-2 PATHWAY + TRUNCATION CONTRACTS on tiny real architectures\n" + "=" * 78)
-    n_ok, n_skip = 0, 0
+    import traceback
+    n_ok, n_skip, failed = 0, 0, []
     for model in ("chronos2", "timesfm3", "tirex"):
         ok, why = _available(model)
         if not ok:
@@ -284,12 +285,21 @@ def main(argv=None):
             n_skip += 1
             continue
         for name, fn in CONTRACTS:
-            msg = fn(model)
+            try:
+                msg = fn(model)
+            except Exception:             # report EVERY failing contract, not only the first
+                failed.append(f"{name}/{model}")
+                print(f"{name} {model:<9} FAIL")
+                traceback.print_exc()
+                continue
             if msg is None:
                 continue
             print(f"{name} {model:<9} {msg}  OK")
             n_ok += 1
     print("=" * 78 + f"\n{n_ok} contracts hold" + (f"; {n_skip} model(s) SKIPPED" if n_skip else ""))
+    if failed:
+        print(f"{len(failed)} contract(s) FAILED: {', '.join(failed)}")
+        return 1
     return 0
 
 

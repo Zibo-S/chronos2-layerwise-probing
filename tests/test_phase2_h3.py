@@ -241,7 +241,16 @@ def test_11_bootstrap_is_paired_and_matches_the_phase1_primitives():
     Wm = rng.normal(size=(3, n))
     r1 = cluster_replicates(Wm, cid, 200, 0)
     r2 = cluster_replicates(Wm[[2, 0]], cid, 200, 0)      # different call, same dataset
-    assert np.array_equal(r1[:, 0], r2[:, 1]) and np.array_equal(r1[:, 2], r2[:, 0])
+    # Pairing = every call resamples the SAME clusters: an integer count matrix, bitwise.
+    assert np.array_equal(cluster_bootstrap_counts(S, 200, 0), cluster_bootstrap_counts(S, 200, 0))
+    # A row's replicates then agree across calls up to BLAS summation order only: a GEMM over 3
+    # columns and one over 2 may use different kernels (bitwise equal on the Mac, last-ULP
+    # different on Narval's FlexiBLAS) -- float noise, not unpairing.
+    np.testing.assert_allclose(r1[:, 0], r2[:, 1], rtol=1e-12, atol=0)
+    np.testing.assert_allclose(r1[:, 2], r2[:, 0], rtol=1e-12, atol=0)
+    # ...and the check has teeth: a different resampling (seed) is NOT paired.
+    r3 = cluster_replicates(Wm, cid, 200, 1)
+    assert not np.allclose(r1[:, 0], r3[:, 0], rtol=1e-6, atol=0)
     M = cluster_bootstrap_counts(S, 200, 0)
     sums = np.zeros((S, 3))
     np.add.at(sums, cid, Wm.T)
@@ -761,11 +770,22 @@ def test_25_h4_outcome_is_preregistered_and_failures_are_reported():
 
 # =========================================================================== #
 def main(argv=None):
+    import traceback
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     print(f"\nPHASE-2 H3 CONTRACTS  ({len(tests)} model-free groups)\n" + "=" * 78)
+    failed = []
     for t in tests:
-        t()
-    print("=" * 78 + f"\nall {len(tests)} H3 contracts hold")
+        try:
+            t()
+        except Exception:                 # report EVERY failing contract, not only the first
+            failed.append(t.__name__)
+            print(f"FAIL {t.__name__}")
+            traceback.print_exc()
+    print("=" * 78)
+    if failed:
+        print(f"{len(failed)} of {len(tests)} H3 contracts FAILED: {', '.join(failed)}")
+        return 1
+    print(f"all {len(tests)} H3 contracts hold")
     return 0
 
 
