@@ -12,10 +12,17 @@ set -euo pipefail
 # =======================================================================================
 # PHASE 2 / H4 -- latency / throughput / memory. MEASURED, one fresh process per configuration.
 #
-# THREE INDEPENDENT REPEATS PER MODEL, one model per job (9 short jobs, each well under 3 h):
-#   for r in 1 2 3; do for m in chronos2 timesfm3 tirex; do
-#     sbatch --time=02:00:00 -J p2lat-$m-$r job_phase2_latency.sh --models $m --job-tag job${r}_$m
-#   done; done
+# THREE INDEPENDENT REPEATS, sized from the smoke's MEASURED per-call times (B = 1 and 256):
+#   Chronos-2 ~20 min | TimesFM-3 ~1.4 h | TiRex ~2.3 h -> TiRex split into two depth halves
+#   balanced by cost (a TiRex call scales with the blocks kept: ~41 ms per block at B=1).
+#   for r in 1 2 3; do
+#     sbatch --time=01:00:00 -J p2lat-c2-$r     job_phase2_latency.sh --models chronos2 --job-tag job${r}_chronos2
+#     sbatch --time=02:30:00 -J p2lat-tfm3-$r   job_phase2_latency.sh --models timesfm3 --job-tag job${r}_timesfm3
+#     sbatch --time=02:00:00 -J p2lat-tirA-$r   job_phase2_latency.sh --models tirex --depths 0 1 2 3 4 5 6 7 8 --job-tag job${r}_tirex_a
+#     sbatch --time=02:00:00 -J p2lat-tirB-$r   job_phase2_latency.sh --models tirex --depths 9 10 11 12 --job-tag job${r}_tirex_b
+#   done
+#   (every job times its own native model at start / middle / end; speedups are formed within
+#   the job, and each depth lives in exactly one job per repeat)
 # Speedups are formed WITHIN each job (same node, the model's native timed at start/middle/end),
 # then aggregated across a model's jobs by experiments.make_phase2_tables (median of per-job
 # medians + range). 100 in-run repetitions are NOT independent runs -- the repeats are.

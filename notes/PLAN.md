@@ -1604,3 +1604,53 @@ Latency per repeat:
 3. Tables.
 
 **Before the Chronos-2 latency jobs and H4 evaluate:** on the login node, `snapshot_download('autogluon/chronos-2-small')`.
+
+## PHASE 2 RESULTS + PAPER DRAFT (2026-09-24, from commit 2651396)
+
+**In the push:** 42/42 H3 cells, 12/12 headline-eligible latency jobs, and H4 verify (all gates pass at every depth).
+**Not in the push:** the H4 `evaluate` cells (entrance and budget). They are still to run; see "Next" below.
+
+**H3 at the frozen entrance** (median test ΔMASE over datasets; ≤5% count):
+
+| | hard cut | label-free (NOA) | supervised (FL) | probe head |
+|---|---|---|---|---|
+| Chronos-2 (n=14) | +38.6% | **+5.5%**, 7/14, gap closed 85% | +6.7% | +16.9% |
+| TimesFM-3 (n=14) | +3,702% | +35.5%, 0/14, gap closed 99% | = probe | **+15.8%** |
+| TiRex (n=12; M4 and Traffic have entrance = final) | +98.6% | **+6.3%**, 5/12, gap closed 93% | +8.7% | +10.7% |
+
+- Even at the final block, the probe is 15% / 14% / 10% worse than the native head, so its plateau is a readout deficit, not a depth effect.
+- Compatibility lag (NOA, validation): +1 block (C2), +0.5 (TiRex), +17.5 (TimesFM-3). The hard cut is never compatible before the final block.
+
+**H4 frontier** (fixed depth, median over 14 datasets, end-to-end speedup at B=1):
+- **C2 NOA:** ≤3.1% from L11 to L4. L4 = 2.43× at +3.1%; L3 = 2.91× at +4.4%.
+- **TiRex NOA:** +1.8% at 1.09×, +4.3% at 1.21×, 8.5–10.6% at 1.5–2×.
+- **TimesFM-3:** no usable frontier. L19 costs +5.4%. The no-block floor is 69 of 98 ms at B=1, so the maximum B=1 speedup is 1.42× (6.0× at B=256).
+
+**Budget table** (NOA; median speedup over all 14 datasets; within/cut):
+
+| | 10% budget | 20% budget |
+|---|---|---|
+| C2 | 1.57×, 9/13 | 3.72×, 12/14 |
+| TiRex | 1.52×, 10/13 | 1.94×, 13/14 (FL: 3.73×) |
+| TimesFM-3 | ≤1.02× | ≤1.02× |
+
+- Hard truncation stays at 1.00× at every budget.
+
+**Frozen-entrance test** (offline; physical confirmation pending): C2 7/14, TiRex 5/12, TimesFM-3 0/14.
+
+**Found while writing (reported in the draft):**
+1. TiRex budget gains depend on the low-skill pairs SZ Taxi and M5. Without them, 1.52×→1.27× and 1.94×→1.50×. C2 is unchanged.
+2. 74/168 TiRex NOA fits selected a checkpoint in the last 10% of epochs, so they were still improving slowly. Training was not extended after seeing results.
+3. At B=1, TimesFM-3's API overhead dominates. The main figure keeps B=1; B=256, device-level and parameter axes are in the appendix.
+4. WQL degrades faster than MASE at deep cuts. Example: C2 L4 is +5.5% WQL vs +3.1% MASE.
+
+**Paper outputs:**
+- `experiments/make_phase2_paper_tables.py` (rewritten) → `three_models_paper/figures/truncation/`: 8 figures + 9 tables + macros + `truncation_stats.json`.
+- `writing/main_compatibility_truncation.tex`: main body H3 + H4, about 3.3 pages including 1 figure and 2 tables.
+- `writing/appendix_truncation.tex`: protocol and additional results. It supersedes `phase2_reproducibility.tex`.
+- Compiled cleanly with tectonic in a scratch test harness at 5.5in text width: no errors, no overfull boxes.
+- 27 H3 contracts pass.
+
+**Next:**
+1. H4 evaluate on Narval (6 jobs), then rerun both table scripts. That fills the V3 counts, Chronos-2-small accuracy and the two MISSING appendix tables; lines are marked `% [EVAL]`.
+2. Trim the main body to the page budget.

@@ -641,9 +641,9 @@ def test_23_tables_and_paper_outputs_regenerate_from_artifacts_only():
             assert (comb / f).exists(), f
         gen = tmp / "generated"
         MP.build(tmp, gen)
-        tab = (gen / "h3_ladder_table.tex").read_text()
+        tab = (gen / "tables" / "h3_ladder_table.tex").read_text()
         assert "TiRex" in tab and "Hard cut" in tab and "\\toprule" in tab
-        assert "PhaseTwoMissing" in (gen / "h4_truncation_table.tex").read_text()
+        assert "PhaseTwoMissing" in (gen / "tables" / "h4_truncation_table.tex").read_text()
         assert (gen / "h3_depth_curves.pdf").stat().st_size > 1000
         assert (gen / "h3_ladder_at_entrance.pdf").stat().st_size > 1000
         assert "newcommand" in (gen / "phase2_macros.tex").read_text()
@@ -777,9 +777,9 @@ def test_25_h4_outcome_is_preregistered_and_failures_are_reported():
                 s["n_truncatable"]) == (1, 1, 1, 2) and s["failed_datasets"] == "uber_tlc_hourly"
         gen = tmp / "generated"
         MP.build(tmp, gen)
-        tab = (gen / "h4_outcome_table.tex").read_text()
+        tab = (gen / "tables" / "h4_outcome_table.tex").read_text()
         assert "TiRex & 3 & 2 & 1 & 1 (0) & 1" in tab, tab
-        noa_row = next(x for x in (gen / "h4_truncation_table.tex").read_text().splitlines()
+        noa_row = next(x for x in (gen / "tables" / "h4_truncation_table.tex").read_text().splitlines()
                        if "Label-free aligned truncation" in x)
         assert noa_row.rstrip(" \\").endswith("1/2"), noa_row      # no vacuous 3rd 'success'
         assert "HfourFailure}{1/2}" in (gen / "phase2_macros.tex").read_text()
@@ -789,7 +789,7 @@ def test_25_h4_outcome_is_preregistered_and_failures_are_reported():
         assert json.loads((comb / "phase2_stats.json").read_text())["h4_invalid_cells"] == [
             "tirex/coastal_ts"]
         for f in ("h4_truncation_table.tex", "h4_outcome_table.tex"):
-            t = (gen / f).read_text()
+            t = (gen / "tables" / f).read_text()
             assert "PhaseTwoMissing" in t and "INVALID" in t, t
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
@@ -894,8 +894,9 @@ def test_27_frontier_tables_and_figure_from_artifacts():
         MP.build(tmp, gen)
         assert (gen / "h4_frontier.pdf").stat().st_size > 1000
         assert (gen / "h4_frontier_appendix.pdf").stat().st_size > 1000
-        tab = (gen / "h4_budget_table.tex").read_text()
-        assert "TiRex" in tab and "10\\% budget" in tab and "Probe head" in tab, tab
+        tab = (gen / "tables" / "h4_budget_table.tex").read_text()
+        assert "TiRex" in tab and "10\\%" in tab and "Probe head" in tab, tab
+        assert "Label-free alignment" in tab and "within/cut" in tab, tab
         assert "\\phtwotirexnoaBudgetTenCut" in (gen / "phase2_macros.tex").read_text()
 
         # the mock's arms never fit a budget; give one cell two real cuts so the join is exercised
@@ -969,11 +970,11 @@ def test_27_frontier_tables_and_figure_from_artifacts():
         phys_cell(True)
         MT.build(tmp)
         MP.build(tmp, gen)
-        assert "verified operating points: 2/2" in (gen / "h4_budget_table.tex").read_text()
+        assert "verified operating points: 2/2" in (gen / "tables" / "h4_budget_table.tex").read_text()
         phys_cell(False)
         MT.build(tmp)
         MP.build(tmp, gen)
-        t = (gen / "h4_budget_table.tex").read_text()
+        t = (gen / "tables" / "h4_budget_table.tex").read_text()
         assert "PhaseTwoMissing" in t and "failed V3" in t, t
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
