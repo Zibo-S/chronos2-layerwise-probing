@@ -1,0 +1,38 @@
+{
+  "native_gate": {
+    "available": true,
+    "rtol": 0.0001,
+    "test_loss_mean_ours": 0.2928044243166462,
+    "test_loss_mean_phase1": 0.29280442625093156,
+    "test_loss_mean_rel_diff": 6.606065925214336e-09,
+    "test_loss_window_max_abs_diff": 2.384185791015625e-07,
+    "test_mase_mean_ours": 0.7579503996783555,
+    "test_mase_mean_phase1": 0.757950397011711,
+    "test_mase_mean_rel_diff": 3.5182309849540976e-09,
+    "test_mase_window_max_abs_diff": 1.6231986339938775e-07,
+    "test_mase_window_max_rel_diff": 1.6325237723335646e-05,
+    "passed": true
+  },
+  "native_raw_vs_phase1_cache": {
+    "max_abs": 1.6339948615495814e-05,
+    "max_rel_to_mean_abs": 1.5654896317832366e-06,
+    "note": "offline f(h_L) on the (n, R, d) readout vs the model's own full-sequence forward: a different GEMM shape, so not bitwise; measured every run"
+  },
+  "native_quantile_crossing_fraction_test": 0.010917467948717948,
+  "hard_cut_at_final_depth_equals_native": true,
+  "identity_adapter_equals_hard_cut_bitwise": {
+    "depth": "Emb",
+    "bitwise": true
+  },
+  "closed_form_identity_at_final_depth": {
+    "max_abs_A_minus_I": 2.1968793243332813e-08,
+    "max_abs_b": 6.814524627224428e-08,
+    "note": "X = Y makes A = I, b = 0 the exact optimum for every lambda; the eigenbasis reconstruction reproduces it to float64 round-off"
+  },
+  "probe_inverse_gate": {
+    "max_rel_diff_mean_test_mase": 0.0,
+    "rtol": 0.0001,
+    "passed": true
+  },
+  "wql_denominator_equals_phase1": true
+}

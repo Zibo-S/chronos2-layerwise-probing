@@ -1,0 +1,359 @@
+{
+  "schema": "phase2_h3_cell/v1",
+  "model": "timesfm3",
+  "dataset": "SZ_TAXI_15T",
+  "question": "Once forecasting is recoverable from an intermediate representation, can a lightweight transformation make it usable by the model's ORIGINAL frozen forecasting pathway, close to the full native model?",
+  "families": [
+    "hard",
+    "noa",
+    "ra",
+    "probe"
+  ],
+  "dropped_families": {
+    "fl": "TimesFM-3's native head is linear, g(x) = W x + c with W in R^{576 x 1280} of full row rank 576. For an affine adapter a(x) = A x + b the pathway is W A x + (W b + c). Because W has full row rank, {W A : A in R^{1280 x 1280}} is the set of ALL 576 x 1280 matrices, so a forecast-loss adapter followed by the frozen head spans exactly the function class of the Phase-1 linear probe Linear(1280, 576). It is therefore not a separate rung: the probe IS the supervised alignment for TimesFM-3 (tested in code: tests.test_phase2_h3, contract 9)."
+  },
+  "depths_evaluated": [
+    "Emb",
+    "L1",
+    "L2",
+    "L3",
+    "L4",
+    "L5",
+    "L6",
+    "L7",
+    "L8",
+    "L9",
+    "L10",
+    "L11",
+    "L12",
+    "L13",
+    "L14",
+    "L15",
+    "L16",
+    "L17",
+    "L18",
+    "L19",
+    "L20"
+  ],
+  "complete_depth_sweep": true,
+  "phase1_tunnel_entrance": "L1",
+  "blocks_removed_at_entrance": 19,
+  "ladder_at_entrance": {
+    "hard": {
+      "mase_ratio": 25.750868203265302,
+      "mase_ci": [
+        23.886702260544407,
+        27.6453190145865
+      ],
+      "wql_ratio": 50.38442925970529,
+      "within_budget_mase": false
+    },
+    "noa": {
+      "mase_ratio": 1.1576593274369473,
+      "mase_ci": [
+        1.117098614810661,
+        1.20663108209445
+      ],
+      "wql_ratio": 1.1573446240629492,
+      "within_budget_mase": false
+    },
+    "ra": {
+      "mase_ratio": 1.2394059548726557,
+      "mase_ci": [
+        1.1928277176273059,
+        1.297547982051415
+      ],
+      "wql_ratio": 1.345441689349681,
+      "within_budget_mase": false
+    },
+    "probe": {
+      "mase_ratio": 1.1010404305330395,
+      "mase_ci": [
+        1.0502599162914905,
+        1.187867245954437
+      ],
+      "wql_ratio": 1.0688167471129273,
+      "within_budget_mase": false
+    }
+  },
+  "compatibility_gap_exists_at_entrance": true,
+  "native": {
+    "test_loss": 0.2928044243166462,
+    "test_mase": 0.7579503996783555,
+    "test_mae": 2.713772351113663,
+    "test_wql": 0.19707417337800487,
+    "val_loss": 0.262933908842313,
+    "wql_standard": 0.19707417337800487
+  },
+  "low_skill": {
+    "native_val_over_floor": 0.8981737747166064,
+    "flag": false,
+    "threshold": 0.9
+  },
+  "frontier_budgets": {
+    "hard": {
+      "eps_0.02": {
+        "label": "L20",
+        "truncated": false,
+        "test_mase_ratio": 1.0
+      },
+      "eps_0.05": {
+        "label": "L20",
+        "truncated": false,
+        "test_mase_ratio": 1.0
+      },
+      "eps_0.1": {
+        "label": "L20",
+        "truncated": false,
+        "test_mase_ratio": 1.0
+      },
+      "eps_0.2": {
+        "label": "L20",
+        "truncated": false,
+        "test_mase_ratio": 1.0
+      }
+    },
+    "noa": {
+      "eps_0.02": {
+        "label": "L19",
+        "truncated": true,
+        "test_mase_ratio": 1.0097077191989636
+      },
+      "eps_0.05": {
+        "label": "L18",
+        "truncated": true,
+        "test_mase_ratio": 1.0288281821194394
+      },
+      "eps_0.1": {
+        "label": "L16",
+        "truncated": true,
+        "test_mase_ratio": 1.0713828849584315
+      },
+      "eps_0.2": {
+        "label": "L10",
+        "truncated": true,
+        "test_mase_ratio": 1.1262446245962858
+      }
+    },
+    "ra": {
+      "eps_0.02": {
+        "label": "L20",
+        "truncated": false,
+        "test_mase_ratio": 1.0
+      },
+      "eps_0.05": {
+        "label": "L20",
+        "truncated": false,
+        "test_mase_ratio": 1.0
+      },
+      "eps_0.1": {
+        "label": "L19",
+        "truncated": true,
+        "test_mase_ratio": 1.0413069915799418
+      },
+      "eps_0.2": {
+        "label": "L18",
+        "truncated": true,
+        "test_mase_ratio": 1.1337523675685102
+      }
+    },
+    "probe": {
+      "eps_0.02": {
+        "label": "L20",
+        "truncated": false,
+        "test_mase_ratio": 1.0
+      },
+      "eps_0.05": {
+        "label": "L20",
+        "truncated": false,
+        "test_mase_ratio": 1.0
+      },
+      "eps_0.1": {
+        "label": "L19",
+        "truncated": true,
+        "test_mase_ratio": 1.0863792178451321
+      },
+      "eps_0.2": {
+        "label": "Emb",
+        "truncated": true,
+        "test_mase_ratio": 1.1220860715770216
+      }
+    }
+  },
+  "verification": {
+    "native_gate": true,
+    "native_raw_vs_phase1_cache": {
+      "max_abs": 1.6339948615495814e-05,
+      "max_rel_to_mean_abs": 1.5654896317832366e-06,
+      "note": "offline f(h_L) on the (n, R, d) readout vs the model's own full-sequence forward: a different GEMM shape, so not bitwise; measured every run"
+    },
+    "native_quantile_crossing_fraction_test": 0.010917467948717948,
+    "hard_cut_at_final_depth_equals_native": true,
+    "identity_adapter_equals_hard_cut_bitwise": {
+      "depth": "Emb",
+      "bitwise": true
+    },
+    "closed_form_identity_at_final_depth": {
+      "max_abs_A_minus_I": 2.1968793243332813e-08,
+      "max_abs_b": 6.814524627224428e-08,
+      "note": "X = Y makes A = I, b = 0 the exact optimum for every lambda; the eigenbasis reconstruction reproduces it to float64 round-off"
+    },
+    "probe_inverse_gate": true,
+    "wql_denominator_equals_phase1": true
+  },
+  "timings": {
+    "Emb": 3.92,
+    "L1": 3.98,
+    "L2": 3.97,
+    "L3": 3.98,
+    "L4": 4.01,
+    "L5": 3.98,
+    "L6": 4.02,
+    "L7": 4.06,
+    "L8": 3.99,
+    "L9": 4.03,
+    "L10": 3.99,
+    "L11": 4.02,
+    "L12": 4.0,
+    "L13": 4.01,
+    "L14": 3.99,
+    "L15": 4.06,
+    "L16": 3.99,
+    "L17": 4.0,
+    "L18": 4.03,
+    "L19": 3.99,
+    "L20": 0.01,
+    "cell_total_s": 81.4
+  },
+  "fit_cfg": {
+    "epochs": 1500,
+    "lr": 0.001,
+    "wd_grid": [
+      0.0,
+      0.1,
+      1.0,
+      10.0,
+      30.0,
+      100.0
+    ],
+    "eval_every": 25,
+    "kappas": [
+      1e-12,
+      1e-11,
+      1e-10,
+      1e-09,
+      1e-08,
+      1e-07,
+      1e-06,
+      1e-05,
+      0.0001,
+      0.001,
+      0.01,
+      0.1,
+      1.0,
+      10.0,
+      100.0
+    ],
+    "seed": 0,
+    "native_gate_rtol": 0.0001,
+    "boot_b": 5000,
+    "boot_seed": 0
+  },
+  "pathway": {
+    "model": "timesfm3",
+    "d": 1280,
+    "rows_per_window": 1,
+    "n_out_per_row": 576,
+    "layout": "horizon-major (t*Q + q)",
+    "inverse": "revin reverse (z*sd + mu) -> clamp(+-value_clip) -> + trend (decode's own path; stitch is the identity for one output token)",
+    "value_clip": 1e+20,
+    "final_norm": "none"
+  },
+  "phase1_dependency": {
+    "root": "/home/eserebri/repos/chronos2-layerwise-probing/results/three_model_phase1_q9_expanded",
+    "model": "timesfm3",
+    "dataset": "SZ_TAXI_15T",
+    "config_hash": "sha256:d86d2ad7e7ebec75c628f6afe4f8901ca527f2c044d4ec35467be5e7b0fd01c2",
+    "fit_hash": "sha256:c3e94b914b637b0ce2ca48e1ea55167eba3be49c5d6724cc8122ba047203dd45",
+    "postprocess_hash": "sha256:584a3c65d0f25e8875be66632b91f9e0d289c075b73e11fa47b77305d187e5f6",
+    "completed_utc": "2026-09-22T12:36:07+00:00",
+    "protocol": "phase1/v1",
+    "tunnel_definition": "sustained_suffix_v1",
+    "window_digest": "sha256:e7dbdeae77a6f2f9bf621e96a9045afd29159a36f6c5035f6f4f34ed880cda77",
+    "checkpoint": "google/timesfm-3.0-pytorch",
+    "quantile_set": "q9",
+    "sha256_bootstrap_inputs.npz": "sha256:c4cbbba5a655b1f3a477954d5f123d00f4b7ca7e705cefd4ecb4addd190d5b8c",
+    "sha256_tunnel.json": "sha256:0e92ee3d1352737bac06b4a7f624c3d78e7b75416772d2078ee471b7083a1c71",
+    "sha256_cell_config.json": "sha256:a20917ab156ec8c2447b32e9cabd5bfbbc12edfc41039f2d298e49c588d1f90d",
+    "sha256_predictions_val.npz": "sha256:cb7120cd0a7c6d618e6bd1bc6c0e4e1cdd786e5a33737772e70dba931aec523c",
+    "sha256_predictions_test.npz": "sha256:445734c86e603a66502b92e506e4f30f04b384f6e7c3afa9558fe71d0e784560"
+  },
+  "provenance": {
+    "cache_roots": {
+      "train": "/scratch/eserebri/chronos2/phase1_shared_cache/tfm3-last-token-q9-fp32-v1__paper14__SZ_TAXI_15T__train__C512_H64",
+      "val": "/scratch/eserebri/chronos2/phase1_shared_cache/tfm3-last-token-q9-fp32-v1__paper14__SZ_TAXI_15T__val__C512_H64",
+      "test": "/scratch/eserebri/chronos2/phase1_shared_cache/tfm3-last-token-q9-fp32-v1__paper14__SZ_TAXI_15T__test__C512_H64"
+    },
+    "geometry": {
+      "C": 512,
+      "H": 64,
+      "P": 32,
+      "num_real_context_patches": 16,
+      "selected_token_index": 15,
+      "last_token_only": true,
+      "prefix_extraction": false,
+      "n_horizon_patches": 2,
+      "n_tokens": 18,
+      "native_K": 1,
+      "rolls": 2,
+      "extract_len": 64,
+      "target_start_0based": 512,
+      "target_end_0based_exclusive": 576,
+      "target_start_1based": 513,
+      "target_end_1based": 576,
+      "layer_names": [
+        "Emb",
+        "L1",
+        "L2",
+        "L3",
+        "L4",
+        "L5",
+        "L6",
+        "L7",
+        "L8",
+        "L9",
+        "L10",
+        "L11",
+        "L12",
+        "L13",
+        "L14",
+        "L15",
+        "L16",
+        "L17",
+        "L18",
+        "L19",
+        "L20"
+      ],
+      "d": 1280,
+      "num_quantiles": 9,
+      "native_quantiles": [
+        0.10000000149011612,
+        0.20000000298023224,
+        0.30000001192092896,
+        0.4000000059604645,
+        0.5,
+        0.6000000238418579,
+        0.699999988079071,
+        0.800000011920929,
+        0.8999999761581421
+      ]
+    }
+  },
+  "caveats": {
+    "recoverability_vs_replaceability": "A strong intermediate-layer probe establishes RECOVERABILITY but not REPLACEABILITY: the probe replaces the pretrained pathway. The hard cut and the aligned native pathway test replaceability; only they license H4.",
+    "cross_model_loss": "Each model is probed where its OWN head reads, in its OWN normalized target space (Chronos-2: context-standardized + arcsinh at the K=4 forecast slots; TimesFM-3: detrend + RevIN at the last real context token; TiRex: per-pass loc/scale at the two native forecast-producing states). The absolute Q=9 mean pinball loss is therefore NOT comparable ACROSS models. Cross-model comparison is valid for (a) the tunnel entrance, which is a within-model ratio against that model's own final depth, and (b) MASE, which is in raw units under one shared in-context seasonal-naive denominator.",
+    "wql": "WQL is reported with the standard 1/Q normalization (phase2.standard_wql)",
+    "operating_point": "the frozen Phase-1 sustained 5% entrance; compatibility tunnels are a secondary diagnostic"
+  },
+  "smoke": false
+}

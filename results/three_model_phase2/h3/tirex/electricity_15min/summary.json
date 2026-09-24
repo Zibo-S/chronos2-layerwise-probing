@@ -1,0 +1,319 @@
+{
+  "schema": "phase2_h3_cell/v1",
+  "model": "tirex",
+  "dataset": "electricity_15min",
+  "question": "Once forecasting is recoverable from an intermediate representation, can a lightweight transformation make it usable by the model's ORIGINAL frozen forecasting pathway, close to the full native model?",
+  "families": [
+    "hard",
+    "noa",
+    "fl",
+    "ra",
+    "probe"
+  ],
+  "dropped_families": {},
+  "depths_evaluated": [
+    "Emb",
+    "L1",
+    "L2",
+    "L3",
+    "L4",
+    "L5",
+    "L6",
+    "L7",
+    "L8",
+    "L9",
+    "L10",
+    "L11",
+    "L12"
+  ],
+  "complete_depth_sweep": true,
+  "phase1_tunnel_entrance": "L10",
+  "blocks_removed_at_entrance": 2,
+  "ladder_at_entrance": {
+    "hard": {
+      "mase_ratio": 1.7734309868723586,
+      "mase_ci": [
+        1.691627771610419,
+        1.864922585619427
+      ],
+      "wql_ratio": 1.929988329174504,
+      "within_budget_mase": false
+    },
+    "noa": {
+      "mase_ratio": 1.0479749185089173,
+      "mase_ci": [
+        1.0348487036603855,
+        1.0632033431773058
+      ],
+      "wql_ratio": 1.0501550147262282,
+      "within_budget_mase": true
+    },
+    "fl": {
+      "mase_ratio": 1.1022166516322711,
+      "mase_ci": [
+        1.0839385318149632,
+        1.1233776820077648
+      ],
+      "wql_ratio": 1.1076619652072408,
+      "within_budget_mase": false
+    },
+    "ra": {
+      "mase_ratio": 1.0526456174290344,
+      "mase_ci": [
+        1.0371710936833969,
+        1.0691615764893723
+      ],
+      "wql_ratio": 1.0605086152376286,
+      "within_budget_mase": false
+    },
+    "probe": {
+      "mase_ratio": 1.0991798494862042,
+      "mase_ci": [
+        1.077907080794628,
+        1.121759563320383
+      ],
+      "wql_ratio": 1.1068528378216496,
+      "within_budget_mase": false
+    }
+  },
+  "compatibility_gap_exists_at_entrance": true,
+  "native": {
+    "test_loss": 0.18627675927903073,
+    "test_mase": 1.2409612472262626,
+    "test_mae": 79.74909148192116,
+    "test_wql": 0.11108435594471236,
+    "val_loss": 0.12021392805469382,
+    "wql_standard": 0.11108435594471236
+  },
+  "low_skill": {
+    "native_val_over_floor": 0.33371461613766645,
+    "flag": false,
+    "threshold": 0.9
+  },
+  "frontier_budgets": {
+    "hard": {
+      "eps_0.02": {
+        "label": "L12",
+        "truncated": false,
+        "test_mase_ratio": 1.0
+      },
+      "eps_0.05": {
+        "label": "L12",
+        "truncated": false,
+        "test_mase_ratio": 1.0
+      },
+      "eps_0.1": {
+        "label": "L12",
+        "truncated": false,
+        "test_mase_ratio": 1.0
+      },
+      "eps_0.2": {
+        "label": "L12",
+        "truncated": false,
+        "test_mase_ratio": 1.0
+      }
+    },
+    "noa": {
+      "eps_0.02": {
+        "label": "L12",
+        "truncated": false,
+        "test_mase_ratio": 1.0
+      },
+      "eps_0.05": {
+        "label": "L11",
+        "truncated": true,
+        "test_mase_ratio": 1.0136095827911502
+      },
+      "eps_0.1": {
+        "label": "L10",
+        "truncated": true,
+        "test_mase_ratio": 1.0479749185089173
+      },
+      "eps_0.2": {
+        "label": "L8",
+        "truncated": true,
+        "test_mase_ratio": 1.105359958931625
+      }
+    },
+    "fl": {
+      "eps_0.02": {
+        "label": "L12",
+        "truncated": false,
+        "test_mase_ratio": 1.0
+      },
+      "eps_0.05": {
+        "label": "L11",
+        "truncated": true,
+        "test_mase_ratio": 1.056007737321368
+      },
+      "eps_0.1": {
+        "label": "L10",
+        "truncated": true,
+        "test_mase_ratio": 1.1022166516322711
+      },
+      "eps_0.2": {
+        "label": "L9",
+        "truncated": true,
+        "test_mase_ratio": 1.1267840202914239
+      }
+    },
+    "ra": {
+      "eps_0.02": {
+        "label": "L12",
+        "truncated": false,
+        "test_mase_ratio": 1.0
+      },
+      "eps_0.05": {
+        "label": "L11",
+        "truncated": true,
+        "test_mase_ratio": 1.018490641131336
+      },
+      "eps_0.1": {
+        "label": "L10",
+        "truncated": true,
+        "test_mase_ratio": 1.0526456174290344
+      },
+      "eps_0.2": {
+        "label": "L8",
+        "truncated": true,
+        "test_mase_ratio": 1.1324330771441862
+      }
+    },
+    "probe": {
+      "eps_0.02": {
+        "label": "L12",
+        "truncated": false,
+        "test_mase_ratio": 1.0
+      },
+      "eps_0.05": {
+        "label": "L12",
+        "truncated": false,
+        "test_mase_ratio": 1.0
+      },
+      "eps_0.1": {
+        "label": "L12",
+        "truncated": false,
+        "test_mase_ratio": 1.0
+      },
+      "eps_0.2": {
+        "label": "L10",
+        "truncated": true,
+        "test_mase_ratio": 1.0991798494862042
+      }
+    }
+  },
+  "verification": {
+    "native_gate": true,
+    "native_raw_vs_phase1_cache": {
+      "max_abs": 0.008184971287846565,
+      "max_rel_to_mean_abs": 1.308222824074853e-05,
+      "note": "offline f(h_L) on the (n, R, d) readout vs the model's own full-sequence forward: a different GEMM shape, so not bitwise; measured every run"
+    },
+    "final_norm_vs_cached_head_input": {
+      "max_abs": 0.0,
+      "note": "head(norm(h_L)) vs head(cached post-norm state): the pathway applies the checkpoint's own final norm to the pre-norm final block"
+    },
+    "native_quantile_crossing_fraction_test": 0.008289599236641222,
+    "hard_cut_at_final_depth_equals_native": true,
+    "identity_adapter_equals_hard_cut_bitwise": {
+      "depth": "Emb",
+      "bitwise": true
+    },
+    "probe_inverse_gate": true,
+    "wql_denominator_equals_phase1": true
+  },
+  "timings": {
+    "Emb": 40.24,
+    "L1": 40.09,
+    "L2": 40.19,
+    "L3": 40.13,
+    "L4": 40.12,
+    "L5": 40.34,
+    "L6": 40.21,
+    "L7": 40.14,
+    "L8": 40.4,
+    "L9": 40.17,
+    "L10": 40.25,
+    "L11": 40.2,
+    "L12": 20.76,
+    "cell_total_s": 503.7
+  },
+  "fit_cfg": {
+    "epochs": 1500,
+    "lr": 0.001,
+    "wd_grid": [
+      0.0,
+      0.1,
+      1.0,
+      10.0,
+      30.0,
+      100.0
+    ],
+    "eval_every": 25,
+    "kappas": [
+      1e-12,
+      1e-11,
+      1e-10,
+      1e-09,
+      1e-08,
+      1e-07,
+      1e-06,
+      1e-05,
+      0.0001,
+      0.001,
+      0.01,
+      0.1,
+      1.0,
+      10.0,
+      100.0
+    ],
+    "seed": 0,
+    "native_gate_rtol": 0.0001,
+    "boot_b": 5000,
+    "boot_seed": 0
+  },
+  "pathway": {
+    "model": "tirex",
+    "d": 512,
+    "rows_per_window": 2,
+    "n_out_per_row": 288,
+    "layout": "quantile-major (q*P + t), passes concatenated",
+    "inverse": "per-pass z*scale_k + loc_k (StandardScaler.re_scale)",
+    "final_norm": "out_norm: RMSNorm computed in fp32",
+    "passes": 2
+  },
+  "phase1_dependency": {
+    "root": "/home/eserebri/repos/chronos2-layerwise-probing/results/three_model_phase1_q9_expanded",
+    "model": "tirex",
+    "dataset": "electricity_15min",
+    "config_hash": "sha256:a1d09abf23bf03b191df240abdf3e12d9b0b8e7827c28f0a211531a4068ea487",
+    "fit_hash": "sha256:ae14efef565253a4d07ea9acf681f9301715159e7e4b1f307623e1e8e73f068b",
+    "postprocess_hash": "sha256:584a3c65d0f25e8875be66632b91f9e0d289c075b73e11fa47b77305d187e5f6",
+    "completed_utc": "2026-09-22T12:33:24+00:00",
+    "protocol": "phase1/v1",
+    "tunnel_definition": "sustained_suffix_v1",
+    "window_digest": "sha256:fcefaa9880cc530f7efd30129a626f145130206d89940eafd4694322ca9a7cd8",
+    "checkpoint": "NX-AI/TiRex",
+    "quantile_set": "q9",
+    "sha256_bootstrap_inputs.npz": "sha256:136dc852c08fc0777e4823257bdd7b9f9c269bdb70a6115b694e373cb538614e",
+    "sha256_tunnel.json": "sha256:ad75335ae370b6f4fd34996753a8636918b94e7f5a6311a56cb10073780d027a",
+    "sha256_cell_config.json": "sha256:ea2b958bd270133a8d2a8a08c4883ae12080f2756551803af027265672b819da",
+    "sha256_predictions_val.npz": "sha256:b1b24ee49771fc96cbb7796a67aa72556ac091f43b2565a252a0a8e9e808444f",
+    "sha256_predictions_test.npz": "sha256:3356f4ea54906b8efe23427472bf9b205559caa58dc1159520ec0fd9c2bff312"
+  },
+  "provenance": {
+    "cache_files": {
+      "train": "/scratch/eserebri/chronos2/phase1_shared_cache/tirex-q1-shared-patch-v1__two_pass__electricity_15min__train.npz",
+      "val": "/scratch/eserebri/chronos2/phase1_shared_cache/tirex-q1-shared-patch-v1__two_pass__electricity_15min__val.npz",
+      "test": "/scratch/eserebri/chronos2/phase1_shared_cache/tirex-q1-shared-patch-v1__two_pass__electricity_15min__test.npz"
+    },
+    "rollout_mode": "two_pass"
+  },
+  "caveats": {
+    "recoverability_vs_replaceability": "A strong intermediate-layer probe establishes RECOVERABILITY but not REPLACEABILITY: the probe replaces the pretrained pathway. The hard cut and the aligned native pathway test replaceability; only they license H4.",
+    "cross_model_loss": "Each model is probed where its OWN head reads, in its OWN normalized target space (Chronos-2: context-standardized + arcsinh at the K=4 forecast slots; TimesFM-3: detrend + RevIN at the last real context token; TiRex: per-pass loc/scale at the two native forecast-producing states). The absolute Q=9 mean pinball loss is therefore NOT comparable ACROSS models. Cross-model comparison is valid for (a) the tunnel entrance, which is a within-model ratio against that model's own final depth, and (b) MASE, which is in raw units under one shared in-context seasonal-naive denominator.",
+    "wql": "WQL is reported with the standard 1/Q normalization (phase2.standard_wql)",
+    "operating_point": "the frozen Phase-1 sustained 5% entrance; compatibility tunnels are a secondary diagnostic"
+  },
+  "smoke": false
+}
