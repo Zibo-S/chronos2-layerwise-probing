@@ -43,9 +43,9 @@ import torch.nn.functional as F
 from probing.phase2 import (ADAPTER_EPOCHS, ADAPTER_EVAL_EVERY, ADAPTER_LR, ADAPTER_WD_GRID,
                             RIDGE_KAPPAS, array_sha256, assert_adapter_wd_grid)
 
-__all__ = ["ResidualAdapter", "mse_loss", "pinball_mean", "fit_residual_adapter",
-           "anchored_ridge_path", "affine_to_adapter", "save_adapter", "load_adapter",
-           "adapter_arrays_sha256"]
+__all__ = ["ResidualAdapter", "NestedResidualAdapter", "mse_loss", "pinball_mean",
+           "fit_residual_adapter", "anchored_ridge_path", "affine_to_adapter", "save_adapter",
+           "load_adapter", "adapter_arrays_sha256"]
 
 
 class ResidualAdapter(nn.Module):
@@ -75,6 +75,47 @@ class ResidualAdapter(nn.Module):
     def n_params(self) -> int:
         return int(self.delta.numel() + self.bias.numel())
 
+    def decay_params(self) -> list:
+        """Parameters under decoupled decay (toward the identity / toward the nested family)."""
+        return [self.delta]
+
+    def free_params(self) -> list:
+        return [self.bias]
+
+
+class NestedResidualAdapter(ResidualAdapter):
+    """a(x) = x + x Delta^T + b + W2 gelu(W1 LN(x) + b1): the affine adapter PLUS a bottleneck
+    nonlinear branch (width r). EXPLORATORY (Phase 2b smoke, notes/PLAN.md), not the H3 protocol.
+
+    Nesting, by construction: W2 = 0 at initialization, so the branch contributes exact zeros and
+    the module is BITWISE the affine adapter (and, with Delta = b = 0, the hard cut). W1 is random
+    (seeded by the caller's torch.manual_seed) -- with W1 = 0 too, no gradient would ever reach
+    the branch. The branch reads a parameter-free LayerNorm of x, so its pre-activations are
+    O(1) whatever the scale of the residual stream (TimesFM-3 has no final norm).
+    Decay: Delta (toward I), W1 and W2 (toward the affine family); b, b1 undecayed.
+    """
+
+    def __init__(self, d: int, r: int = 64, dtype=torch.float32):
+        super().__init__(d, dtype=dtype)
+        self.r = int(r)
+        self.w1 = nn.Parameter(torch.randn(self.r, self.d, dtype=dtype) / np.sqrt(self.d))
+        self.b1 = nn.Parameter(torch.zeros(self.r, dtype=dtype))
+        self.w2 = nn.Parameter(torch.zeros(self.d, self.r, dtype=dtype))
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        branch = F.linear(F.gelu(F.linear(F.layer_norm(x, (self.d,)), self.w1, self.b1)), self.w2)
+        return x + F.linear(x, self.delta, self.bias) + branch
+
+    @property
+    def n_params(self) -> int:
+        return int(super().n_params + self.w1.numel() + self.b1.numel() + self.w2.numel())
+
+    def decay_params(self) -> list:
+        return [self.delta, self.w1, self.w2]
+
+    def free_params(self) -> list:
+        return [self.bias, self.b1]
+
 
 def affine_to_adapter(A, b, dtype=torch.float32) -> ResidualAdapter:
     """A closed-form (A, b) as the SAME module the iterative fits produce (Delta = A - I)."""
@@ -103,7 +144,8 @@ def pinball_mean(pred: torch.Tensor, target: torch.Tensor, q: torch.Tensor) -> t
 def fit_residual_adapter(*, d: int, pathway_fn, train_x, train_y, val_x, val_y, train_loss,
                          val_criterion, wd_grid=ADAPTER_WD_GRID, epochs: int = ADAPTER_EPOCHS,
                          lr: float = ADAPTER_LR, eval_every: int = ADAPTER_EVAL_EVERY,
-                         device=None, seed: int = 0, log=None, label: str = "") -> dict:
+                         device=None, seed: int = 0, log=None, label: str = "",
+                         make_adapter=None) -> dict:
     """Fit one residual adapter per decay value and keep the best (wd, epoch) on VALIDATION.
 
     ``pathway_fn(adapted_states)`` returns what the losses consume (NOA: the normalized head
@@ -115,7 +157,12 @@ def fit_residual_adapter(*, d: int, pathway_fn, train_x, train_y, val_x, val_y, 
     every ``eval_every`` epochs. The selected checkpoint is the global minimum over all (wd, epoch)
     pairs -- no refit after selection. Ties go to the smaller epoch, then the LARGER wd (closer to
     the identity). A non-finite training loss stops that candidate and is recorded, never selected.
+
+    ``make_adapter(d)`` builds the module (default ``ResidualAdapter``; the exploratory nested
+    adapter passes ``NestedResidualAdapter``). It is called right after ``torch.manual_seed(seed)``,
+    so any random initialization is identical across the decay grid.
     """
+    make_adapter = make_adapter or (lambda dd: ResidualAdapter(dd))
     grid = assert_adapter_wd_grid(wd_grid, lr)
     device = device or (train_x.device if torch.is_tensor(train_x) else "cpu")
     best, cands, hard_val = None, [], None
@@ -126,13 +173,13 @@ def fit_residual_adapter(*, d: int, pathway_fn, train_x, train_y, val_x, val_y, 
         if np.isfinite(v) and (best is None or key < best["key"]):
             best = {"key": key, "val": float(v), "epoch": int(epoch),
                     "wd": None if epoch == 0 else float(wd),
-                    "delta": ad.delta.detach().clone(), "bias": ad.bias.detach().clone()}
+                    "state": {k: t.detach().clone() for k, t in ad.state_dict().items()}}
 
     for wd in grid:
         torch.manual_seed(seed)
-        ad = ResidualAdapter(d).to(device)
-        opt = torch.optim.AdamW([{"params": [ad.delta], "weight_decay": float(wd)},
-                                 {"params": [ad.bias], "weight_decay": 0.0}], lr=lr)
+        ad = make_adapter(d).to(device)
+        opt = torch.optim.AdamW([{"params": ad.decay_params(), "weight_decay": float(wd)},
+                                 {"params": ad.free_params(), "weight_decay": 0.0}], lr=lr)
 
         def evaluate():
             with torch.no_grad():
@@ -167,10 +214,9 @@ def fit_residual_adapter(*, d: int, pathway_fn, train_x, train_y, val_x, val_y, 
             log(f"      [{label}] wd={wd:<6g} best val {cands[-1]['best_val']:.6g} "
                 f"(hard cut {hard_val:.6g}) {status}")
 
-    out = ResidualAdapter(d).to(device)
-    with torch.no_grad():
-        out.delta.copy_(best["delta"])
-        out.bias.copy_(best["bias"])
+    torch.manual_seed(seed)
+    out = make_adapter(d).to(device)
+    out.load_state_dict(best["state"])
     out.eval()
     return {"adapter": out, "selected_wd": best["wd"], "selected_epoch": best["epoch"],
             "selected_val": best["val"], "hard_cut_val": float(hard_val),
@@ -178,7 +224,7 @@ def fit_residual_adapter(*, d: int, pathway_fn, train_x, train_y, val_x, val_y, 
             "candidates": cands, "grid": list(grid), "epochs": int(epochs), "lr": float(lr),
             "eval_every": int(eval_every), "optimizer": "AdamW full batch; decoupled decay on "
             "Delta only (toward the identity); bias undecayed", "seed": int(seed),
-            "n_params": out.n_params}
+            "n_params": out.n_params, "adapter_class": type(out).__name__}
 
 
 # --------------------------------------------------------------------------- #
