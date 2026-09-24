@@ -71,7 +71,8 @@ SUPERSEDED_Q9 = {
                         "Q=9 rerun at lr=1e-3 with widened weight-decay grid not yet complete"),
 }
 # The Q=1 LOOP Seattle cells were fit with the same clipped lr=1e-2 setting; they are held back
-# the same way until a matched Q=1 rerun exists (no such run has been launched yet).
+# the same way until the matched Q=1 rerun (same lr=1e-3 + widened grid as the Q=9 rerun) exists.
+# Both the Q=1 figures and the Q1-vs-Q9 comparison resolve through this table.
 SUPERSEDED_Q1 = {
     "LOOP_SEATTLE_5T": (REPO_ROOT / "results" / "three_model_phase1_q1_loop_lowlr",
                         "matched Q=1 rerun at lr=1e-3 not yet run"),
@@ -691,7 +692,9 @@ def main(argv=None):
              "sources": {"q9": str(Q9_ROOT.relative_to(REPO_ROOT)),
                          "q1": str(Q1_ROOT.relative_to(REPO_ROOT)),
                          "superseded_q9": {k: [str(v[0].relative_to(REPO_ROOT)), v[1]]
-                                           for k, v in SUPERSEDED_Q9.items()}}}
+                                           for k, v in SUPERSEDED_Q9.items()},
+                         "superseded_q1": {k: [str(v[0].relative_to(REPO_ROOT)), v[1]]
+                                           for k, v in SUPERSEDED_Q1.items()}}}
 
     # ---- Q=9 headline cells -------------------------------------------------------------------
     q9, pending, ho, recs = {m: {} for m in MODELS}, [], {m: {} for m in MODELS}, []
@@ -753,7 +756,9 @@ def main(argv=None):
     for m in MODELS:
         for ds in order:
             c9 = q9[m][ds][0]
-            c1 = load_cell(Q1_ROOT, m, ds)
+            # same resolution as the Q=1 figures: a superseded Q=1 cell is read from its matched
+            # rerun, so the config check below compares like with like (lr=1e-3 vs lr=1e-3)
+            c1 = resolve(m, ds, Q1_ROOT, SUPERSEDED_Q1)[0]
             if c9 is None or c1 is None:
                 cmp_cells[m][ds] = None
                 notcmp.append({"model": m, "dataset": ds, "reason":
