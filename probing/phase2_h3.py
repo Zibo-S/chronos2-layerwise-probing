@@ -35,14 +35,19 @@ from probing.phase2 import (ADAPTER_EPOCHS, ADAPTER_EVAL_EVERY, ADAPTER_LR, ADAP
                             HEADLINE_TOL, LOW_SKILL_RATIO, MEDIAN_INDEX, QUANTILES, RIDGE_KAPPAS,
                             SEED, TUNNEL_TOLS, array_sha256, cluster_replicates,
                             compatibility_tunnel, ratio_summary, standard_wql)
-from probing.phase2_align import (ResidualAdapter, affine_to_adapter, anchored_ridge_path,
+from probing.phase2_align import (NestedResidualAdapter, ResidualAdapter, affine_to_adapter,
+                                  adapter_arrays_sha256, anchored_ridge_path,
                                   fit_residual_adapter, mse_loss, pinball_mean, save_adapter)
 
 __all__ = ["DEFAULT_FIT_CFG", "run_h3_cell", "save_h3_cell", "native_gate", "families_for"]
 
 DEFAULT_FIT_CFG = {"epochs": ADAPTER_EPOCHS, "lr": ADAPTER_LR, "wd_grid": list(ADAPTER_WD_GRID),
                    "eval_every": ADAPTER_EVAL_EVERY, "kappas": list(RIDGE_KAPPAS), "seed": SEED,
-                   "native_gate_rtol": 1e-4, "boot_b": BOOT_B, "boot_seed": SEED}
+                   "native_gate_rtol": 1e-4, "boot_b": BOOT_B, "boot_seed": SEED,
+                   # Phase 2b (exploratory): "nested" makes the NOA arm the affine adapter PLUS a
+                   # bottleneck nonlinear branch, fitted iteratively for EVERY model (TimesFM-3
+                   # included -- no closed form). "affine" = the committed H3 protocol.
+                   "noa_adapter": "affine", "bottleneck": 64}
 
 METRICS = ("loss", "mase", "mae", "wql")
 
@@ -130,6 +135,8 @@ def run_h3_cell(pathway, data, phase1_arrays: dict, *, entrances: dict, families
     VALIDATION MASE (the H4 budget rule selects on it). Without them the probe arm has no
     validation MASE and never qualifies for a budget."""
     cfg = {**DEFAULT_FIT_CFG, **(fit_cfg or {})}
+    if cfg["noa_adapter"] not in ("affine", "nested"):
+        raise ValueError(f"noa_adapter must be 'affine' or 'nested', got {cfg['noa_adapter']!r}")
     model, tag = data.model, data.tag
     spec = phase1.model_spec(model)
     L = data.reference_index
@@ -218,8 +225,7 @@ def run_h3_cell(pathway, data, phase1_arrays: dict, *, entrances: dict, families
                                                   "selected_kappa", "selected_lambda")}}
             rec["adapter_file"] = save_adapter(
                 adapter_dir / model / tag / f"{fam}__{labels[l]}.npz", ad, meta)
-        rec["adapter_sha256"] = array_sha256(ad.delta.detach().cpu().numpy(),
-                                             ad.bias.detach().cpu().numpy())
+        rec["adapter_sha256"] = adapter_arrays_sha256(ad)
         fits[fam][labels[l]] = rec
 
     def torch_rows(a):
@@ -238,7 +244,7 @@ def run_h3_cell(pathway, data, phase1_arrays: dict, *, entrances: dict, families
                 score("noa", l, None)
                 fits["noa"][lab] = {"fitted": False, "reason": "reference depth: the native "
                                     "pathway itself (the optimum is exactly Delta = 0)"}
-            elif pathway.linear_head() is not None:
+            elif pathway.linear_head() is not None and cfg["noa_adapter"] == "affine":
                 W, _c = pathway.linear_head()
                 r = anchored_ridge_path(_flat(tr.feats[l]), _flat(tr.feats[L]), _flat(va.feats[l]),
                                         _flat(va.feats[L]), metric=W.T @ W, out_dim=W.shape[0],
@@ -255,7 +261,9 @@ def run_h3_cell(pathway, data, phase1_arrays: dict, *, entrances: dict, families
                     val_y=torch_rows(nat["val"]["out"]), train_loss=mse_loss,
                     val_criterion=mse_loss, wd_grid=cfg["wd_grid"], epochs=cfg["epochs"],
                     lr=cfg["lr"], eval_every=cfg["eval_every"], device=device, seed=cfg["seed"],
-                    log=log, label=f"noa {lab}")
+                    log=log, label=f"noa {lab}",
+                    make_adapter=(None if cfg["noa_adapter"] == "affine" else
+                                  (lambda dd: NestedResidualAdapter(dd, r=int(cfg["bottleneck"])))))
                 score("noa", l, res["adapter"])
                 store_adapter("noa", l, res["adapter"],
                               {k: v for k, v in res.items() if k != "adapter"} | {"fitted": True})

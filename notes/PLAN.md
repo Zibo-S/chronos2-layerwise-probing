@@ -1681,3 +1681,12 @@ Latency per repeat:
 - `experiments/run_phase2_nonlinear_smoke.py` + `job_phase2_nonlinear_smoke.sh`: Electricity, 25/50/75% depth; arms hard / affine_closed (TimesFM-3) / affine_iter / nested; writes only `results/three_model_phase2_nonlinear_smoke/summary.json`; applies the pre-registered rule (`RULE`, `phase2b-nonlinear/v1`) on validation.
 - Contracts: `tests/test_phase2_nonlinear.py` (N1–N5). `tests/test_phase2_h3.py` 23/25/27 updated to the renamed paper labels (Hard truncation / Output-matched adapter truncation / Aligned native pathway); 27/27 pass.
 - Reproduction check built in: the affine arms print the committed H3 test ratio next to the recomputed one (C2/TiRex affine_iter, TimesFM-3 affine_closed) — they must match before any nested number is read.
+
+**Speculative full rerun with the nested adapter — code ready 2026-09-24, submitted BEFORE the smoke result (user decision: queue time dominates; cancel if the pre-registered rule says no).**
+- Separate trees, nothing mixes with the committed affine results: `results/three_model_phase2_nested/` (H3, H4, latency) and adapters under `.../chronos2_phase2/adapters_nested`.
+- `run_phase2_h3 --noa-adapter nested --bottleneck 64 --families hard noa`: NOA = nested adapter, iterative for all three models (TimesFM-3 no longer closed form). The option enters the cell hash only when nested (N8); affine cells keep their hashes.
+- `run_phase2_truncation` needs no change (loads either adapter type; checksum covers the branch, N6).
+- `run_phase2_latency --adapter-kind nested`: times the nested adapter; defaults to the nested tree; model-level verification read from the committed tree (adapter-independent).
+- FL and RA are NOT rerun (FL is appendix-only; RA TimesFM-3-only diagnostic) — they stay from the affine tree.
+- If the smoke rule says "do not adopt": `scancel` every `p2n-*` job and delete the nested tree.
+- The V3 per-window gate issue (see H4 notes) applies to this tree too; decide once for both.

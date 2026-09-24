@@ -136,7 +136,7 @@ def configure(handle, model: str, cfg: dict) -> dict:
     """Apply one configuration. Adapter / probe weights are random: timing depends on SHAPE only."""
     import torch
     from probing import phase2_truncate as T
-    from probing.phase2_align import ResidualAdapter
+    from probing.phase2_align import NestedResidualAdapter, ResidualAdapter
     kind, depth = cfg["kind"], cfg.get("depth")
     core = T.core_of(handle, model)
     dev = next(core.parameters()).device
@@ -148,9 +148,14 @@ def configure(handle, model: str, cfg: dict) -> dict:
                 if k != "removed_weakrefs"})
     g = torch.Generator().manual_seed(SEED)
     if kind == "adapter":
-        ad = ResidualAdapter(d)
+        nested = cfg.get("adapter_kind", "affine") == "nested"
+        ad = NestedResidualAdapter(d, r=int(cfg.get("bottleneck", 64))) if nested \
+            else ResidualAdapter(d)
         with torch.no_grad():
             ad.delta.copy_(torch.randn(d, d, generator=g) * 1e-3)
+            if nested:                                  # non-zero branch: every op really runs
+                ad.w2.copy_(torch.randn(d, ad.r, generator=g) * 1e-3)
+        rec["adapter_kind"] = "nested" if nested else "affine"
         T.splice_adapter(core, model, ad.to(dev).eval())
     elif kind == "probe_head":
         out = HEAD_OUT[model] if model != "chronos2" else 9 * 16
@@ -279,7 +284,8 @@ def config_list(args) -> list[dict]:
     for c in cfgs:
         c.update({"batch_sizes": list(args.batch_sizes), "levels": list(args.levels),
                   "warmup": args.warmup, "reps": args.reps, "device": args.device,
-                  "tiny": bool(args.tiny), "checkpoint": None, "allow_mig": args.allow_mig})
+                  "tiny": bool(args.tiny), "checkpoint": None, "allow_mig": args.allow_mig,
+                  "adapter_kind": args.adapter_kind, "bottleneck": args.bottleneck})
     return cfgs
 
 
@@ -351,6 +357,7 @@ def main(argv=None) -> int:
         "protocol": {"warmup": args.warmup, "reps": args.reps,
                      "batch_sizes": list(args.batch_sizes), "levels": list(args.levels),
                      "device": args.device, "tiny": bool(args.tiny),
+                     "adapter_kind": args.adapter_kind, "bottleneck": args.bottleneck,
                      "allow_unverified": bool(args.allow_unverified),
                      "allow_mig": bool(args.allow_mig), "seed": args.seed},
         "configs": index}, indent=1, default=str))
@@ -384,11 +391,20 @@ def parse_args(argv=None):
     p.add_argument("--allow-mig", action="store_true")
     p.add_argument("--tiny", action="store_true", help=argparse.SUPPRESS)
     p.add_argument("--device", default="cuda")
+    p.add_argument("--adapter-kind", choices=["affine", "nested"], default="affine",
+                   help="Phase 2b: time the nested (affine + bottleneck branch) adapter instead")
+    p.add_argument("--bottleneck", type=int, default=64)
     p.add_argument("--seed", type=int, default=SEED)
     p.add_argument("--config-timeout", type=int, default=3600)
     a = p.parse_args(argv)
+    affine_root = Path(a.output_root)
+    if a.adapter_kind == "nested" and a.output_root == str(DEFAULT_OUT_ROOT):
+        # nested timings get their own tree, so they can never be folded into the affine tables
+        a.output_root = str(DEFAULT_OUT_ROOT) + "_nested"
     if a.verification_root is None:
-        a.verification_root = str(Path(a.output_root) / "h4" / "verification")
+        # the model-level checks (V1/V2/V4/V5/V6) do not depend on the adapter type; the nested
+        # adapter's own physical == offline agreement is checked by H4 evaluate (V3)
+        a.verification_root = str(affine_root / "h4" / "verification")
     return a
 
 

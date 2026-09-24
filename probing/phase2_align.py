@@ -319,38 +319,55 @@ def anchored_ridge_path(X_tr, Y_tr, X_va, Y_va, *, metric=None, out_dim: int | N
 # --------------------------------------------------------------------------- #
 # persistence -- the physical H4 model must load EXACTLY the offline parameters
 # --------------------------------------------------------------------------- #
+_NESTED_KEYS = ("w1", "b1", "w2")
+
+
+def _adapter_arrays(ad: ResidualAdapter) -> dict:
+    """float32 numpy arrays, in the fixed order the checksum uses (delta, bias[, w1, b1, w2])."""
+    keys = ("delta", "bias") + (_NESTED_KEYS if isinstance(ad, NestedResidualAdapter) else ())
+    return {k: getattr(ad, k).detach().float().cpu().numpy() for k in keys}
+
+
 def adapter_arrays_sha256(ad: ResidualAdapter) -> str:
-    return array_sha256(ad.delta.detach().cpu().numpy(), ad.bias.detach().cpu().numpy())
+    """Affine: sha256(delta, bias) exactly as before (committed adapters keep their checksums);
+    nested: sha256(delta, bias, w1, b1, w2)."""
+    return array_sha256(*_adapter_arrays(ad).values())
 
 
 def save_adapter(path, ad: ResidualAdapter, meta: dict) -> dict:
-    """float32 Delta and b, written atomically (temp + os.replace). The SAME float32 tensors the
-    offline H3 evaluation applied, so the physical H4 model reproduces them up to GEMM shape."""
+    """float32 Delta and b (and the nested branch, if any), written atomically (temp +
+    os.replace). The SAME float32 tensors the offline H3 evaluation applied, so the physical H4
+    model reproduces them up to GEMM shape."""
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    delta = ad.delta.detach().float().cpu().numpy()
-    bias = ad.bias.detach().float().cpu().numpy()
-    sha = array_sha256(delta, bias)
+    arrs = _adapter_arrays(ad)
+    sha = array_sha256(*arrs.values())
+    extra = ({"adapter_class": "NestedResidualAdapter", "bottleneck": int(ad.r)}
+             if isinstance(ad, NestedResidualAdapter) else {})
     tmp = path.with_name(path.name + f".tmp{os.getpid()}.npz")
     import json
-    np.savez(tmp, delta=delta, bias=bias, meta=json.dumps({**meta, "sha256": sha}, default=str))
+    np.savez(tmp, **arrs, meta=json.dumps({**meta, **extra, "sha256": sha}, default=str))
     os.replace(tmp, path)
-    return {"path": str(path), "sha256": sha, "d": int(delta.shape[0]),
-            "n_params": int(delta.size + bias.size)}
+    return {"path": str(path), "sha256": sha, "d": int(arrs["delta"].shape[0]),
+            "n_params": int(sum(a.size for a in arrs.values())), **extra}
 
 
 def load_adapter(path, device=None) -> tuple[ResidualAdapter, dict]:
+    """Rebuilds the affine or the nested adapter, whichever the file holds; checksum-verified."""
     import json
     with np.load(path, allow_pickle=False) as z:
-        delta, bias = z["delta"], z["bias"]
+        arrs = {k: z[k] for k in z.files if k != "meta"}
         meta = json.loads(str(z["meta"]))
-    sha = array_sha256(delta, bias)
+    nested = all(k in arrs for k in _NESTED_KEYS)
+    order = ("delta", "bias") + (_NESTED_KEYS if nested else ())
+    sha = array_sha256(*(arrs[k] for k in order))
     if meta.get("sha256") != sha:
         raise RuntimeError(f"adapter {path} fails its own checksum ({sha} != {meta.get('sha256')})")
-    ad = ResidualAdapter(delta.shape[0])
+    d = arrs["delta"].shape[0]
+    ad = NestedResidualAdapter(d, r=arrs["w1"].shape[0]) if nested else ResidualAdapter(d)
     with torch.no_grad():
-        ad.delta.copy_(torch.as_tensor(delta))
-        ad.bias.copy_(torch.as_tensor(bias))
+        for k in order:
+            getattr(ad, k).copy_(torch.as_tensor(arrs[k]))
     ad.eval()
     for p in ad.parameters():
         p.requires_grad_(False)

@@ -141,6 +141,87 @@ def test_n5_driver_depths_r2_and_decision_rule():
     print(" N5  driver: depths 25/50/75%, R^2, and the pre-registered rule (5 cases)  OK")
 
 
+def test_n6_adapter_persistence_nested_round_trip_and_affine_checksum_unchanged():
+    import shutil
+    import tempfile
+    from probing.phase2 import array_sha256
+    from probing.phase2_align import adapter_arrays_sha256, load_adapter, save_adapter
+    torch.manual_seed(0)
+    aff = ResidualAdapter(16)
+    nes = NestedResidualAdapter(16, r=4)
+    with torch.no_grad():
+        for m in (aff, nes):
+            m.delta.normal_()
+            m.bias.normal_()
+        nes.w2.normal_()
+    # the affine checksum is EXACTLY the pre-2b formula, so committed adapters still verify
+    assert adapter_arrays_sha256(aff) == array_sha256(aff.delta.detach().cpu().numpy(),
+                                                      aff.bias.detach().cpu().numpy())
+    tmp = Path(tempfile.mkdtemp())
+    try:
+        x = torch.randn(5, 16)
+        for ad in (aff, nes):
+            rec = save_adapter(tmp / f"{type(ad).__name__}.npz", ad, {"k": 1})
+            back, meta = load_adapter(rec["path"])
+            assert type(back) is type(ad) and meta["sha256"] == adapter_arrays_sha256(ad)
+            assert torch.equal(back(x), ad.eval()(x)), "round trip is not bitwise"
+            assert rec["n_params"] == ad.n_params
+        # a tampered nested branch must fail the checksum
+        with np.load(tmp / "NestedResidualAdapter.npz") as z:
+            arrs = {k: z[k] for k in z.files}
+        arrs["w2"] = arrs["w2"] + 1.0
+        np.savez(tmp / "bad.npz", **arrs)
+        try:
+            load_adapter(tmp / "bad.npz")
+            raise AssertionError("a tampered nested adapter loaded")
+        except RuntimeError:
+            pass
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+    print(" N6  adapter files: nested round trip bitwise + checksummed; affine checksum unchanged OK")
+
+
+def test_n7_whole_h3_cell_with_the_nested_noa_arm():
+    from probing.phase2_h3 import run_h3_cell
+    from tests.test_phase2_h3 import FAST, _mock_cell
+    pw, data, arrays, ent = _mock_cell()
+    res = run_h3_cell(pw, data, arrays, entrances=ent, families=["hard", "noa"], device="cpu",
+                      fit_cfg={**FAST, "noa_adapter": "nested", "bottleneck": 4},
+                      adapter_dir=None, floor_val_loss=1.0, save_prediction_depths=[6],
+                      log=lambda *a: None)
+    row = {(r["family"], r["label"]): r for r in res["rows"]}
+    assert row[("noa", "L12")]["mase_ratio_vs_native"] == 1.0
+    assert row[("noa", "L11")]["test_loss"] <= row[("hard", "L11")]["test_loss"] * 1.001
+    fits = res["fits"]["noa"]
+    fitted = [f for f in fits.values() if f.get("fitted")]
+    assert fitted and all(f.get("adapter_class") == "NestedResidualAdapter" for f in fitted)
+    try:
+        run_h3_cell(pw, data, arrays, entrances=ent, families=["hard"], device="cpu",
+                    fit_cfg={**FAST, "noa_adapter": "mlp"}, log=lambda *a: None)
+        raise AssertionError("an unknown noa_adapter was accepted")
+    except ValueError:
+        pass
+    print(" N7  whole H3 cell with noa_adapter=nested: every fitted NOA is nested; final = native OK")
+
+
+def test_n8_nested_option_changes_the_cell_hash_only_when_set():
+    from experiments.run_phase2_h3 import cell_config, parse_args
+    dep = {"fit_hash": "f", "config_hash": "c", "window_digest": "w"}
+    a = parse_args([])
+    n = parse_args(["--noa-adapter", "nested"])
+    assert a.output_root.endswith("three_model_phase2") and n.output_root.endswith("_nested")
+    assert "adapters_nested" in n.adapter_root and "adapters_nested" not in a.adapter_root
+    base = {"epochs": 1, "lr": 1e-3, "wd_grid": [0.0], "eval_every": 1, "kappas": [1.0],
+            "seed": 0, "native_gate_rtol": 1e-4, "boot_b": 10, "boot_seed": 0}
+    c_aff = cell_config("tirex", "t", dep, ["hard"], None, {**base, "noa_adapter": "affine"}, a)
+    c_old = cell_config("tirex", "t", dep, ["hard"], None, base, a)
+    c_nes = cell_config("tirex", "t", dep, ["hard"], None,
+                        {**base, "noa_adapter": "nested", "bottleneck": 64}, n)
+    assert c_aff == c_old, "the affine option changed the committed cell config"
+    assert c_nes["noa_adapter"] == "nested" and c_nes != c_aff
+    print(" N8  cell hash: affine configs unchanged; nested gets its own hash and output tree  OK")
+
+
 def main(argv=None):
     import traceback
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]

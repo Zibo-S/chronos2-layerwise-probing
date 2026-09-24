@@ -128,7 +128,11 @@ def cell_config(model, tag, dep, families, depths, fit_cfg, args) -> dict:
             "headline_tol": phase2.HEADLINE_TOL, "budget": phase2.BUDGET,
             "frontier_budgets": [float(e) for e in phase2.FRONTIER_BUDGETS],
             "frontier_rule": phase2.BUDGET_RULE["version"],
-            "boot_b": fit_cfg["boot_b"], "boot_seed": fit_cfg["boot_seed"]}
+            "boot_b": fit_cfg["boot_b"], "boot_seed": fit_cfg["boot_seed"],
+            # Phase 2b: present ONLY for the nested adapter, so every committed affine cell keeps
+            # its hash and a nested cell can never satisfy an affine run (or vice versa)
+            **({"noa_adapter": "nested", "bottleneck": int(fit_cfg["bottleneck"])}
+               if fit_cfg.get("noa_adapter", "affine") == "nested" else {})}
 
 
 def smoke_depths(entrance: int, L: int) -> list[int]:
@@ -156,7 +160,8 @@ def main(argv=None) -> int:
                "wd_grid": list(phase2.assert_adapter_wd_grid(args.wd_grid, args.lr)),
                "eval_every": args.eval_every, "seed": args.seed,
                "native_gate_rtol": args.native_gate_rtol, "boot_b": args.boot_b,
-               "boot_seed": args.seed}
+               "boot_seed": args.seed, "noa_adapter": args.noa_adapter,
+               "bottleneck": args.bottleneck}
 
     if args.plan:
         print(f"\nH3 PLAN  {len(tags)} datasets x {len(models)} models -> {out / KIND}")
@@ -330,13 +335,19 @@ def parse_args(argv=None):
     g.add_argument("--seed", type=int, default=phase2.SEED)
     g.add_argument("--native-gate-rtol", type=float, default=1e-4)
     g.add_argument("--device", default=os.environ.get("PHASE2_DEVICE", None))
+    g = p.add_argument_group("Phase 2b (exploratory)")
+    g.add_argument("--noa-adapter", choices=["affine", "nested"], default="affine",
+                   help="nested = affine + bottleneck nonlinear branch for the NOA arm, fitted "
+                        "iteratively for every model. Defaults to its OWN output/adapter trees.")
+    g.add_argument("--bottleneck", type=int, default=64)
     a = p.parse_args(argv)
+    suffix = "_nested" if a.noa_adapter == "nested" else ""
     if a.output_root is None:
-        a.output_root = str(DEFAULT_OUT_ROOT) + ("_smoke" if a.smoke else "")
+        a.output_root = str(DEFAULT_OUT_ROOT) + suffix + ("_smoke" if a.smoke else "")
     if a.adapter_root is None:
         base = Path(project) if project else scratch
-        a.adapter_root = str(base / "chronos2_phase2" / ("adapters_smoke" if a.smoke
-                                                         else "adapters"))
+        a.adapter_root = str(base / "chronos2_phase2" / (("adapters_smoke" if a.smoke
+                                                          else "adapters") + suffix))
     if a.boot_b is None:
         a.boot_b = 500 if a.smoke else phase2.BOOT_B
     return a
