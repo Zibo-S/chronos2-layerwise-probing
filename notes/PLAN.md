@@ -1654,3 +1654,30 @@ Latency per repeat:
 **Next:**
 1. H4 evaluate on Narval (6 jobs), then rerun both table scripts. That fills the V3 counts, Chronos-2-small accuracy and the two MISSING appendix tables; lines are marked `% [EVAL]`.
 2. Trim the main body to the page budget.
+
+## TimesFM-3 aligned-pathway diagnostic (2026-09-24) — nonlinear adapter ON HOLD
+
+**Question:** why is TimesFM-3's aligned native pathway +48–70% worse at 25/50/75% depth when a probe (same linear function class) gets ~+15%? Objective mismatch vs capacity vs generalization.
+
+**Measured** (read-only, from `results/three_model_phase2/h3/<model>/<ds>/predictions_selected.npz`, TEST split, the depths each cell saves ≈ entrance±1; R² of the aligned forecast against the full model's forecast in the normalized output space `*__z`, i.e. the space the adapter is fit in):
+
+| model | cells | median R² | worst R² | corr(R², ΔMASE) |
+|---|---|---|---|---|
+| Chronos-2 | 43 | 0.875 | −0.05 | −0.24 |
+| TiRex | 34 | 0.906 | −0.61 | −0.59 |
+| TimesFM-3 | 38 | **0.097** | **−733** (Wind Farms L15) | **−0.69** |
+
+- NOT objective mismatch: where TimesFM-3's fit does reproduce the native output (R² 0.74–0.92 at L17/L18), ΔMASE is small (+4–10%).
+- Negative test R² = worse than predicting the mean native output → a GENERALIZATION failure, not only capacity. Not a few outlier windows (top-5 windows ≤ 18% of the error).
+- The closed form selects near-zero ridge: κ ∈ 1e-11..1e-8 in 229/280 fits (essentially unregularized least squares, 1394 train rows vs d=1280). Chronos-2/TiRex use the iterative AdamW fit (identity-anchored decay, early stopping on validation) and reach R² ≈ 0.9.
+
+**Decision:** do NOT build the nested nonlinear branch yet (more capacity would likely overfit more). Next, in order:
+1. train / val / test R² per depth for TimesFM-3 (needs the feature cache → compute node, CPU). Distinguishes val→test shift from a selection/metric problem.
+2. If (1) confirms under-regularization: refit TimesFM-3 output-matched with the SAME iterative protocol as Chronos-2/TiRex (removes the closed-form vs iterative asymmetry). Pre-stated rule: adopt if validation distillation error and validation MASE improve; affine closed-form results stay reported.
+3. Only then reconsider the nested nonlinear adapter (r=64, W2=0 init). Adoption rule (pre-registered): improves TimesFM-3 validation MASE at all three representative depths, by ≥10 pp at ≥2 of them, without degrading Chronos-2/TiRex median validation MASE by >1 pp vs affine.
+
+**Smoke IMPLEMENTED 2026-09-24 (user asked to run it directly; step 1 is folded in — the smoke reports train/val/test distillation R² per arm).** Not yet run.
+- `probing/phase2_align.py`: `NestedResidualAdapter` (affine + `W2 gelu(W1 LN(x)+b1)`, r=64, W2=0 ⇒ bitwise affine/hard cut at init; decay on Δ, W1, W2); `fit_residual_adapter(make_adapter=...)`, default path bitwise unchanged.
+- `experiments/run_phase2_nonlinear_smoke.py` + `job_phase2_nonlinear_smoke.sh`: Electricity, 25/50/75% depth; arms hard / affine_closed (TimesFM-3) / affine_iter / nested; writes only `results/three_model_phase2_nonlinear_smoke/summary.json`; applies the pre-registered rule (`RULE`, `phase2b-nonlinear/v1`) on validation.
+- Contracts: `tests/test_phase2_nonlinear.py` (N1–N5). `tests/test_phase2_h3.py` 23/25/27 updated to the renamed paper labels (Hard truncation / Output-matched adapter truncation / Aligned native pathway); 27/27 pass.
+- Reproduction check built in: the affine arms print the committed H3 test ratio next to the recomputed one (C2/TiRex affine_iter, TimesFM-3 affine_closed) — they must match before any nested number is read.

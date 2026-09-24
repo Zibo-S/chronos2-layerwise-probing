@@ -642,7 +642,7 @@ def test_23_tables_and_paper_outputs_regenerate_from_artifacts_only():
         gen = tmp / "generated"
         MP.build(tmp, gen)
         tab = (gen / "tables" / "h3_ladder_table.tex").read_text()
-        assert "TiRex" in tab and "Hard cut" in tab and "\\toprule" in tab
+        assert "TiRex" in tab and "Hard truncation" in tab and "\\toprule" in tab
         assert "PhaseTwoMissing" in (gen / "tables" / "h4_truncation_table.tex").read_text()
         assert (gen / "h3_depth_curves.pdf").stat().st_size > 1000
         assert (gen / "h3_ladder_at_entrance.pdf").stat().st_size > 1000
@@ -780,7 +780,7 @@ def test_25_h4_outcome_is_preregistered_and_failures_are_reported():
         tab = (gen / "tables" / "h4_outcome_table.tex").read_text()
         assert "TiRex & 3 & 2 & 1 & 1 (0) & 1" in tab, tab
         noa_row = next(x for x in (gen / "tables" / "h4_truncation_table.tex").read_text().splitlines()
-                       if "Label-free aligned truncation" in x)
+                       if "Output-matched adapter truncation" in x)
         assert noa_row.rstrip(" \\").endswith("1/2"), noa_row      # no vacuous 3rd 'success'
         assert "HfourFailure}{1/2}" in (gen / "phase2_macros.tex").read_text()
         cell("coastal_ts", arms(0.01, 0.0, 0.02, v3=False), 1)             # physical != offline
@@ -896,7 +896,7 @@ def test_27_frontier_tables_and_figure_from_artifacts():
         assert (gen / "h4_frontier_appendix.pdf").stat().st_size > 1000
         tab = (gen / "tables" / "h4_budget_table.tex").read_text()
         assert "TiRex" in tab and "10\\%" in tab and "Probe head" in tab, tab
-        assert "Label-free alignment" in tab and "within/cut" in tab, tab
+        assert "Aligned native pathway" in tab and "within/cut" in tab, tab
         assert "\\phtwotirexnoaBudgetTenCut" in (gen / "phase2_macros.tex").read_text()
 
         # the mock's arms never fit a budget; give one cell two real cuts so the join is exercised

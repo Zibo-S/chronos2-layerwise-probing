@@ -14,8 +14,9 @@ the paper assume its root is ``three_models_paper/``, as for the Phase-1 figures
   MAIN BODY
     h4_frontier.{pdf,png}             the accuracy-compute frontier: median [IQR] test MASE increase
                                       vs MEASURED end-to-end speedup (B=1), every block depth,
-                                      hard / label-free aligned / supervised aligned / probe head
-    tables/h3_ladder_table.tex        the compatibility ladder at the frozen Phase-1 entrance
+                                      hard / aligned native pathway / probe head (forecast-trained: appendix)
+    h3_main_electricity.{pdf,png}     H3 at every depth, one dataset (Electricity) x three models
+    tables/h3_ladder_table.tex       the compatibility ladder at the frozen Phase-1 entrance
     tables/h4_budget_table.tex        validation-budgeted truncation, eps = 2 / 5 / 10 / 20 %
 
   APPENDIX
@@ -66,13 +67,23 @@ REPRESENTATIVE = ("monash_electricity_hourly", "uber_tlc_hourly", "monash_london
 # ---- the four readouts of a depth-l state, in the order every figure/table uses -------------
 #      (label in tables, label in figures, colour, line style, line width)
 ARMS = {
-    "hard": ("Hard cut", "Hard truncation", "#8C8C8C", (0, (3, 1.6)), 1.0),
-    "noa": ("Label-free alignment", "Label-free alignment + native head", "#009E73", "-", 1.9),
-    "fl": ("Supervised alignment", "Supervised alignment + native head", "#0072B2", "-", 1.0),
-    "probe": ("Probe head", "Probe head (replaces native head)", "#E69F00", "-", 1.15),
+    "hard": ("Hard truncation", "Hard truncation", "#8C8C8C", (0, (3, 1.6)), 1.0),
+    "noa": ("Aligned native pathway", "Aligned native pathway", "#009E73", "-", 1.9),
+    "fl": ("Forecast-trained alignment", "Forecast-trained alignment", "#0072B2", "-", 1.0),
+    "probe": ("Probe head", "Probe head", "#E69F00", "-", 1.15),
     "ra": ("Hidden-state alignment", "Hidden-state alignment (diagnostic)", "#CC79A7", "-", 0.9),
 }
 LADDER_RUNGS = ("hard", "noa", "fl", "probe")          # RA is a diagnostic: appendix only
+# MAIN-TEXT figures and tables show only these; the forecast-trained arm ("fl") is appendix-only.
+MAIN_ARMS = ("hard", "noa", "probe")
+# Hidden-state alignment (h_l -> h_L, then the frozen head) is reported ONLY where the native head
+# is linear (TimesFM-3): there it is a well-defined reparameterization of the linear readout. The
+# H3 runs still compute it for every model; the paper outputs filter it here.
+RA_MODELS = ("timesfm3",)
+
+
+def _reported(model, arm) -> bool:
+    return arm != "ra" or model in RA_MODELS
 BUDGET_WORD = {0.02: "Two", 0.05: "Five", 0.1: "Ten", 0.2: "Twenty"}
 
 # ---- style: the Phase-1 figure scripts' settings (5.5in ICLR \textwidth, 1:1 point sizes) ----
@@ -82,6 +93,8 @@ RC = {"font.size": 8, "axes.titlesize": 8.5, "axes.labelsize": 7.5, "xtick.label
       "xtick.major.width": 0.6, "ytick.major.width": 0.6, "xtick.minor.width": 0.5,
       "lines.linewidth": 1.3, "pdf.fonttype": 42, "ps.fonttype": 42}
 Y_CAP = 300.0             # % MASE increase: larger values are drawn as triangles at the cap
+DEPTH_CAP = 100.0         # H3 depth panels: the adapted readouts decide the range, not the hard
+                          # cut; larger values are triangles at the cap, hard cut's max annotated
 X_CAP = 16.0              # x speedup cap: TiRex with no blocks kept (~340x) is annotated instead
 ENTRANCE_C = "#2E7D32"    # the Phase-1 entrance marker, as in the Phase-1 figures
 
@@ -192,9 +205,9 @@ def _final_index(model, rows=()):
 # --------------------------------------------------------------------------- #
 # the shared degradation axis: signed percent, linear to 20 %, logarithmic beyond
 # --------------------------------------------------------------------------- #
-def _degradation_axis(ax, lo=-3.0, cap=Y_CAP):
+def _degradation_axis(ax, lo=-3.0, cap=Y_CAP, linscale=2.0):
     import matplotlib.ticker as mt
-    ax.set_yscale("symlog", linthresh=20, linscale=2.0)
+    ax.set_yscale("symlog", linthresh=20, linscale=linscale)
     ax.set_ylim(min(lo, -3.0), cap * 1.2)
     ticks = [t for t in (-20, -10, 0, 5, 10, 20, 50, 100, 300) if min(lo, -3.0) <= t <= cap]
     ax.yaxis.set_major_locator(mt.FixedLocator(ticks))
@@ -243,12 +256,9 @@ def ladder_table(summary, out: Path):
         extra = f"; {nf} with entrance at the final block, not counted" if nf else ""
         lines.append(f"\\multicolumn{{5}}{{l}}{{\\textbf{{{MODEL_NAMES[m]}}} "
                      f"($n={n}$ datasets{extra})}} \\\\")
-        for key in LADDER_RUNGS:
+        for key in (k for k in LADDER_RUNGS if k in MAIN_ARMS):
             r = next((x for x in rm if x["rung"] == key), None)
             if r is None:
-                if key == "fl" and m == "timesfm3":
-                    lines.append(f"\\quad {ARMS[key][0]} & \\multicolumn{{4}}{{l}}"
-                                 "{\\textit{identical to the probe head (linear native head)}} \\\\")
                 continue
             q = [_f(r["mase_degradation_q25"]), _f(r["mase_degradation_median"]),
                  _f(r["mase_degradation_q75"])]
@@ -274,7 +284,7 @@ def ladder_full_table(ladder, out: Path):
              "\\begin{tabular}{llrrrrr}", "\\toprule",
              " & & \\multicolumn{5}{c}{Test $\\Delta$MASE vs.\\ full model (\\%) at the entrance} \\\\",
              "\\cmidrule(lr){3-7}",
-             "Dataset & Entr. & Hard cut & Label-free [95\\% CI] & Gap closed & Supervised & "
+             "Dataset & Entr. & Hard & Output-matched [95\\% CI] & Gap closed & Forecast-trained & "
              "Probe head \\\\", "\\midrule"]
     for m in MODELS:
         hm = [r for r in head if r["model"] == m]
@@ -328,7 +338,7 @@ def compatibility_table(tunnels, out: Path, tol="tol_0.05"):
             continue
         first = True
         for key in ("hard", "noa", "fl", "probe", "ra"):
-            rk = [r for r in rm if r["family"] == key]
+            rk = [r for r in rm if r["family"] == key and _reported(m, key)]
             if not rk:
                 continue
             lag = np.array([int(r["compatibility_lag"]) for r in rk], float)
@@ -364,10 +374,10 @@ def selection_table(depth_rows, out: Path):
         first = True
         for key in ("noa", "fl", "ra"):
             rr = [r for r in depth_rows if r["model"] == m and r["family"] == key
-                  and int(r["depth_index"]) < L]
+                  and int(r["depth_index"]) < L and _reported(m, key)]
             if not rr:
                 continue
-            eps = [_f(r["selected_epoch"]) for r in rr if _f(r["selected_epoch"]) is not None]
+            eps =[_f(r["selected_epoch"]) for r in rr if _f(r["selected_epoch"]) is not None]
             wds = [_f(r["selected_wd"]) for r in rr if _f(r["selected_wd"]) is not None]
             kap = [_f(r["selected_kappa"]) for r in rr if _f(r["selected_kappa"]) is not None]
             hc = sum(_true(r["selected_hard_cut"]) for r in rr)
@@ -381,7 +391,7 @@ def selection_table(depth_rows, out: Path):
                 late = "--"
                 atmax = (f"{sum(k in (kmin, kmax) for k in kap)}/{len(kap)}"
                          if kap else "--")
-            short = {"noa": "Label-free", "fl": "Supervised", "ra": "Hidden-state"}[key]
+            short = {"noa": "Output-matched", "fl": "Forecast-trained", "ra": "Hidden-state"}[key]
             lines.append(f"{MODEL_NAMES[m] if first else ''} & {short} & {len(rr)} & "
                          f"{npar / 1e6:.2f}M & {med} & {late} & {atmax} & {hc}/{len(rr)} \\\\")
             first = False
@@ -405,7 +415,7 @@ def budget_table(budget_summary, out: Path, physical=()):
     if not rows:
         return _missing(out, "h4_budget_table")
     eps = sorted({float(r["budget"]) for r in rows})
-    arms = ("hard", "noa", "fl", "probe")
+    arms = ("hard", "noa", "probe")                      # MAIN_ARMS, in column order
     x = "$\\times$"
     lines = ["% generated by experiments.make_phase2_paper_tables -- do not edit",
              "% per budget: median measured speedup (end-to-end, B=1) over ALL datasets (no cut = "
@@ -415,18 +425,17 @@ def budget_table(budget_summary, out: Path, physical=()):
              f"{sum(_true(r['V3_passed']) for r in physical)}/{len(physical)}"
              + ("" if physical else " (physical evaluation pending: numbers are the offline H3 "
                                     "computation, V3-verified at every depth by h4 verify)"),
-             "\\begin{tabular}{l" + "rr" + "rrr" + "rr" + "rr" + "}", "\\toprule",
+             "\\begin{tabular}{l" + "rr" + "rrr" + "rr" + "}", "\\toprule",
              " & \\multicolumn{2}{c}{Hard truncation} & "
-             "\\multicolumn{3}{c}{Label-free alignment} & "
-             "\\multicolumn{2}{c}{Supervised alignment} & \\multicolumn{2}{c}{Probe head} \\\\",
-             "\\cmidrule(lr){2-3}\\cmidrule(lr){4-6}\\cmidrule(lr){7-8}\\cmidrule(lr){9-10}",
+             "\\multicolumn{3}{c}{Aligned native pathway} & \\multicolumn{2}{c}{Probe head} \\\\",
+             "\\cmidrule(lr){2-3}\\cmidrule(lr){4-6}\\cmidrule(lr){7-8}",
              "Budget & speedup & within/cut & speedup & within/cut & test $\\Delta$ & "
-             "speedup & within/cut & speedup & within/cut \\\\", "\\midrule"]
+             "speedup & within/cut \\\\", "\\midrule"]
     for m in MODELS:
         rm = [r for r in rows if r["model"] == m]
         if not rm:
             continue
-        lines.append(f"\\multicolumn{{10}}{{l}}{{\\textbf{{{MODEL_NAMES[m]}}}}} \\\\")
+        lines.append(f"\\multicolumn{{8}}{{l}}{{\\textbf{{{MODEL_NAMES[m]}}}}} \\\\")
         for e in eps:
             cells = []
             for arm in arms:
@@ -536,8 +545,8 @@ def truncation_table(joined, out: Path):
     """APPENDIX (needs H4 evaluate): the physically truncated models at the frozen entrance."""
     if not joined:
         return _missing(out, "h4_truncation_table")
-    arms = [("hard", "Hard-cut truncation"), ("noa", "Label-free aligned truncation"),
-            ("fl", "Supervised aligned truncation"), ("probe_head", "Probe-head truncation"),
+    arms = [("hard", "Hard truncation"), ("noa", "Output-matched adapter truncation"),
+            ("fl", "Forecast-trained adapter truncation"), ("probe_head", "Probe-head truncation"),
             ("chronos2_small", "Chronos-2-small")]
     lines = ["% generated by experiments.make_phase2_paper_tables -- do not edit",
              "% truncation rows aggregate the datasets whose Phase-1 entrance lies BEFORE the "
@@ -609,8 +618,9 @@ FRONTIER_ARM_ORDER = ("hard", "probe", "fl", "noa")      # draw order: primary a
 
 
 def _frontier_panel(ax, model, rows, xkey, ykey=("degradation_q25", "degradation_median",
-                                                 "degradation_q75"), small=None):
-    """One model: median test increase (IQR band for the label-free arm) against the cost axis,
+                                                 "degradation_q75"), small=None,
+                    arms=FRONTIER_ARM_ORDER):
+    """One model: median test increase (IQR band for the aligned arm) against the cost axis,
     points joined in DEPTH order (final block -> L0). A cost not measured yet falls back to the
     fraction of blocks removed. Returns the annotations it had to make (off-axis points)."""
     import matplotlib.ticker as mt
@@ -627,7 +637,7 @@ def _frontier_panel(ax, model, rows, xkey, ykey=("degradation_q25", "degradation
     x0 = 1.0 if log_x else 0.0
     ys, xs, notes = [0.0], [x0], {}
     by_depth_hard = {}
-    for arm in FRONTIER_ARM_ORDER:
+    for arm in arms:
         ra = sorted((r for r in rm if r["arm"] == arm), key=lambda r: -int(r["depth_index"]))
         if not ra:
             continue
@@ -702,15 +712,16 @@ def _annotate_offaxis(ax, notes):
                 linespacing=0.95)
 
 
-def _frontier_legend(fig, small=None, ncol=2):
+def _frontier_legend(fig, small=None, ncol=2, arms=("noa", "fl", "probe", "hard")):
     from matplotlib.lines import Line2D
     from matplotlib.patches import Patch
-    h = [Line2D([], [], marker="*", ms=7, color="black", ls="none", label="Full model")]
-    for arm in ("noa", "fl", "probe", "hard"):
+    h = []
+    for arm in arms:
         _, name, col, ls, lw = ARMS[arm]
         h.append(Line2D([], [], color=col, ls=ls, lw=lw, label=name))
+    h.append(Line2D([], [], marker="*", ms=7, color="black", ls="none", label="Full model"))
     h.append(Patch(facecolor=ARMS["noa"][2], alpha=0.16, lw=0,
-                   label="IQR over datasets (label-free)"))
+                   label="IQR over datasets (aligned)"))
     if small:
         h.append(Line2D([], [], marker="D", ms=4, color="#2166AC", ls="none",
                         label="Chronos-2-small"))
@@ -731,12 +742,13 @@ def frontier_figure(summary, out_dir: Path, small=None, xkey="speedup_e2e_b1",
         fig, axes = plt.subplots(1, 3, figsize=(TEXTWIDTH_IN, 2.35), layout="constrained")
         axis = xkey
         for ax, m in zip(axes, MODELS):
-            notes = _frontier_panel(ax, m, rows, xkey, small=small if m == "chronos2" else None)
+            notes = _frontier_panel(ax, m, rows, xkey, small=small if m == "chronos2" else None,
+                                    arms=tuple(a for a in FRONTIER_ARM_ORDER if a in MAIN_ARMS))
             _annotate_offaxis(ax, notes)
             axis = notes.get("axis", axis)
         axes[0].set_ylabel("Test MASE increase\nover full model (median)")
         axes[1].set_xlabel(XLABEL[axis], labelpad=3)
-        _frontier_legend(fig, small=small)
+        _frontier_legend(fig, small=small, ncol=3, arms=("noa", "probe", "hard"))
         return _save(fig, out_dir, stem)
 
 
@@ -808,12 +820,15 @@ def frontier_wql(depth_rows, summary, out_dir: Path, stem="h4_frontier_wql"):
 # --------------------------------------------------------------------------- #
 # H3 figures
 # --------------------------------------------------------------------------- #
-def _depth_panel(ax, rr, entrance, L, show_x=True):
+def _depth_panel(ax, rr, entrance, L, show_x=True, arms=("hard", "probe", "fl", "noa")):
     """One model x dataset: test MASE increase of every readout at every depth (final block
-    included), the label-free arm with its 95% band, the Phase-1 entrance marked."""
+    included), the output-matched arm with its 95% band, the tunnel entrance marked. The y range
+    stops at DEPTH_CAP; off-scale points are triangles at the cap, and the hard cut's largest
+    off-scale value is written next to its highest triangle."""
     import matplotlib.ticker as mt
+    cap = DEPTH_CAP
     lows = []
-    for arm in ("hard", "probe", "fl", "noa"):
+    for arm in arms:
         pts = sorted((int(r["depth_index"]), _f(r["mase_ratio_vs_native"]), _f(r["mase_ratio_ci_lo"]),
                       _f(r["mase_ratio_ci_hi"])) for r in rr
                      if r["family"] == arm and _f(r["mase_ratio_vs_native"]) is not None)
@@ -822,13 +837,22 @@ def _depth_panel(ax, rr, entrance, L, show_x=True):
         d, v, lo, hi = (np.array(a, float) for a in zip(*pts))
         _, _, col, ls, lw = ARMS[arm]
         if arm == "noa":
-            ax.fill_between(d, np.minimum(100 * (lo - 1), Y_CAP), np.minimum(100 * (hi - 1), Y_CAP),
+            ax.fill_between(d, np.minimum(100 * (lo - 1), cap), np.minimum(100 * (hi - 1), cap),
                             color=col, alpha=0.18, lw=0, zorder=1)
-        _plot_capped(ax, d, 100 * (v - 1), col, ls, 0.8 if arm != "noa" else 1.3, ms=1.3)
+        y = 100 * (v - 1)
+        _plot_capped(ax, d, y, col, ls, 0.8 if arm != "noa" else 1.3, ms=1.3, cap=cap)
+        if arm == "hard" and (y > cap).any():
+            k = int(np.nanargmax(y))
+            txt = f"{v[k]:,.0f}×" if v[k] >= 3 else f"+{y[k]:.0f}%"
+            # above the triangle row: every curve is capped at `cap`, so nothing can sit there
+            ax.annotate(f"hard max {txt}", (d[k], cap), xytext=(0, 3.5), textcoords="offset points",
+                        ha="left" if d[k] < L / 2 else "right", va="bottom", fontsize=5.5,
+                        color=col, zorder=6)
         lows.append(np.nanmin(100 * (np.minimum(v, lo) - 1)))
     if entrance is not None:
         ax.axvline(entrance, color=ENTRANCE_C, lw=0.9, ls=(0, (3, 2)), zorder=0.5)
-    _degradation_axis(ax, lo=(min(lows) - 2) if lows else -3)
+    _degradation_axis(ax, lo=(min(lows) - 2) if lows else -3, cap=cap, linscale=1.0)
+    ax.set_ylim(top=cap * 1.9)                           # headroom for the off-scale label
     step = 4 if L > 12 else 2
     ax.set_xticks(range(0, L + 1, step))
     ax.set_xticklabels([f"L{i}" for i in range(0, L + 1, step)] if show_x else [])
@@ -837,25 +861,26 @@ def _depth_panel(ax, rr, entrance, L, show_x=True):
     ax.tick_params(which="major", length=2.5, pad=1.5)
     ax.tick_params(which="minor", length=1.5)
     bottom = ax.get_ylim()[0]
-    ax.yaxis.set_major_locator(mt.FixedLocator([t for t in (-20, -10, 0, 10, 20, 100, 300)
-                                                if bottom <= t <= Y_CAP]))
+    ax.yaxis.set_major_locator(mt.FixedLocator([t for t in (-20, -10, 0, 5, 10, 20, 50, 100)
+                                                if bottom <= t <= cap]))
     for s in ("top", "right"):
         ax.spines[s].set_visible(False)
 
 
-def _depth_legend_handles(models=MODELS):
+def _depth_legend_handles(models=MODELS, arms=("noa", "fl", "probe", "hard")):
     from matplotlib.lines import Line2D
     from matplotlib.patches import Patch
     h = []
-    for arm in ("noa", "fl", "probe", "hard"):
+    for arm in arms:
         if arm == "fl" and not any(m in phase2.FL_MODELS for m in models):
             continue                                   # TimesFM-3: supervised == probe
         _, name, col, ls, lw = ARMS[arm]
         h.append(Line2D([], [], color=col, ls=ls, lw=1.3 if arm == "noa" else 0.9, marker="o",
                         ms=2, label=name))
+    h.append(Line2D([], [], color="black", lw=0.6, label="Full model"))
     h.append(Patch(facecolor=ARMS["noa"][2], alpha=0.18, lw=0, label="95% bootstrap CI"))
     h.append(Line2D([], [], color=ENTRANCE_C, lw=0.9, ls=(0, (3, 2)),
-                    label="Phase-1 entrance (5%)"))
+                    label="Tunnel entrance (5%)"))
     return h
 
 
@@ -864,8 +889,11 @@ def _entrances(ladder):
             if _true(r["is_headline"])}
 
 
-def depth_curves(depth_rows, ladder, out_dir: Path, stem="h3_depth_curves"):
-    """Three representative datasets x three models (the Phase-1 main-figure datasets)."""
+def depth_curves(depth_rows, ladder, out_dir: Path, stem="h3_depth_curves",
+                 datasets=REPRESENTATIVE, height=5.2, legend_ncol=2,
+                 arms=("hard", "probe", "fl", "noa")):
+    """Datasets x three models, every depth. Default: the three Phase-1 main-figure datasets
+    (appendix); the main body uses one dataset in a single row."""
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
@@ -873,9 +901,9 @@ def depth_curves(depth_rows, ladder, out_dir: Path, stem="h3_depth_curves"):
         return _missing(out_dir / f"{stem}.tex", stem)
     ent = _entrances(ladder)
     with plt.rc_context({**RC, "xtick.labelsize": 6, "ytick.labelsize": 6}):
-        fig, axes = plt.subplots(len(REPRESENTATIVE), 3, figsize=(TEXTWIDTH_IN, 5.2),
+        fig, axes = plt.subplots(len(datasets), 3, figsize=(TEXTWIDTH_IN, height),
                                  squeeze=False, layout="constrained")
-        for i, tag in enumerate(REPRESENTATIVE):
+        for i, tag in enumerate(datasets):
             for j, m in enumerate(MODELS):
                 ax = axes[i][j]
                 rr = [r for r in depth_rows if r["model"] == m and r["dataset"] == tag]
@@ -886,13 +914,18 @@ def depth_curves(depth_rows, ladder, out_dir: Path, stem="h3_depth_curves"):
                     ax.set_yticks([])
                     continue
                 _depth_panel(ax, rr, ent.get((m, tag)), _final_index(m, rr),
-                             show_x=i == len(REPRESENTATIVE) - 1)
+                             show_x=i == len(datasets) - 1, arms=arms)
                 if i == 0:
                     ax.set_title(MODEL_NAMES[m], fontweight="bold", pad=2)
                 if j == 0:
-                    ax.set_ylabel(f"{_dname(tag)}\nTest MASE increase", fontsize=7)
-        fig.legend(handles=_depth_legend_handles(), loc="outside lower center", ncol=2,
-                   frameon=False, handlelength=2.0, columnspacing=1.2)
+                    ax.set_ylabel(f"{_dname(tag)}: test MASE\nincrease over full model",
+                                  fontsize=7)
+        wide = legend_ncol > 2                          # one-row main figure: fit 5.5in
+        legend_arms = tuple(a for a in ("noa", "fl", "probe", "hard") if a in arms)
+        fig.legend(handles=_depth_legend_handles(arms=legend_arms), loc="outside lower center",
+                   ncol=legend_ncol,
+                   frameon=False, handlelength=1.6 if wide else 2.0,
+                   columnspacing=0.8 if wide else 1.2, fontsize=6.0 if wide else None)
         return _save(fig, out_dir, stem)
 
 
@@ -963,13 +996,13 @@ def ladder_figure(ladder, out_dir: Path, stem="h3_ladder_at_entrance"):
             _plot_capped(ax, range(len(rungs)), med, "black", "-", 1.8, ms=3.5, zorder=5)
             _degradation_axis(ax, lo=float(np.nanmin(lows)) - 2)
             ax.set_xticks(range(len(rungs)))
-            short = {"hard": "Hard\ncut", "noa": "Label-\nfree", "fl": "Super-\nvised",
+            short = {"hard": "Hard\ntrunc.", "noa": "Output-\nmatched", "fl": "Forecast-\ntrained",
                      "probe": "Probe\nhead"}
             ax.set_xticklabels([short[k] for k in rungs], fontsize=6)
             ax.set_xlim(-0.3, len(rungs) - 0.7)
             for s in ("top", "right"):
                 ax.spines[s].set_visible(False)
-        axes[0].set_ylabel("Test MASE increase at the\nPhase-1 entrance")
+        axes[0].set_ylabel("Test MASE increase at the\ntunnel entrance")
         return _save(fig, out_dir, stem)
 
 
@@ -1047,6 +1080,8 @@ def stats(comb: Path, summary, fr_summ, bud_summ, points, lookup, depth_rows, tu
            "latency_native": [], "selection": {}, "final_block_probe_gap": {}}
     for m in MODELS:
         for arm in ("hard", "noa", "fl", "probe", "ra"):
+            if not _reported(m, arm):
+                continue
             for d in range(0, 21):
                 lab = f"L{d}"
                 v = fr(m, arm, lab)
@@ -1063,8 +1098,8 @@ def stats(comb: Path, summary, fr_summ, bud_summ, points, lookup, depth_rows, tu
                 "q75": float(np.percentile(pr, 75) - 1), "n": len(pr)}
         for key in ("noa", "fl", "ra"):
             rr = [r for r in depth_rows if r["model"] == m and r["family"] == key
-                  and int(r["depth_index"]) < L]
-            eps = [_f(r["selected_epoch"]) for r in rr if _f(r["selected_epoch"]) is not None]
+                  and int(r["depth_index"]) < L and _reported(m, key)]
+            eps =[_f(r["selected_epoch"]) for r in rr if _f(r["selected_epoch"]) is not None]
             wds = [_f(r["selected_wd"]) for r in rr if _f(r["selected_wd"]) is not None]
             if rr:
                 out["selection"][f"{m}/{key}"] = {
@@ -1161,6 +1196,9 @@ def build(output_root, gen_dir=OUT_DIR) -> dict:
     frontier_wql(depth_rows, fr_summ, gen)
     ladder_figure(ladder, gen)
     depth_curves(depth_rows, ladder, gen)
+    depth_curves(depth_rows, ladder, gen, stem="h3_main_electricity",
+                 datasets=("monash_electricity_hourly",), height=2.2, legend_ncol=3,
+                 arms=tuple(a for a in ("hard", "probe", "noa") if a in MAIN_ARMS))
     for m in MODELS:
         depth_figure_model(m, depth_rows, ladder, gen)
     macros(summary, outcomes, gen / "phase2_macros.tex", budget_summary=bud_summ)
