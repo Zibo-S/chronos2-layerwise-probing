@@ -1,0 +1,181 @@
+{
+  "model": "chronos2",
+  "dataset": "electricity_15min",
+  "rule": {
+    "version": "h4-frontier/v1",
+    "question": "how much forecasting accuracy survives a given reduction in inference cost?",
+    "operating_point": "per model x dataset x arm x budget eps: the SHALLOWEST block depth l < L whose VALIDATION MASE ratio to the full native model is <= 1 + eps at EVERY truncation depth j in [l, L-1] (sustained, the Phase-1 operator)",
+    "fallback": "no qualifying depth -> no truncation: the full native model (speedup 1)",
+    "budgets": [
+      0.02,
+      0.05,
+      0.1,
+      0.2
+    ],
+    "selection_data": "validation only; the selected depth is frozen, then test is read once",
+    "entrance_test": "the frozen Phase-1 entrance test (H4_OUTCOME_RULE) is kept unchanged as the stricter secondary hypothesis test"
+  },
+  "blocks_total": 12,
+  "operating_points": [
+    {
+      "arm": "fl",
+      "depth_index": 2,
+      "label": "L2",
+      "blocks_removed": 10,
+      "budgets": [
+        0.2
+      ],
+      "adapter_params": 590592,
+      "active_params": 25673376,
+      "fraction_params_removed": 0.7851198697691311,
+      "physical_test_mase": 1.3677105940526677,
+      "offline_test_mase": 1.3677105680660893,
+      "V3": {
+        "check": "V3 (per-window MASE, physical vs offline H3)",
+        "bitwise": false,
+        "max_abs": 4.517438889628522e-06,
+        "max_scaled": 0.011035248044127454,
+        "atol": 0.00013677105680660895,
+        "rtol": 0.0001,
+        "n": 262,
+        "passed": true,
+        "mase_mean_rel_diff": 1.9000056774733645e-08
+      },
+      "V3_passed": true
+    },
+    {
+      "arm": "fl",
+      "depth_index": 9,
+      "label": "L9",
+      "blocks_removed": 3,
+      "budgets": [
+        0.1
+      ],
+      "adapter_params": 590592,
+      "active_params": 91749792,
+      "fraction_params_removed": 0.2320757794528021,
+      "physical_test_mase": 1.343123070511851,
+      "offline_test_mase": 1.3431230662715898,
+      "V3": {
+        "check": "V3 (per-window MASE, physical vs offline H3)",
+        "bitwise": false,
+        "max_abs": 1.8155141368048078e-06,
+        "max_scaled": 0.006495653413646599,
+        "atol": 0.00013431230662715898,
+        "rtol": 0.0001,
+        "n": 262,
+        "passed": true,
+        "mase_mean_rel_diff": 3.1570161809525103e-09
+      },
+      "V3_passed": true
+    },
+    {
+      "arm": "fl",
+      "depth_index": 11,
+      "label": "L11",
+      "blocks_removed": 1,
+      "budgets": [
+        0.02,
+        0.05
+      ],
+      "adapter_params": 590592,
+      "active_params": 110628768,
+      "fraction_params_removed": 0.07406318221956532,
+      "physical_test_mase": 1.3104698413218867,
+      "offline_test_mase": 1.3104698617075805,
+      "V3": {
+        "check": "V3 (per-window MASE, physical vs offline H3)",
+        "bitwise": false,
+        "max_abs": 1.7734822566062292e-06,
+        "max_scaled": 0.006538699558799252,
+        "atol": 0.00013104698617075807,
+        "rtol": 0.0001,
+        "n": 262,
+        "passed": true,
+        "mase_mean_rel_diff": 1.5556018795527934e-08
+      },
+      "V3_passed": true
+    },
+    {
+      "arm": "noa",
+      "depth_index": 2,
+      "label": "L2",
+      "blocks_removed": 10,
+      "budgets": [
+        0.2
+      ],
+      "adapter_params": 590592,
+      "active_params": 25673376,
+      "fraction_params_removed": 0.7851198697691311,
+      "physical_test_mase": 1.2943706621508473,
+      "offline_test_mase": 1.2943707038605048,
+      "V3": {
+        "check": "V3 (per-window MASE, physical vs offline H3)",
+        "bitwise": false,
+        "max_abs": 2.496675111984814e-06,
+        "max_scaled": 0.011060177911717723,
+        "atol": 0.0001294370703860505,
+        "rtol": 0.0001,
+        "n": 262,
+        "passed": true,
+        "mase_mean_rel_diff": 3.2223888706076185e-08
+      },
+      "V3_passed": true
+    },
+    {
+      "arm": "noa",
+      "depth_index": 9,
+      "label": "L9",
+      "blocks_removed": 3,
+      "budgets": [
+        0.1
+      ],
+      "adapter_params": 590592,
+      "active_params": 91749792,
+      "fraction_params_removed": 0.2320757794528021,
+      "physical_test_mase": 1.302430776137074,
+      "offline_test_mase": 1.3024307843748038,
+      "V3": {
+        "check": "V3 (per-window MASE, physical vs offline H3)",
+        "bitwise": false,
+        "max_abs": 1.6224690704280675e-06,
+        "max_scaled": 0.005891680590699786,
+        "atol": 0.00013024307843748038,
+        "rtol": 0.0001,
+        "n": 262,
+        "passed": true,
+        "mase_mean_rel_diff": 6.324888762177397e-09
+      },
+      "V3_passed": true
+    },
+    {
+      "arm": "noa",
+      "depth_index": 10,
+      "label": "L10",
+      "blocks_removed": 2,
+      "budgets": [
+        0.05
+      ],
+      "adapter_params": 590592,
+      "active_params": 101189280,
+      "fraction_params_removed": 0.15306948083618377,
+      "physical_test_mase": 1.273286783943984,
+      "offline_test_mase": 1.2732868047674866,
+      "V3": {
+        "check": "V3 (per-window MASE, physical vs offline H3)",
+        "bitwise": false,
+        "max_abs": 1.7509126131187713e-06,
+        "max_scaled": 0.0057927454676521195,
+        "atol": 0.00012732868047674866,
+        "rtol": 0.0001,
+        "n": 262,
+        "passed": true,
+        "mase_mean_rel_diff": 1.635413356985061e-08
+      },
+      "V3_passed": true
+    }
+  ],
+  "n_points": 6,
+  "all_V3_passed": true,
+  "h3_cell": "/home/eserebri/repos/chronos2-layerwise-probing/results/three_model_phase2/h3/chronos2/electricity_15min"
+}

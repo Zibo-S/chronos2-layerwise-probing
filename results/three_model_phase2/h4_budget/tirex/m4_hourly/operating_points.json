@@ -1,0 +1,130 @@
+{
+  "model": "tirex",
+  "dataset": "m4_hourly",
+  "rule": {
+    "version": "h4-frontier/v1",
+    "question": "how much forecasting accuracy survives a given reduction in inference cost?",
+    "operating_point": "per model x dataset x arm x budget eps: the SHALLOWEST block depth l < L whose VALIDATION MASE ratio to the full native model is <= 1 + eps at EVERY truncation depth j in [l, L-1] (sustained, the Phase-1 operator)",
+    "fallback": "no qualifying depth -> no truncation: the full native model (speedup 1)",
+    "budgets": [
+      0.02,
+      0.05,
+      0.1,
+      0.2
+    ],
+    "selection_data": "validation only; the selected depth is frozen, then test is read once",
+    "entrance_test": "the frozen Phase-1 entrance test (H4_OUTCOME_RULE) is kept unchanged as the stricter secondary hypothesis test"
+  },
+  "blocks_total": 12,
+  "operating_points": [
+    {
+      "arm": "fl",
+      "depth_index": 10,
+      "label": "L10",
+      "blocks_removed": 2,
+      "budgets": [
+        0.2
+      ],
+      "adapter_params": 262656,
+      "active_params": 30172736,
+      "fraction_params_removed": 0.14503513623792896,
+      "physical_test_mase": 0.9399364441001882,
+      "offline_test_mase": 0.9399390055758076,
+      "V3": {
+        "check": "V3 (per-window MASE, physical vs offline H3)",
+        "bitwise": false,
+        "max_abs": 0.0013608623716592216,
+        "max_scaled": 6.5788229446760615,
+        "atol": 9.399390055758076e-05,
+        "rtol": 0.0001,
+        "n": 262,
+        "passed": false,
+        "mase_mean_rel_diff": 2.725150891913544e-06
+      },
+      "V3_passed": false
+    },
+    {
+      "arm": "fl",
+      "depth_index": 11,
+      "label": "L11",
+      "blocks_removed": 1,
+      "budgets": [
+        0.02,
+        0.05,
+        0.1
+      ],
+      "adapter_params": 262656,
+      "active_params": 32863296,
+      "fraction_params_removed": 0.06879630049417418,
+      "physical_test_mase": 0.865918367499839,
+      "offline_test_mase": 0.8659296210820614,
+      "V3": {
+        "check": "V3 (per-window MASE, physical vs offline H3)",
+        "bitwise": false,
+        "max_abs": 0.0014167565618713462,
+        "max_scaled": 9.434743720884963,
+        "atol": 8.659296210820615e-05,
+        "rtol": 0.0001,
+        "n": 262,
+        "passed": false,
+        "mase_mean_rel_diff": 1.2995954807924648e-05
+      },
+      "V3_passed": false
+    },
+    {
+      "arm": "noa",
+      "depth_index": 10,
+      "label": "L10",
+      "blocks_removed": 2,
+      "budgets": [
+        0.2
+      ],
+      "adapter_params": 262656,
+      "active_params": 30172736,
+      "fraction_params_removed": 0.14503513623792896,
+      "physical_test_mase": 0.8906780979021995,
+      "offline_test_mase": 0.8906764075163448,
+      "V3": {
+        "check": "V3 (per-window MASE, physical vs offline H3)",
+        "bitwise": false,
+        "max_abs": 0.0012505053875260241,
+        "max_scaled": 6.373888294556631,
+        "atol": 8.906764075163448e-05,
+        "rtol": 0.0001,
+        "n": 262,
+        "passed": false,
+        "mase_mean_rel_diff": 1.897867553772235e-06
+      },
+      "V3_passed": false
+    },
+    {
+      "arm": "noa",
+      "depth_index": 11,
+      "label": "L11",
+      "blocks_removed": 1,
+      "budgets": [
+        0.1
+      ],
+      "adapter_params": 262656,
+      "active_params": 32863296,
+      "fraction_params_removed": 0.06879630049417418,
+      "physical_test_mase": 0.84641465444183,
+      "offline_test_mase": 0.8464206997442321,
+      "V3": {
+        "check": "V3 (per-window MASE, physical vs offline H3)",
+        "bitwise": false,
+        "max_abs": 0.0009150640905546403,
+        "max_scaled": 4.851224538718557,
+        "atol": 8.464206997442321e-05,
+        "rtol": 0.0001,
+        "n": 262,
+        "passed": false,
+        "mase_mean_rel_diff": 7.14219584178432e-06
+      },
+      "V3_passed": false
+    }
+  ],
+  "n_points": 4,
+  "all_V3_passed": false,
+  "h3_cell": "/home/eserebri/repos/chronos2-layerwise-probing/results/three_model_phase2/h3/tirex/m4_hourly"
+}

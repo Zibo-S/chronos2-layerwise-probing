@@ -1,0 +1,128 @@
+{
+  "model": "tirex",
+  "dataset": "wind_farms_hourly",
+  "rule": {
+    "version": "h4-frontier/v1",
+    "question": "how much forecasting accuracy survives a given reduction in inference cost?",
+    "operating_point": "per model x dataset x arm x budget eps: the SHALLOWEST block depth l < L whose VALIDATION MASE ratio to the full native model is <= 1 + eps at EVERY truncation depth j in [l, L-1] (sustained, the Phase-1 operator)",
+    "fallback": "no qualifying depth -> no truncation: the full native model (speedup 1)",
+    "budgets": [
+      0.02,
+      0.05,
+      0.1,
+      0.2
+    ],
+    "selection_data": "validation only; the selected depth is frozen, then test is read once",
+    "entrance_test": "the frozen Phase-1 entrance test (H4_OUTCOME_RULE) is kept unchanged as the stricter secondary hypothesis test"
+  },
+  "blocks_total": 12,
+  "operating_points": [
+    {
+      "arm": "fl",
+      "depth_index": 1,
+      "label": "L1",
+      "blocks_removed": 11,
+      "budgets": [
+        0.2
+      ],
+      "adapter_params": 262656,
+      "active_params": 5957696,
+      "fraction_params_removed": 0.8311846579317224,
+      "physical_test_mase": 4.500080003576725,
+      "offline_test_mase": 4.500078954425244,
+      "V3": {
+        "check": "V3 (per-window MASE, physical vs offline H3)",
+        "bitwise": false,
+        "max_abs": 0.0002930281107951238,
+        "max_scaled": 0.5149363761315696,
+        "atol": 0.0004500078954425244,
+        "rtol": 0.0001,
+        "n": 262,
+        "passed": true,
+        "mase_mean_rel_diff": 2.3314068305745498e-07
+      },
+      "V3_passed": true
+    },
+    {
+      "arm": "fl",
+      "depth_index": 11,
+      "label": "L11",
+      "blocks_removed": 1,
+      "budgets": [
+        0.1
+      ],
+      "adapter_params": 262656,
+      "active_params": 32863296,
+      "fraction_params_removed": 0.06879630049417418,
+      "physical_test_mase": 4.391990487421001,
+      "offline_test_mase": 4.391963757013812,
+      "V3": {
+        "check": "V3 (per-window MASE, physical vs offline H3)",
+        "bitwise": false,
+        "max_abs": 0.003932035524914418,
+        "max_scaled": 8.587831170426345,
+        "atol": 0.00043919637570138123,
+        "rtol": 0.0001,
+        "n": 262,
+        "passed": false,
+        "mase_mean_rel_diff": 6.086208508972223e-06
+      },
+      "V3_passed": false
+    },
+    {
+      "arm": "noa",
+      "depth_index": 10,
+      "label": "L10",
+      "blocks_removed": 2,
+      "budgets": [
+        0.2
+      ],
+      "adapter_params": 262656,
+      "active_params": 30172736,
+      "fraction_params_removed": 0.14503513623792896,
+      "physical_test_mase": 4.4597777256658935,
+      "offline_test_mase": 4.459764342117072,
+      "V3": {
+        "check": "V3 (per-window MASE, physical vs offline H3)",
+        "bitwise": false,
+        "max_abs": 0.0016446850002846958,
+        "max_scaled": 3.4196485569937893,
+        "atol": 0.0004459764342117072,
+        "rtol": 0.0001,
+        "n": 262,
+        "passed": false,
+        "mase_mean_rel_diff": 3.0009542645106226e-06
+      },
+      "V3_passed": false
+    },
+    {
+      "arm": "noa",
+      "depth_index": 11,
+      "label": "L11",
+      "blocks_removed": 1,
+      "budgets": [
+        0.1
+      ],
+      "adapter_params": 262656,
+      "active_params": 32863296,
+      "fraction_params_removed": 0.06879630049417418,
+      "physical_test_mase": 4.38094167478109,
+      "offline_test_mase": 4.3808905046292255,
+      "V3": {
+        "check": "V3 (per-window MASE, physical vs offline H3)",
+        "bitwise": false,
+        "max_abs": 0.00571670283744663,
+        "max_scaled": 12.38301666148343,
+        "atol": 0.0004380890504629226,
+        "rtol": 0.0001,
+        "n": 262,
+        "passed": false,
+        "mase_mean_rel_diff": 1.1680308332314262e-05
+      },
+      "V3_passed": false
+    }
+  ],
+  "n_points": 4,
+  "all_V3_passed": false,
+  "h3_cell": "/home/eserebri/repos/chronos2-layerwise-probing/results/three_model_phase2/h3/tirex/wind_farms_hourly"
+}

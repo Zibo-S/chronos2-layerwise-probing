@@ -1,0 +1,334 @@
+{
+  "model": "chronos2",
+  "dataset": "monash_electricity_hourly",
+  "operating_point": "frozen Phase-1 sustained 5% tunnel entrance",
+  "label": "L9",
+  "depth_index": 9,
+  "blocks_total": 12,
+  "h4_outcome": {
+    "rule": {
+      "version": "h4-outcome/v1",
+      "candidate_depth": "the frozen Phase-1 sustained tunnel entrance at tol 0.05",
+      "decision_arm": "noa (label-free aligned truncation)",
+      "decision_metric": "test MASE ratio vs the full native model minus 1 (point estimate)",
+      "budget": 0.05,
+      "on_failure": "report the failure; never search for, evaluate or substitute another depth",
+      "fragile": "the paired 95% cluster-bootstrap CI of the decision metric contains the budget",
+      "reported_not_deciding": [
+        "noa WQL",
+        "fl",
+        "hard",
+        "probe_head",
+        "chronos2_small"
+      ]
+    },
+    "status": "failure",
+    "successful_truncation": false,
+    "candidate_depth": {
+      "label": "L9",
+      "depth_index": 9,
+      "source": "frozen Phase-1 sustained tunnel entrance, tol 0.05"
+    },
+    "blocks_total": 12,
+    "blocks_removed": 3,
+    "aligned_arm": "noa",
+    "aligned_mase_degradation": 0.15803046535724596,
+    "aligned_mase_degradation_ci": [
+      0.12625807452236182,
+      0.192765582786095
+    ],
+    "aligned_wql_degradation": 0.15035630403816835,
+    "aligned_wql_degradation_ci": [
+      0.08302368212775724,
+      0.2682402607402741
+    ],
+    "budget": 0.05,
+    "fragile": false,
+    "low_skill": false,
+    "secondary_not_deciding": {
+      "fl": {
+        "mase_degradation": 0.1349778554003922,
+        "mase_degradation_ci": [
+          0.1094286739691901,
+          0.16322517554637428
+        ],
+        "within_budget": false,
+        "V3_passed": true
+      },
+      "hard": {
+        "mase_degradation": 0.344356346367938,
+        "mase_degradation_ci": [
+          0.2983016540454475,
+          0.3934847223219573
+        ],
+        "within_budget": false,
+        "V3_passed": true
+      },
+      "probe_head": {
+        "mase_degradation": 0.24533692641935478,
+        "mase_degradation_ci": [
+          0.2066904386963464,
+          0.2874231454302161
+        ],
+        "within_budget": false,
+        "V3_passed": true
+      }
+    },
+    "depth_search_performed": false
+  },
+  "native_active_params": 119477664,
+  "arms": {
+    "native": {
+      "arm": "native",
+      "depth_index": null,
+      "label": null,
+      "blocks_removed": 0,
+      "active_params": 119477664,
+      "fraction_params_removed": 0.0,
+      "test_mase": 0.836189238049318,
+      "test_wql": 0.062177944543683056,
+      "test_mae": 187.65801512848265,
+      "V3_passed": true,
+      "mase_vs_native": {
+        "ratio": 1.0,
+        "ratio_ci_lo": 1.0,
+        "ratio_ci_hi": 1.0,
+        "degradation": 0.0,
+        "degradation_ci_lo": 0.0,
+        "degradation_ci_hi": 0.0,
+        "within_budget": true,
+        "budget_fragile": false
+      },
+      "wql_vs_native": {
+        "ratio": 1.0,
+        "ratio_ci_lo": 1.0,
+        "ratio_ci_hi": 1.0,
+        "degradation": 0.0,
+        "degradation_ci_lo": 0.0,
+        "degradation_ci_hi": 0.0,
+        "within_budget": true,
+        "budget_fragile": false
+      }
+    },
+    "hard": {
+      "arm": "hard",
+      "depth_index": 9,
+      "label": "L9",
+      "blocks_removed": 3,
+      "active_params": 91159200,
+      "fraction_params_removed": 0.23701889584985525,
+      "test_mase": 1.1241363089361711,
+      "test_wql": 0.10746972747466854,
+      "test_mae": 295.34398977546687,
+      "V3_passed": true,
+      "mase_vs_native": {
+        "ratio": 1.344356346367938,
+        "ratio_ci_lo": 1.2983016540454475,
+        "ratio_ci_hi": 1.3934847223219573,
+        "degradation": 0.344356346367938,
+        "degradation_ci_lo": 0.2983016540454475,
+        "degradation_ci_hi": 0.3934847223219573,
+        "within_budget": false,
+        "budget_fragile": false
+      },
+      "wql_vs_native": {
+        "ratio": 1.7284220033868405,
+        "ratio_ci_lo": 1.4061824365508526,
+        "ratio_ci_hi": 2.064322512483993,
+        "degradation": 0.7284220033868405,
+        "degradation_ci_lo": 0.4061824365508526,
+        "degradation_ci_hi": 1.0643225124839928,
+        "within_budget": false,
+        "budget_fragile": false
+      }
+    },
+    "noa": {
+      "arm": "noa",
+      "depth_index": 9,
+      "label": "L9",
+      "blocks_removed": 3,
+      "adapter_params": 590592,
+      "active_params": 91749792,
+      "fraction_params_removed": 0.2320757794528021,
+      "test_mase": 0.9683326124649726,
+      "test_wql": 0.07152679047796144,
+      "test_mae": 216.87628870644468,
+      "V3_passed": true,
+      "mase_vs_native": {
+        "ratio": 1.158030465357246,
+        "ratio_ci_lo": 1.1262580745223618,
+        "ratio_ci_hi": 1.192765582786095,
+        "degradation": 0.15803046535724596,
+        "degradation_ci_lo": 0.12625807452236182,
+        "degradation_ci_hi": 0.192765582786095,
+        "within_budget": false,
+        "budget_fragile": false
+      },
+      "wql_vs_native": {
+        "ratio": 1.1503563040381684,
+        "ratio_ci_lo": 1.0830236821277572,
+        "ratio_ci_hi": 1.268240260740274,
+        "degradation": 0.15035630403816835,
+        "degradation_ci_lo": 0.08302368212775724,
+        "degradation_ci_hi": 0.2682402607402741,
+        "within_budget": false,
+        "budget_fragile": false
+      }
+    },
+    "fl": {
+      "arm": "fl",
+      "depth_index": 9,
+      "label": "L9",
+      "blocks_removed": 3,
+      "adapter_params": 590592,
+      "active_params": 91749792,
+      "fraction_params_removed": 0.2320757794528021,
+      "test_mase": 0.949056268110103,
+      "test_wql": 0.07159474231106845,
+      "test_mae": 218.75014292770672,
+      "V3_passed": true,
+      "mase_vs_native": {
+        "ratio": 1.1349778554003922,
+        "ratio_ci_lo": 1.10942867396919,
+        "ratio_ci_hi": 1.1632251755463743,
+        "degradation": 0.1349778554003922,
+        "degradation_ci_lo": 0.1094286739691901,
+        "degradation_ci_hi": 0.16322517554637428,
+        "within_budget": false,
+        "budget_fragile": false
+      },
+      "wql_vs_native": {
+        "ratio": 1.1514491647559952,
+        "ratio_ci_lo": 1.0939583605057863,
+        "ratio_ci_hi": 1.253530619240939,
+        "degradation": 0.15144916475599524,
+        "degradation_ci_lo": 0.09395836050578632,
+        "degradation_ci_hi": 0.253530619240939,
+        "within_budget": false,
+        "budget_fragile": false
+      }
+    },
+    "probe_head": {
+      "arm": "probe_head",
+      "depth_index": 9,
+      "label": "L9",
+      "blocks_removed": 3,
+      "head": {
+        "model": "chronos2",
+        "head": "folded Phase-1 probe",
+        "params": 110736,
+        "out_features": 144
+      },
+      "active_params": 87763536,
+      "fraction_params_removed": 0.26543980638925113,
+      "test_mase": 1.04133733561728,
+      "test_wql": 0.0838823062568641,
+      "test_mae": 246.8860657184844,
+      "V3_passed": true,
+      "mase_vs_native": {
+        "ratio": 1.2453369264193548,
+        "ratio_ci_lo": 1.2066904386963464,
+        "ratio_ci_hi": 1.287423145430216,
+        "degradation": 0.24533692641935478,
+        "degradation_ci_lo": 0.2066904386963464,
+        "degradation_ci_hi": 0.2874231454302161,
+        "within_budget": false,
+        "budget_fragile": false
+      },
+      "wql_vs_native": {
+        "ratio": 1.3490684980416596,
+        "ratio_ci_lo": 1.2438350264640052,
+        "ratio_ci_hi": 1.4982048015454725,
+        "degradation": 0.3490684980416596,
+        "degradation_ci_lo": 0.24383502646400523,
+        "degradation_ci_hi": 0.49820480154547253,
+        "within_budget": false,
+        "budget_fragile": false
+      }
+    },
+    "chronos2_small": {
+      "arm": "chronos2_small",
+      "active_params": 27934624,
+      "test_mase": 0.9545035405351542,
+      "test_wql": 0.07432228171866156,
+      "test_mae": 218.85938372351455,
+      "note": "separately pretrained smaller model (6 blocks, d=512, 13 quantiles): a practical deployment baseline, NOT a depth-only control",
+      "mase_vs_native": {
+        "ratio": 1.1414922568985013,
+        "ratio_ci_lo": 1.1098002559401823,
+        "ratio_ci_hi": 1.1761292323957202,
+        "degradation": 0.1414922568985013,
+        "degradation_ci_lo": 0.10980025594018228,
+        "degradation_ci_hi": 0.1761292323957202,
+        "within_budget": false,
+        "budget_fragile": false
+      },
+      "wql_vs_native": {
+        "ratio": 1.1953158352870046,
+        "ratio_ci_lo": 1.1209851588187434,
+        "ratio_ci_hi": 1.2967592858088688,
+        "degradation": 0.19531583528700458,
+        "degradation_ci_lo": 0.12098515881874339,
+        "degradation_ci_hi": 0.2967592858088688,
+        "within_budget": false,
+        "budget_fragile": false
+      }
+    }
+  },
+  "V3": {
+    "native": {
+      "check": "V3 (elementwise vs offline H3)",
+      "bitwise": false,
+      "max_abs": 0.0625,
+      "max_scaled": 0.011958736037832407,
+      "atol": 0.24954086289640406,
+      "rtol": 0.0001,
+      "n": 262,
+      "passed": true,
+      "mase_mean_rel_diff": 3.276355199588214e-09
+    },
+    "hard": {
+      "check": "V3 (elementwise vs offline H3)",
+      "bitwise": false,
+      "max_abs": 0.078125,
+      "max_scaled": 0.2885777233569094,
+      "atol": 0.24205764079438513,
+      "rtol": 0.0001,
+      "n": 262,
+      "passed": true,
+      "mase_mean_rel_diff": 9.616677950904817e-09
+    },
+    "noa": {
+      "check": "V3 (elementwise vs offline H3)",
+      "bitwise": false,
+      "max_abs": 0.09375,
+      "max_scaled": 0.01595872567053141,
+      "atol": 0.24718574953759573,
+      "rtol": 0.0001,
+      "n": 262,
+      "passed": true,
+      "mase_mean_rel_diff": 3.846002686815251e-11
+    },
+    "fl": {
+      "check": "V3 (elementwise vs offline H3)",
+      "bitwise": false,
+      "max_abs": 0.07421875,
+      "max_scaled": 0.018319723918260904,
+      "atol": 0.2472220058400997,
+      "rtol": 0.0001,
+      "n": 262,
+      "passed": true,
+      "mase_mean_rel_diff": 1.13305065361725e-08
+    },
+    "probe_head": {
+      "check": "V3 (metric level vs the Phase-1 probe)",
+      "mase_mean_rel_diff": 1.3117238784491248e-08,
+      "passed": true
+    }
+  },
+  "all_V3_passed": true,
+  "n_test_windows": 262,
+  "eval_batch_size": 128,
+  "elapsed_s": 2.9,
+  "h3_cell": "/home/eserebri/repos/chronos2-layerwise-probing/results/three_model_phase2/h3/chronos2/monash_electricity_hourly"
+}

@@ -1,0 +1,76 @@
+{
+  "model": "tirex",
+  "dataset": "boom_hourly",
+  "rule": {
+    "version": "h4-frontier/v1",
+    "question": "how much forecasting accuracy survives a given reduction in inference cost?",
+    "operating_point": "per model x dataset x arm x budget eps: the SHALLOWEST block depth l < L whose VALIDATION MASE ratio to the full native model is <= 1 + eps at EVERY truncation depth j in [l, L-1] (sustained, the Phase-1 operator)",
+    "fallback": "no qualifying depth -> no truncation: the full native model (speedup 1)",
+    "budgets": [
+      0.02,
+      0.05,
+      0.1,
+      0.2
+    ],
+    "selection_data": "validation only; the selected depth is frozen, then test is read once",
+    "entrance_test": "the frozen Phase-1 entrance test (H4_OUTCOME_RULE) is kept unchanged as the stricter secondary hypothesis test"
+  },
+  "blocks_total": 12,
+  "operating_points": [
+    {
+      "arm": "fl",
+      "depth_index": 9,
+      "label": "L9",
+      "blocks_removed": 3,
+      "budgets": [
+        0.2
+      ],
+      "adapter_params": 262656,
+      "active_params": 27482176,
+      "fraction_params_removed": 0.22127397198168386,
+      "physical_test_mase": 1.0514977360704458,
+      "offline_test_mase": 1.0514953367847897,
+      "V3": {
+        "check": "V3 (per-window MASE, physical vs offline H3)",
+        "bitwise": false,
+        "max_abs": 0.00146087853675958,
+        "max_scaled": 8.67593632728225,
+        "atol": 0.00010514953367847898,
+        "rtol": 0.0001,
+        "n": 354,
+        "passed": false,
+        "mase_mean_rel_diff": 2.2817844000032167e-06
+      },
+      "V3_passed": false
+    },
+    {
+      "arm": "noa",
+      "depth_index": 10,
+      "label": "L10",
+      "blocks_removed": 2,
+      "budgets": [
+        0.2
+      ],
+      "adapter_params": 262656,
+      "active_params": 30172736,
+      "fraction_params_removed": 0.14503513623792896,
+      "physical_test_mase": 0.9990045053998047,
+      "offline_test_mase": 0.9990028854808194,
+      "V3": {
+        "check": "V3 (per-window MASE, physical vs offline H3)",
+        "bitwise": false,
+        "max_abs": 0.0006450989864428824,
+        "max_scaled": 4.372304139994677,
+        "atol": 9.990028854808194e-05,
+        "rtol": 0.0001,
+        "n": 354,
+        "passed": false,
+        "mase_mean_rel_diff": 1.621535842216664e-06
+      },
+      "V3_passed": false
+    }
+  ],
+  "n_points": 2,
+  "all_V3_passed": false,
+  "h3_cell": "/home/eserebri/repos/chronos2-layerwise-probing/results/three_model_phase2/h3/tirex/boom_hourly"
+}

@@ -1,0 +1,155 @@
+{
+  "model": "chronos2",
+  "dataset": "wind_farms_hourly",
+  "rule": {
+    "version": "h4-frontier/v1",
+    "question": "how much forecasting accuracy survives a given reduction in inference cost?",
+    "operating_point": "per model x dataset x arm x budget eps: the SHALLOWEST block depth l < L whose VALIDATION MASE ratio to the full native model is <= 1 + eps at EVERY truncation depth j in [l, L-1] (sustained, the Phase-1 operator)",
+    "fallback": "no qualifying depth -> no truncation: the full native model (speedup 1)",
+    "budgets": [
+      0.02,
+      0.05,
+      0.1,
+      0.2
+    ],
+    "selection_data": "validation only; the selected depth is frozen, then test is read once",
+    "entrance_test": "the frozen Phase-1 entrance test (H4_OUTCOME_RULE) is kept unchanged as the stricter secondary hypothesis test"
+  },
+  "blocks_total": 12,
+  "operating_points": [
+    {
+      "arm": "fl",
+      "depth_index": 2,
+      "label": "L2",
+      "blocks_removed": 10,
+      "budgets": [
+        0.1,
+        0.2
+      ],
+      "adapter_params": 590592,
+      "active_params": 25673376,
+      "fraction_params_removed": 0.7851198697691311,
+      "physical_test_mase": 4.4897296660943775,
+      "offline_test_mase": 4.489729752825398,
+      "V3": {
+        "check": "V3 (per-window MASE, physical vs offline H3)",
+        "bitwise": false,
+        "max_abs": 1.2155121051793394e-05,
+        "max_scaled": 0.0222729059328713,
+        "atol": 0.00044897297528253985,
+        "rtol": 0.0001,
+        "n": 262,
+        "passed": true,
+        "mase_mean_rel_diff": 1.9317648358026273e-08
+      },
+      "V3_passed": true
+    },
+    {
+      "arm": "fl",
+      "depth_index": 11,
+      "label": "L11",
+      "blocks_removed": 1,
+      "budgets": [
+        0.05
+      ],
+      "adapter_params": 590592,
+      "active_params": 110628768,
+      "fraction_params_removed": 0.07406318221956532,
+      "physical_test_mase": 4.373318403992369,
+      "offline_test_mase": 4.373318389742648,
+      "V3": {
+        "check": "V3 (per-window MASE, physical vs offline H3)",
+        "bitwise": false,
+        "max_abs": 8.653049172302474e-06,
+        "max_scaled": 0.01190606398308764,
+        "atol": 0.00043733183897426485,
+        "rtol": 0.0001,
+        "n": 262,
+        "passed": true,
+        "mase_mean_rel_diff": 3.25833137328659e-09
+      },
+      "V3_passed": true
+    },
+    {
+      "arm": "noa",
+      "depth_index": 2,
+      "label": "L2",
+      "blocks_removed": 10,
+      "budgets": [
+        0.2
+      ],
+      "adapter_params": 590592,
+      "active_params": 25673376,
+      "fraction_params_removed": 0.7851198697691311,
+      "physical_test_mase": 4.500761703438861,
+      "offline_test_mase": 4.5007617149033585,
+      "V3": {
+        "check": "V3 (per-window MASE, physical vs offline H3)",
+        "bitwise": false,
+        "max_abs": 7.671994474378607e-06,
+        "max_scaled": 0.010803871302270389,
+        "atol": 0.00045007617149033587,
+        "rtol": 0.0001,
+        "n": 262,
+        "passed": true,
+        "mase_mean_rel_diff": 2.5472350063726404e-09
+      },
+      "V3_passed": true
+    },
+    {
+      "arm": "noa",
+      "depth_index": 9,
+      "label": "L9",
+      "blocks_removed": 3,
+      "budgets": [
+        0.1
+      ],
+      "adapter_params": 590592,
+      "active_params": 91749792,
+      "fraction_params_removed": 0.2320757794528021,
+      "physical_test_mase": 4.40118256389946,
+      "offline_test_mase": 4.401182606602233,
+      "V3": {
+        "check": "V3 (per-window MASE, physical vs offline H3)",
+        "bitwise": false,
+        "max_abs": 8.897458765311228e-06,
+        "max_scaled": 0.011730589741216475,
+        "atol": 0.0004401182606602233,
+        "rtol": 0.0001,
+        "n": 262,
+        "passed": true,
+        "mase_mean_rel_diff": 9.70256785284661e-09
+      },
+      "V3_passed": true
+    },
+    {
+      "arm": "noa",
+      "depth_index": 11,
+      "label": "L11",
+      "blocks_removed": 1,
+      "budgets": [
+        0.05
+      ],
+      "adapter_params": 590592,
+      "active_params": 110628768,
+      "fraction_params_removed": 0.07406318221956532,
+      "physical_test_mase": 4.374316792015527,
+      "offline_test_mase": 4.3743168027230945,
+      "V3": {
+        "check": "V3 (per-window MASE, physical vs offline H3)",
+        "bitwise": false,
+        "max_abs": 7.832453951639451e-06,
+        "max_scaled": 0.010238177756283289,
+        "atol": 0.00043743168027230946,
+        "rtol": 0.0001,
+        "n": 262,
+        "passed": true,
+        "mase_mean_rel_diff": 2.447826200108262e-09
+      },
+      "V3_passed": true
+    }
+  ],
+  "n_points": 5,
+  "all_V3_passed": true,
+  "h3_cell": "/home/eserebri/repos/chronos2-layerwise-probing/results/three_model_phase2/h3/chronos2/wind_farms_hourly"
+}

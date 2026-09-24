@@ -1,0 +1,253 @@
+{
+  "model": "timesfm3",
+  "dataset": "boom_hourly",
+  "operating_point": "frozen Phase-1 sustained 5% tunnel entrance",
+  "label": "Emb",
+  "depth_index": 0,
+  "blocks_total": 20,
+  "h4_outcome": {
+    "rule": {
+      "version": "h4-outcome/v1",
+      "candidate_depth": "the frozen Phase-1 sustained tunnel entrance at tol 0.05",
+      "decision_arm": "noa (label-free aligned truncation)",
+      "decision_metric": "test MASE ratio vs the full native model minus 1 (point estimate)",
+      "budget": 0.05,
+      "on_failure": "report the failure; never search for, evaluate or substitute another depth",
+      "fragile": "the paired 95% cluster-bootstrap CI of the decision metric contains the budget",
+      "reported_not_deciding": [
+        "noa WQL",
+        "fl",
+        "hard",
+        "probe_head",
+        "chronos2_small"
+      ]
+    },
+    "status": "invalid_v3",
+    "successful_truncation": null,
+    "candidate_depth": {
+      "label": "Emb",
+      "depth_index": 0,
+      "source": "frozen Phase-1 sustained tunnel entrance, tol 0.05"
+    },
+    "blocks_total": 20,
+    "blocks_removed": 20,
+    "aligned_arm": "noa",
+    "aligned_mase_degradation": 0.8330971858520426,
+    "aligned_mase_degradation_ci": [
+      0.28070039422413706,
+      1.3648835598511146
+    ],
+    "aligned_wql_degradation": 0.8405443082795887,
+    "aligned_wql_degradation_ci": [
+      0.3565310413543554,
+      1.3209818589320155
+    ],
+    "budget": 0.05,
+    "fragile": null,
+    "low_skill": false,
+    "secondary_not_deciding": {
+      "hard": {
+        "mase_degradation": 31.866494978729477,
+        "mase_degradation_ci": [
+          21.845644840507674,
+          51.05593626023207
+        ],
+        "within_budget": false,
+        "V3_passed": true
+      },
+      "probe_head": {
+        "mase_degradation": 0.37610176716680965,
+        "mase_degradation_ci": [
+          0.23954696378473694,
+          0.6560472760532698
+        ],
+        "within_budget": false,
+        "V3_passed": true
+      }
+    },
+    "depth_search_performed": false
+  },
+  "native_active_params": 330710976,
+  "arms": {
+    "native": {
+      "arm": "native",
+      "depth_index": null,
+      "label": null,
+      "blocks_removed": 0,
+      "active_params": 330710976,
+      "fraction_params_removed": 0.0,
+      "test_mase": 0.9327029110293222,
+      "test_wql": 0.2784179072588778,
+      "test_mae": 0.24932679490637383,
+      "V3_passed": true,
+      "mase_vs_native": {
+        "ratio": 1.0,
+        "ratio_ci_lo": 1.0,
+        "ratio_ci_hi": 1.0,
+        "degradation": 0.0,
+        "degradation_ci_lo": 0.0,
+        "degradation_ci_hi": 0.0,
+        "within_budget": true,
+        "budget_fragile": false
+      },
+      "wql_vs_native": {
+        "ratio": 1.0,
+        "ratio_ci_lo": 1.0,
+        "ratio_ci_hi": 1.0,
+        "degradation": 0.0,
+        "degradation_ci_lo": 0.0,
+        "degradation_ci_hi": 0.0,
+        "within_budget": true,
+        "budget_fragile": false
+      }
+    },
+    "hard": {
+      "arm": "hard",
+      "depth_index": 0,
+      "label": "Emb",
+      "blocks_removed": 20,
+      "active_params": 2867776,
+      "fraction_params_removed": 0.9913284523099711,
+      "test_mase": 30.654675541991583,
+      "test_wql": 22.57740980446411,
+      "test_mae": 10.362556090885505,
+      "V3_passed": true,
+      "mase_vs_native": {
+        "ratio": 32.86649497872948,
+        "ratio_ci_lo": 22.845644840507674,
+        "ratio_ci_hi": 52.05593626023207,
+        "degradation": 31.866494978729477,
+        "degradation_ci_lo": 21.845644840507674,
+        "degradation_ci_hi": 51.05593626023207,
+        "within_budget": false,
+        "budget_fragile": false
+      },
+      "wql_vs_native": {
+        "ratio": 81.09180198481718,
+        "ratio_ci_lo": 58.92579380470697,
+        "ratio_ci_hi": 115.06122936922145,
+        "degradation": 80.09180198481718,
+        "degradation_ci_lo": 57.92579380470697,
+        "degradation_ci_hi": 114.06122936922145,
+        "within_budget": false,
+        "budget_fragile": false
+      }
+    },
+    "noa": {
+      "arm": "noa",
+      "depth_index": 0,
+      "label": "Emb",
+      "blocks_removed": 20,
+      "adapter_params": 1639680,
+      "active_params": 4507456,
+      "fraction_params_removed": 0.9863704070106218,
+      "test_mase": 1.7097350814438588,
+      "test_wql": 0.5124404945284419,
+      "test_mae": 0.4662347585543044,
+      "V3_passed": false,
+      "mase_vs_native": {
+        "ratio": 1.8330971858520426,
+        "ratio_ci_lo": 1.280700394224137,
+        "ratio_ci_hi": 2.3648835598511146,
+        "degradation": 0.8330971858520426,
+        "degradation_ci_lo": 0.28070039422413706,
+        "degradation_ci_hi": 1.3648835598511146,
+        "within_budget": false,
+        "budget_fragile": false
+      },
+      "wql_vs_native": {
+        "ratio": 1.8405443082795887,
+        "ratio_ci_lo": 1.3565310413543554,
+        "ratio_ci_hi": 2.3209818589320155,
+        "degradation": 0.8405443082795887,
+        "degradation_ci_lo": 0.3565310413543554,
+        "degradation_ci_hi": 1.3209818589320155,
+        "within_budget": false,
+        "budget_fragile": false
+      }
+    },
+    "probe_head": {
+      "arm": "probe_head",
+      "depth_index": 0,
+      "label": "Emb",
+      "blocks_removed": 20,
+      "head": {
+        "model": "timesfm3",
+        "head": "folded Phase-1 probe",
+        "params": 737856,
+        "out_features": 576
+      },
+      "active_params": 2867776,
+      "fraction_params_removed": 0.9913284523099711,
+      "test_mase": 1.283494124109078,
+      "test_wql": 0.43113652970757643,
+      "test_mae": 0.40377232365227733,
+      "V3_passed": true,
+      "mase_vs_native": {
+        "ratio": 1.3761017671668097,
+        "ratio_ci_lo": 1.239546963784737,
+        "ratio_ci_hi": 1.6560472760532698,
+        "degradation": 0.37610176716680965,
+        "degradation_ci_lo": 0.23954696378473694,
+        "degradation_ci_hi": 0.6560472760532698,
+        "within_budget": false,
+        "budget_fragile": false
+      },
+      "wql_vs_native": {
+        "ratio": 1.5485229881664841,
+        "ratio_ci_lo": 1.2675422139488979,
+        "ratio_ci_hi": 2.129947444887426,
+        "degradation": 0.5485229881664841,
+        "degradation_ci_lo": 0.2675422139488979,
+        "degradation_ci_hi": 1.129947444887426,
+        "within_budget": false,
+        "budget_fragile": false
+      }
+    }
+  },
+  "V3": {
+    "native": {
+      "check": "V3 (elementwise vs offline H3)",
+      "bitwise": false,
+      "max_abs": 6.103515625e-05,
+      "max_scaled": 0.3265573979080353,
+      "atol": 7.343522468846364e-05,
+      "rtol": 0.0001,
+      "n": 354,
+      "passed": true,
+      "mase_mean_rel_diff": 1.3816185630499748e-07
+    },
+    "hard": {
+      "check": "V3 (elementwise vs offline H3)",
+      "bitwise": false,
+      "max_abs": 0.0028076171875,
+      "max_scaled": 0.2171084467115594,
+      "atol": 0.0021211368699573046,
+      "rtol": 0.0001,
+      "n": 354,
+      "passed": true,
+      "mase_mean_rel_diff": 3.5573020147442383e-09
+    },
+    "noa": {
+      "check": "V3 (elementwise vs offline H3)",
+      "bitwise": false,
+      "max_abs": 0.044307708740234375,
+      "max_scaled": 177.11464317081615,
+      "atol": 8.290566598096876e-05,
+      "rtol": 0.0001,
+      "n": 354,
+      "passed": false,
+      "mase_mean_rel_diff": 1.725954624144951e-05
+    },
+    "probe_head": {
+      "check": "V3 (metric level vs the Phase-1 probe)",
+      "mase_mean_rel_diff": 1.642225999697229e-08,
+      "passed": true
+    }
+  },
+  "all_V3_passed": false,
+  "n_test_windows": 354,
+  "eval_batch_size": 64,
+  "elapsed_s": 5.1,
+  "h3_cell": "/home/eserebri/repos/chronos2-layerwise-probing/results/three_model_phase2/h3/timesfm3/boom_hourly"
+}

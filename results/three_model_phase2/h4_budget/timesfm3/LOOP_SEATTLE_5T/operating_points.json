@@ -1,0 +1,128 @@
+{
+  "model": "timesfm3",
+  "dataset": "LOOP_SEATTLE_5T",
+  "rule": {
+    "version": "h4-frontier/v1",
+    "question": "how much forecasting accuracy survives a given reduction in inference cost?",
+    "operating_point": "per model x dataset x arm x budget eps: the SHALLOWEST block depth l < L whose VALIDATION MASE ratio to the full native model is <= 1 + eps at EVERY truncation depth j in [l, L-1] (sustained, the Phase-1 operator)",
+    "fallback": "no qualifying depth -> no truncation: the full native model (speedup 1)",
+    "budgets": [
+      0.02,
+      0.05,
+      0.1,
+      0.2
+    ],
+    "selection_data": "validation only; the selected depth is frozen, then test is read once",
+    "entrance_test": "the frozen Phase-1 entrance test (H4_OUTCOME_RULE) is kept unchanged as the stricter secondary hypothesis test"
+  },
+  "blocks_total": 20,
+  "operating_points": [
+    {
+      "arm": "noa",
+      "depth_index": 17,
+      "label": "L17",
+      "blocks_removed": 3,
+      "budgets": [
+        0.2
+      ],
+      "adapter_params": 1639680,
+      "active_params": 283174176,
+      "fraction_params_removed": 0.14374122254714639,
+      "physical_test_mase": 1.3560477686385923,
+      "offline_test_mase": 1.3560492475549586,
+      "V3": {
+        "check": "V3 (per-window MASE, physical vs offline H3)",
+        "bitwise": false,
+        "max_abs": 0.00010736040615100251,
+        "max_scaled": 0.23931120631634045,
+        "atol": 0.00013560492475549586,
+        "rtol": 0.0001,
+        "n": 262,
+        "passed": true,
+        "mase_mean_rel_diff": 1.0906066788698354e-06
+      },
+      "V3_passed": true
+    },
+    {
+      "arm": "noa",
+      "depth_index": 18,
+      "label": "L18",
+      "blocks_removed": 2,
+      "budgets": [
+        0.05,
+        0.1
+      ],
+      "adapter_params": 1639680,
+      "active_params": 299566336,
+      "fraction_params_removed": 0.0941747999316479,
+      "physical_test_mase": 1.2746831527576663,
+      "offline_test_mase": 1.2746829395449528,
+      "V3": {
+        "check": "V3 (per-window MASE, physical vs offline H3)",
+        "bitwise": false,
+        "max_abs": 4.8954627563047026e-05,
+        "max_scaled": 0.23462266072957563,
+        "atol": 0.0001274682939544953,
+        "rtol": 0.0001,
+        "n": 262,
+        "passed": true,
+        "mase_mean_rel_diff": 1.6726725279679148e-07
+      },
+      "V3_passed": true
+    },
+    {
+      "arm": "noa",
+      "depth_index": 19,
+      "label": "L19",
+      "blocks_removed": 1,
+      "budgets": [
+        0.02
+      ],
+      "adapter_params": 1639680,
+      "active_params": 315958496,
+      "fraction_params_removed": 0.044608377316149306,
+      "physical_test_mase": 1.2728083177882612,
+      "offline_test_mase": 1.2728082848950468,
+      "V3": {
+        "check": "V3 (per-window MASE, physical vs offline H3)",
+        "bitwise": false,
+        "max_abs": 9.339413028275345e-06,
+        "max_scaled": 0.018572272710975633,
+        "atol": 0.0001272808284895047,
+        "rtol": 0.0001,
+        "n": 262,
+        "passed": true,
+        "mase_mean_rel_diff": 2.5843023466184262e-08
+      },
+      "V3_passed": true
+    },
+    {
+      "arm": "probe",
+      "depth_index": 15,
+      "label": "L15",
+      "blocks_removed": 5,
+      "budgets": [
+        0.2
+      ],
+      "active_params": 248750176,
+      "fraction_params_removed": 0.24783211307749275,
+      "physical_test_mase": 0.9879424397842015,
+      "offline_test_mase": 0.9879424345927307,
+      "V3": {
+        "check": "V3 (per-window MASE, physical vs offline H3)",
+        "bitwise": false,
+        "max_abs": 1.9914671867127254e-07,
+        "max_scaled": 0.0014485047100400064,
+        "atol": 9.879424345927308e-05,
+        "rtol": 0.0001,
+        "n": 262,
+        "passed": true,
+        "mase_mean_rel_diff": 5.254831280667148e-09
+      },
+      "V3_passed": true
+    }
+  ],
+  "n_points": 4,
+  "all_V3_passed": true,
+  "h3_cell": "/home/eserebri/repos/chronos2-layerwise-probing/results/three_model_phase2/h3/timesfm3/LOOP_SEATTLE_5T"
+}

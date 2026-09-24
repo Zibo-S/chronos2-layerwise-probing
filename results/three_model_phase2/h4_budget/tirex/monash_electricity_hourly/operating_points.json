@@ -1,0 +1,102 @@
+{
+  "model": "tirex",
+  "dataset": "monash_electricity_hourly",
+  "rule": {
+    "version": "h4-frontier/v1",
+    "question": "how much forecasting accuracy survives a given reduction in inference cost?",
+    "operating_point": "per model x dataset x arm x budget eps: the SHALLOWEST block depth l < L whose VALIDATION MASE ratio to the full native model is <= 1 + eps at EVERY truncation depth j in [l, L-1] (sustained, the Phase-1 operator)",
+    "fallback": "no qualifying depth -> no truncation: the full native model (speedup 1)",
+    "budgets": [
+      0.02,
+      0.05,
+      0.1,
+      0.2
+    ],
+    "selection_data": "validation only; the selected depth is frozen, then test is read once",
+    "entrance_test": "the frozen Phase-1 entrance test (H4_OUTCOME_RULE) is kept unchanged as the stricter secondary hypothesis test"
+  },
+  "blocks_total": 12,
+  "operating_points": [
+    {
+      "arm": "fl",
+      "depth_index": 11,
+      "label": "L11",
+      "blocks_removed": 1,
+      "budgets": [
+        0.2
+      ],
+      "adapter_params": 262656,
+      "active_params": 32863296,
+      "fraction_params_removed": 0.06879630049417418,
+      "physical_test_mase": 0.8826594022074703,
+      "offline_test_mase": 0.882663696168652,
+      "V3": {
+        "check": "V3 (per-window MASE, physical vs offline H3)",
+        "bitwise": false,
+        "max_abs": 0.002534865902102723,
+        "max_scaled": 8.662856340589546,
+        "atol": 8.82663696168652e-05,
+        "rtol": 0.0001,
+        "n": 262,
+        "passed": false,
+        "mase_mean_rel_diff": 4.864776018740221e-06
+      },
+      "V3_passed": false
+    },
+    {
+      "arm": "noa",
+      "depth_index": 10,
+      "label": "L10",
+      "blocks_removed": 2,
+      "budgets": [
+        0.2
+      ],
+      "adapter_params": 262656,
+      "active_params": 30172736,
+      "fraction_params_removed": 0.14503513623792896,
+      "physical_test_mase": 0.9283127181015648,
+      "offline_test_mase": 0.9283120571647747,
+      "V3": {
+        "check": "V3 (per-window MASE, physical vs offline H3)",
+        "bitwise": false,
+        "max_abs": 0.0046036180979700525,
+        "max_scaled": 15.30114952402502,
+        "atol": 9.283120571647748e-05,
+        "rtol": 0.0001,
+        "n": 262,
+        "passed": false,
+        "mase_mean_rel_diff": 7.119769531963551e-07
+      },
+      "V3_passed": false
+    },
+    {
+      "arm": "noa",
+      "depth_index": 11,
+      "label": "L11",
+      "blocks_removed": 1,
+      "budgets": [
+        0.1
+      ],
+      "adapter_params": 262656,
+      "active_params": 32863296,
+      "fraction_params_removed": 0.06879630049417418,
+      "physical_test_mase": 0.8832656749092314,
+      "offline_test_mase": 0.8832476136958033,
+      "V3": {
+        "check": "V3 (per-window MASE, physical vs offline H3)",
+        "bitwise": false,
+        "max_abs": 0.0032000633389466238,
+        "max_scaled": 20.479229576194427,
+        "atol": 8.832476136958033e-05,
+        "rtol": 0.0001,
+        "n": 262,
+        "passed": false,
+        "mase_mean_rel_diff": 2.0448641069623166e-05
+      },
+      "V3_passed": false
+    }
+  ],
+  "n_points": 3,
+  "all_V3_passed": false,
+  "h3_cell": "/home/eserebri/repos/chronos2-layerwise-probing/results/three_model_phase2/h3/tirex/monash_electricity_hourly"
+}

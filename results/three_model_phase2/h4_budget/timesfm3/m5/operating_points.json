@@ -1,0 +1,76 @@
+{
+  "model": "timesfm3",
+  "dataset": "m5",
+  "rule": {
+    "version": "h4-frontier/v1",
+    "question": "how much forecasting accuracy survives a given reduction in inference cost?",
+    "operating_point": "per model x dataset x arm x budget eps: the SHALLOWEST block depth l < L whose VALIDATION MASE ratio to the full native model is <= 1 + eps at EVERY truncation depth j in [l, L-1] (sustained, the Phase-1 operator)",
+    "fallback": "no qualifying depth -> no truncation: the full native model (speedup 1)",
+    "budgets": [
+      0.02,
+      0.05,
+      0.1,
+      0.2
+    ],
+    "selection_data": "validation only; the selected depth is frozen, then test is read once",
+    "entrance_test": "the frozen Phase-1 entrance test (H4_OUTCOME_RULE) is kept unchanged as the stricter secondary hypothesis test"
+  },
+  "blocks_total": 20,
+  "operating_points": [
+    {
+      "arm": "noa",
+      "depth_index": 18,
+      "label": "L18",
+      "blocks_removed": 2,
+      "budgets": [
+        0.1,
+        0.2
+      ],
+      "adapter_params": 1639680,
+      "active_params": 299566336,
+      "fraction_params_removed": 0.0941747999316479,
+      "physical_test_mase": 1.0682080193669143,
+      "offline_test_mase": 1.0682078668358959,
+      "V3": {
+        "check": "V3 (per-window MASE, physical vs offline H3)",
+        "bitwise": false,
+        "max_abs": 1.5254054825053487e-05,
+        "max_scaled": 0.07692504254547748,
+        "atol": 0.00010682078668358959,
+        "rtol": 0.0001,
+        "n": 262,
+        "passed": true,
+        "mase_mean_rel_diff": 1.427915139159725e-07
+      },
+      "V3_passed": true
+    },
+    {
+      "arm": "probe",
+      "depth_index": 0,
+      "label": "Emb",
+      "blocks_removed": 20,
+      "budgets": [
+        0.2
+      ],
+      "active_params": 2867776,
+      "fraction_params_removed": 0.9913284523099711,
+      "physical_test_mase": 1.1133023956513073,
+      "offline_test_mase": 1.1133023948014138,
+      "V3": {
+        "check": "V3 (per-window MASE, physical vs offline H3)",
+        "bitwise": false,
+        "max_abs": 6.557693943420873e-08,
+        "max_scaled": 0.00024001069008734336,
+        "atol": 0.00011133023948014139,
+        "rtol": 0.0001,
+        "n": 262,
+        "passed": true,
+        "mase_mean_rel_diff": 7.633985994169642e-10
+      },
+      "V3_passed": true
+    }
+  ],
+  "n_points": 2,
+  "all_V3_passed": true,
+  "h3_cell": "/home/eserebri/repos/chronos2-layerwise-probing/results/three_model_phase2/h3/timesfm3/m5"
+}

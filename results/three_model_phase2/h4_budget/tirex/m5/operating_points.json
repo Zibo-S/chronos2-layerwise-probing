@@ -1,0 +1,182 @@
+{
+  "model": "tirex",
+  "dataset": "m5",
+  "rule": {
+    "version": "h4-frontier/v1",
+    "question": "how much forecasting accuracy survives a given reduction in inference cost?",
+    "operating_point": "per model x dataset x arm x budget eps: the SHALLOWEST block depth l < L whose VALIDATION MASE ratio to the full native model is <= 1 + eps at EVERY truncation depth j in [l, L-1] (sustained, the Phase-1 operator)",
+    "fallback": "no qualifying depth -> no truncation: the full native model (speedup 1)",
+    "budgets": [
+      0.02,
+      0.05,
+      0.1,
+      0.2
+    ],
+    "selection_data": "validation only; the selected depth is frozen, then test is read once",
+    "entrance_test": "the frozen Phase-1 entrance test (H4_OUTCOME_RULE) is kept unchanged as the stricter secondary hypothesis test"
+  },
+  "blocks_total": 12,
+  "operating_points": [
+    {
+      "arm": "fl",
+      "depth_index": 0,
+      "label": "Emb",
+      "blocks_removed": 12,
+      "budgets": [
+        0.1,
+        0.2
+      ],
+      "adapter_params": 262656,
+      "active_params": 3267136,
+      "fraction_params_removed": 0.9074234936754771,
+      "physical_test_mase": 1.0836957871766568,
+      "offline_test_mase": 1.0836957844678956,
+      "V3": {
+        "check": "V3 (per-window MASE, physical vs offline H3)",
+        "bitwise": false,
+        "max_abs": 2.9188072558916645e-07,
+        "max_scaled": 0.0013534858790971397,
+        "atol": 0.00010836957844678956,
+        "rtol": 0.0001,
+        "n": 262,
+        "passed": true,
+        "mase_mean_rel_diff": 2.4995586899518574e-09
+      },
+      "V3_passed": true
+    },
+    {
+      "arm": "fl",
+      "depth_index": 1,
+      "label": "L1",
+      "blocks_removed": 11,
+      "budgets": [
+        0.05
+      ],
+      "adapter_params": 262656,
+      "active_params": 5957696,
+      "fraction_params_removed": 0.8311846579317224,
+      "physical_test_mase": 1.0488174776903552,
+      "offline_test_mase": 1.0488173141291282,
+      "V3": {
+        "check": "V3 (per-window MASE, physical vs offline H3)",
+        "bitwise": false,
+        "max_abs": 3.670712610925886e-05,
+        "max_scaled": 0.22537242530345036,
+        "atol": 0.00010488173141291282,
+        "rtol": 0.0001,
+        "n": 262,
+        "passed": true,
+        "mase_mean_rel_diff": 1.559482521916526e-07
+      },
+      "V3_passed": true
+    },
+    {
+      "arm": "fl",
+      "depth_index": 10,
+      "label": "L10",
+      "blocks_removed": 2,
+      "budgets": [
+        0.02
+      ],
+      "adapter_params": 262656,
+      "active_params": 30172736,
+      "fraction_params_removed": 0.14503513623792896,
+      "physical_test_mase": 1.0104205622894946,
+      "offline_test_mase": 1.010419212928024,
+      "V3": {
+        "check": "V3 (per-window MASE, physical vs offline H3)",
+        "bitwise": false,
+        "max_abs": 0.0004406607155268416,
+        "max_scaled": 2.6520243900026483,
+        "atol": 0.0001010419212928024,
+        "rtol": 0.0001,
+        "n": 262,
+        "passed": false,
+        "mase_mean_rel_diff": 1.3354471622222106e-06
+      },
+      "V3_passed": false
+    },
+    {
+      "arm": "noa",
+      "depth_index": 0,
+      "label": "Emb",
+      "blocks_removed": 12,
+      "budgets": [
+        0.1,
+        0.2
+      ],
+      "adapter_params": 262656,
+      "active_params": 3267136,
+      "fraction_params_removed": 0.9074234936754771,
+      "physical_test_mase": 1.084730179211386,
+      "offline_test_mase": 1.0847301271020342,
+      "V3": {
+        "check": "V3 (per-window MASE, physical vs offline H3)",
+        "bitwise": false,
+        "max_abs": 5.434584602337367e-07,
+        "max_scaled": 0.0029915278909753425,
+        "atol": 0.00010847301271020343,
+        "rtol": 0.0001,
+        "n": 262,
+        "passed": true,
+        "mase_mean_rel_diff": 4.803900105708527e-08
+      },
+      "V3_passed": true
+    },
+    {
+      "arm": "noa",
+      "depth_index": 8,
+      "label": "L8",
+      "blocks_removed": 4,
+      "budgets": [
+        0.05
+      ],
+      "adapter_params": 262656,
+      "active_params": 24791616,
+      "fraction_params_removed": 0.29751280772543864,
+      "physical_test_mase": 1.0429398505652934,
+      "offline_test_mase": 1.042938337035864,
+      "V3": {
+        "check": "V3 (per-window MASE, physical vs offline H3)",
+        "bitwise": false,
+        "max_abs": 0.0010883375097969772,
+        "max_scaled": 5.603038693101072,
+        "atol": 0.0001042938337035864,
+        "rtol": 0.0001,
+        "n": 262,
+        "passed": false,
+        "mase_mean_rel_diff": 1.4512166017828488e-06
+      },
+      "V3_passed": false
+    },
+    {
+      "arm": "probe",
+      "depth_index": 0,
+      "label": "Emb",
+      "blocks_removed": 12,
+      "budgets": [
+        0.1,
+        0.2
+      ],
+      "active_params": 1363232,
+      "fraction_params_removed": 0.9613719000770731,
+      "physical_test_mase": 1.0958198744297907,
+      "offline_test_mase": 1.09581987462423,
+      "V3": {
+        "check": "V3 (per-window MASE, physical vs offline H3)",
+        "bitwise": false,
+        "max_abs": 2.04863253916443e-07,
+        "max_scaled": 0.000904201124746745,
+        "atol": 0.00010958198746242301,
+        "rtol": 0.0001,
+        "n": 262,
+        "passed": true,
+        "mase_mean_rel_diff": 1.774373307233657e-10
+      },
+      "V3_passed": true
+    }
+  ],
+  "n_points": 6,
+  "all_V3_passed": false,
+  "h3_cell": "/home/eserebri/repos/chronos2-layerwise-probing/results/three_model_phase2/h3/tirex/m5"
+}

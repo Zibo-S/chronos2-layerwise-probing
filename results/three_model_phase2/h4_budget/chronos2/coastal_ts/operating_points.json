@@ -1,0 +1,159 @@
+{
+  "model": "chronos2",
+  "dataset": "coastal_ts",
+  "rule": {
+    "version": "h4-frontier/v1",
+    "question": "how much forecasting accuracy survives a given reduction in inference cost?",
+    "operating_point": "per model x dataset x arm x budget eps: the SHALLOWEST block depth l < L whose VALIDATION MASE ratio to the full native model is <= 1 + eps at EVERY truncation depth j in [l, L-1] (sustained, the Phase-1 operator)",
+    "fallback": "no qualifying depth -> no truncation: the full native model (speedup 1)",
+    "budgets": [
+      0.02,
+      0.05,
+      0.1,
+      0.2
+    ],
+    "selection_data": "validation only; the selected depth is frozen, then test is read once",
+    "entrance_test": "the frozen Phase-1 entrance test (H4_OUTCOME_RULE) is kept unchanged as the stricter secondary hypothesis test"
+  },
+  "blocks_total": 12,
+  "operating_points": [
+    {
+      "arm": "fl",
+      "depth_index": 1,
+      "label": "L1",
+      "blocks_removed": 11,
+      "budgets": [
+        0.02,
+        0.05,
+        0.1,
+        0.2
+      ],
+      "adapter_params": 590592,
+      "active_params": 16233888,
+      "fraction_params_removed": 0.8641261683857495,
+      "physical_test_mase": 1.1994496300380235,
+      "offline_test_mase": 1.1994549947029363,
+      "V3": {
+        "check": "V3 (per-window MASE, physical vs offline H3)",
+        "bitwise": false,
+        "max_abs": 0.0002860442020407028,
+        "max_scaled": 0.6804865282592228,
+        "atol": 0.00011994549947029363,
+        "rtol": 0.0001,
+        "n": 48,
+        "passed": true,
+        "mase_mean_rel_diff": 4.4725854129044e-06
+      },
+      "V3_passed": true
+    },
+    {
+      "arm": "hard",
+      "depth_index": 2,
+      "label": "L2",
+      "blocks_removed": 10,
+      "budgets": [
+        0.2
+      ],
+      "active_params": 25082784,
+      "fraction_params_removed": 0.7900629861661842,
+      "physical_test_mase": 1.586970529523425,
+      "offline_test_mase": 1.5869766596979467,
+      "V3": {
+        "check": "V3 (per-window MASE, physical vs offline H3)",
+        "bitwise": false,
+        "max_abs": 0.000293182296036143,
+        "max_scaled": 0.4769498197984926,
+        "atol": 0.00015869766596979468,
+        "rtol": 0.0001,
+        "n": 48,
+        "passed": true,
+        "mase_mean_rel_diff": 3.862800680839077e-06
+      },
+      "V3_passed": true
+    },
+    {
+      "arm": "hard",
+      "depth_index": 3,
+      "label": "L3",
+      "blocks_removed": 9,
+      "budgets": [
+        0.1
+      ],
+      "active_params": 34522272,
+      "fraction_params_removed": 0.7110566875495657,
+      "physical_test_mase": 1.5113357285930977,
+      "offline_test_mase": 1.5113426794159757,
+      "V3": {
+        "check": "V3 (per-window MASE, physical vs offline H3)",
+        "bitwise": false,
+        "max_abs": 0.0003209716628882475,
+        "max_scaled": 0.5277713101651815,
+        "atol": 0.00015113426794159757,
+        "rtol": 0.0001,
+        "n": 48,
+        "passed": true,
+        "mase_mean_rel_diff": 4.599104473529466e-06
+      },
+      "V3_passed": true
+    },
+    {
+      "arm": "noa",
+      "depth_index": 1,
+      "label": "L1",
+      "blocks_removed": 11,
+      "budgets": [
+        0.05,
+        0.1,
+        0.2
+      ],
+      "adapter_params": 590592,
+      "active_params": 16233888,
+      "fraction_params_removed": 0.8641261683857495,
+      "physical_test_mase": 1.2105759170904022,
+      "offline_test_mase": 1.2105829412966416,
+      "V3": {
+        "check": "V3 (per-window MASE, physical vs offline H3)",
+        "bitwise": false,
+        "max_abs": 0.000286264829132854,
+        "max_scaled": 0.6529072945676992,
+        "atol": 0.00012105829412966417,
+        "rtol": 0.0001,
+        "n": 48,
+        "passed": true,
+        "mase_mean_rel_diff": 5.802333735020245e-06
+      },
+      "V3_passed": true
+    },
+    {
+      "arm": "probe",
+      "depth_index": 1,
+      "label": "L1",
+      "blocks_removed": 11,
+      "budgets": [
+        0.02,
+        0.05,
+        0.1,
+        0.2
+      ],
+      "active_params": 12247632,
+      "fraction_params_removed": 0.8974901953221984,
+      "physical_test_mase": 1.2868109867073054,
+      "offline_test_mase": 1.2868174468273865,
+      "V3": {
+        "check": "V3 (per-window MASE, physical vs offline H3)",
+        "bitwise": false,
+        "max_abs": 0.00032441767105506614,
+        "max_scaled": 0.6512058027485458,
+        "atol": 0.00012868174468273866,
+        "rtol": 0.0001,
+        "n": 48,
+        "passed": true,
+        "mase_mean_rel_diff": 5.0202304118776855e-06
+      },
+      "V3_passed": true
+    }
+  ],
+  "n_points": 5,
+  "all_V3_passed": true,
+  "h3_cell": "/home/eserebri/repos/chronos2-layerwise-probing/results/three_model_phase2/h3/chronos2/coastal_ts"
+}
