@@ -1,0 +1,74 @@
+{
+  "model": "timesfm3",
+  "dataset": "monash_london_smart_meters",
+  "rule": {
+    "version": "h4-frontier/v1",
+    "question": "how much forecasting accuracy survives a given reduction in inference cost?",
+    "operating_point": "per model x dataset x arm x budget eps: the SHALLOWEST block depth l < L whose VALIDATION MASE ratio to the full native model is <= 1 + eps at EVERY truncation depth j in [l, L-1] (sustained, the Phase-1 operator)",
+    "fallback": "no qualifying depth -> no truncation: the full native model (speedup 1)",
+    "budgets": [
+      0.02,
+      0.05,
+      0.1,
+      0.2
+    ],
+    "selection_data": "validation only; the selected depth is frozen, then test is read once",
+    "entrance_test": "the frozen Phase-1 entrance test (H4_OUTCOME_RULE) is kept unchanged as the stricter secondary hypothesis test"
+  },
+  "blocks_total": 20,
+  "operating_points": [
+    {
+      "arm": "probe",
+      "depth_index": 0,
+      "label": "Emb",
+      "blocks_removed": 20,
+      "budgets": [
+        0.2
+      ],
+      "active_params": 2867776,
+      "fraction_params_removed": 0.9913284523099711,
+      "physical_test_mase": 1.02123971547943,
+      "offline_test_mase": 1.0212397157161517,
+      "V3": {
+        "check": "V3 (per-window MASE, physical vs offline H3)",
+        "bitwise": false,
+        "max_abs": 7.501254852826378e-07,
+        "max_scaled": 0.0006931360585559339,
+        "atol": 0.00010212397157161518,
+        "rtol": 0.0001,
+        "n": 262,
+        "passed": true,
+        "mase_mean_rel_diff": 2.3179842075038479e-10
+      },
+      "V3_passed": true
+    },
+    {
+      "arm": "probe",
+      "depth_index": 17,
+      "label": "L17",
+      "blocks_removed": 3,
+      "budgets": [
+        0.1
+      ],
+      "active_params": 281534496,
+      "fraction_params_removed": 0.14869926784649568,
+      "physical_test_mase": 0.8986786839915176,
+      "offline_test_mase": 0.8986786858863568,
+      "V3": {
+        "check": "V3 (per-window MASE, physical vs offline H3)",
+        "bitwise": false,
+        "max_abs": 1.1495549179230125e-07,
+        "max_scaled": 0.0004981972970508313,
+        "atol": 8.986786858863568e-05,
+        "rtol": 0.0001,
+        "n": 262,
+        "passed": true,
+        "mase_mean_rel_diff": 2.1084723652765545e-09
+      },
+      "V3_passed": true
+    }
+  ],
+  "n_points": 2,
+  "all_V3_passed": true,
+  "h3_cell": "results/three_model_phase2_nested/h3/timesfm3/monash_london_smart_meters"
+}

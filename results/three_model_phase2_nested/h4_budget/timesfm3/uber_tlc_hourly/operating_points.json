@@ -1,0 +1,49 @@
+{
+  "model": "timesfm3",
+  "dataset": "uber_tlc_hourly",
+  "rule": {
+    "version": "h4-frontier/v1",
+    "question": "how much forecasting accuracy survives a given reduction in inference cost?",
+    "operating_point": "per model x dataset x arm x budget eps: the SHALLOWEST block depth l < L whose VALIDATION MASE ratio to the full native model is <= 1 + eps at EVERY truncation depth j in [l, L-1] (sustained, the Phase-1 operator)",
+    "fallback": "no qualifying depth -> no truncation: the full native model (speedup 1)",
+    "budgets": [
+      0.02,
+      0.05,
+      0.1,
+      0.2
+    ],
+    "selection_data": "validation only; the selected depth is frozen, then test is read once",
+    "entrance_test": "the frozen Phase-1 entrance test (H4_OUTCOME_RULE) is kept unchanged as the stricter secondary hypothesis test"
+  },
+  "blocks_total": 20,
+  "operating_points": [
+    {
+      "arm": "probe",
+      "depth_index": 17,
+      "label": "L17",
+      "blocks_removed": 3,
+      "budgets": [
+        0.2
+      ],
+      "active_params": 281534496,
+      "fraction_params_removed": 0.14869926784649568,
+      "physical_test_mase": 0.9413219282856957,
+      "offline_test_mase": 0.941321927312393,
+      "V3": {
+        "check": "V3 (per-window MASE, physical vs offline H3)",
+        "bitwise": false,
+        "max_abs": 1.5807393927147473e-07,
+        "max_scaled": 0.0007218228433521207,
+        "atol": 9.41321927312393e-05,
+        "rtol": 0.0001,
+        "n": 262,
+        "passed": true,
+        "mase_mean_rel_diff": 1.0339743965071881e-09
+      },
+      "V3_passed": true
+    }
+  ],
+  "n_points": 1,
+  "all_V3_passed": true,
+  "h3_cell": "results/three_model_phase2_nested/h3/timesfm3/uber_tlc_hourly"
+}

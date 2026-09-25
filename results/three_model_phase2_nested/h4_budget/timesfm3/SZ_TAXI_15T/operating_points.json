@@ -1,0 +1,100 @@
+{
+  "model": "timesfm3",
+  "dataset": "SZ_TAXI_15T",
+  "rule": {
+    "version": "h4-frontier/v1",
+    "question": "how much forecasting accuracy survives a given reduction in inference cost?",
+    "operating_point": "per model x dataset x arm x budget eps: the SHALLOWEST block depth l < L whose VALIDATION MASE ratio to the full native model is <= 1 + eps at EVERY truncation depth j in [l, L-1] (sustained, the Phase-1 operator)",
+    "fallback": "no qualifying depth -> no truncation: the full native model (speedup 1)",
+    "budgets": [
+      0.02,
+      0.05,
+      0.1,
+      0.2
+    ],
+    "selection_data": "validation only; the selected depth is frozen, then test is read once",
+    "entrance_test": "the frozen Phase-1 entrance test (H4_OUTCOME_RULE) is kept unchanged as the stricter secondary hypothesis test"
+  },
+  "blocks_total": 20,
+  "operating_points": [
+    {
+      "arm": "noa",
+      "depth_index": 19,
+      "label": "L19",
+      "blocks_removed": 1,
+      "budgets": [
+        0.2
+      ],
+      "adapter_params": 1803584,
+      "active_params": 316122400,
+      "fraction_params_removed": 0.04411276630866945,
+      "physical_test_mase": 0.863961264593508,
+      "offline_test_mase": 0.863961259917831,
+      "V3": {
+        "check": "V3 (per-window MASE, physical vs offline H3)",
+        "bitwise": false,
+        "max_abs": 1.0423903649137145e-06,
+        "max_scaled": 0.0066960532323361984,
+        "atol": 8.63961259917831e-05,
+        "rtol": 0.0001,
+        "n": 156,
+        "passed": true,
+        "mase_mean_rel_diff": 5.411905803701351e-09
+      },
+      "V3_passed": true
+    },
+    {
+      "arm": "probe",
+      "depth_index": 0,
+      "label": "Emb",
+      "blocks_removed": 20,
+      "budgets": [
+        0.2
+      ],
+      "active_params": 2867776,
+      "fraction_params_removed": 0.9913284523099711,
+      "physical_test_mase": 0.8504855874669064,
+      "offline_test_mase": 0.8504855864253194,
+      "V3": {
+        "check": "V3 (per-window MASE, physical vs offline H3)",
+        "bitwise": false,
+        "max_abs": 7.599311913075724e-08,
+        "max_scaled": 0.00040578277990997144,
+        "atol": 8.504855864253194e-05,
+        "rtol": 0.0001,
+        "n": 156,
+        "passed": true,
+        "mase_mean_rel_diff": 1.2246968737227932e-09
+      },
+      "V3_passed": true
+    },
+    {
+      "arm": "probe",
+      "depth_index": 19,
+      "label": "L19",
+      "blocks_removed": 1,
+      "budgets": [
+        0.1
+      ],
+      "active_params": 314318816,
+      "fraction_params_removed": 0.049566422615498595,
+      "physical_test_mase": 0.8234215635438744,
+      "offline_test_mase": 0.8234215623679771,
+      "V3": {
+        "check": "V3 (per-window MASE, physical vs offline H3)",
+        "bitwise": false,
+        "max_abs": 1.0004328032664489e-07,
+        "max_scaled": 0.000540352344611395,
+        "atol": 8.234215623679772e-05,
+        "rtol": 0.0001,
+        "n": 156,
+        "passed": true,
+        "mase_mean_rel_diff": 1.4280622735510067e-09
+      },
+      "V3_passed": true
+    }
+  ],
+  "n_points": 3,
+  "all_V3_passed": true,
+  "h3_cell": "results/three_model_phase2_nested/h3/timesfm3/SZ_TAXI_15T"
+}

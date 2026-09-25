@@ -1,0 +1,237 @@
+{
+ "config": {
+  "model": "tirex",
+  "kind": "hard",
+  "depth": 10,
+  "batch_sizes": [
+   1,
+   256
+  ],
+  "levels": [
+   "api_e2e",
+   "device_forward"
+  ],
+  "warmup": 20,
+  "reps": 100,
+  "device": "cuda",
+  "tiny": false,
+  "checkpoint": null,
+  "allow_mig": false,
+  "adapter_kind": "nested",
+  "bottleneck": 64,
+  "dest": "/home/eserebri/repos/chronos2-layerwise-probing/results/three_model_phase2_nested/latency/job1_tirex_b/008_tirex_hard_L10"
+ },
+ "configured": {
+  "kind": "hard",
+  "depth": 10,
+  "model": "tirex",
+  "blocks_before": 12,
+  "blocks_kept": 10,
+  "blocks_removed": 2,
+  "adapter": false
+ },
+ "params": {
+  "active_params": 29910080,
+  "n_blocks": 10,
+  "block_params": 26905600,
+  "per_block_params": 2690560,
+  "non_block_params": 3004480
+ },
+ "weights_bytes": 123048960,
+ "load_s": 1.04,
+ "numerics": {
+  "matmul_allow_tf32": false,
+  "cudnn_allow_tf32": false,
+  "float32_matmul_precision": "highest",
+  "cudnn_benchmark": false,
+  "cudnn_deterministic": false,
+  "deterministic_algorithms": false,
+  "cublas_workspace_config": "unavailable (not set)",
+  "sdpa": {
+   "flash_sdp_enabled": true,
+   "mem_efficient_sdp_enabled": true,
+   "math_sdp_enabled": true
+  },
+  "amp": false,
+  "torch_compile": false
+ },
+ "levels": {
+  "api_e2e__B1": {
+   "median_ms": 419.91033849999997,
+   "p95_ms": 422.33725849999996,
+   "mean_ms": 420.23945868000004,
+   "std_ms": 1.1559664070521012,
+   "min_ms": 418.397148,
+   "iqr_ms": 0.9914780000000292,
+   "reps": 100,
+   "throughput_series_per_s": 2.381460774631535,
+   "peak_allocated_bytes": 133368832,
+   "peak_reserved_bytes": 178257920,
+   "status": "ok"
+  },
+  "device_forward__B1": {
+   "median_ms": 419.9766225,
+   "p95_ms": 421.772676,
+   "mean_ms": 420.18213855999994,
+   "std_ms": 0.8382462874116561,
+   "min_ms": 419.329223,
+   "iqr_ms": 0.43089924999998175,
+   "reps": 100,
+   "throughput_series_per_s": 2.38108491383946,
+   "peak_allocated_bytes": 133366784,
+   "peak_reserved_bytes": 178257920,
+   "status": "ok"
+  },
+  "api_e2e__B256": {
+   "median_ms": 718.6406465,
+   "p95_ms": 724.94337775,
+   "mean_ms": 714.65089435,
+   "std_ms": 7.824450878070909,
+   "min_ms": 702.485437,
+   "iqr_ms": 11.264273249999974,
+   "reps": 100,
+   "throughput_series_per_s": 356.22811101320025,
+   "peak_allocated_bytes": 573357056,
+   "peak_reserved_bytes": 738197504,
+   "status": "ok"
+  },
+  "device_forward__B256": {
+   "median_ms": 700.368656,
+   "p95_ms": 700.46117215,
+   "mean_ms": 700.46465979,
+   "std_ms": 0.4936095739775172,
+   "min_ms": 700.278232,
+   "iqr_ms": 0.04504775000009431,
+   "reps": 100,
+   "throughput_series_per_s": 365.52178314501845,
+   "peak_allocated_bytes": 572832768,
+   "peak_reserved_bytes": 738197504,
+   "status": "ok"
+  }
+ },
+ "environment": {
+  "general": {
+   "timestamp_utc": "2026-09-25T05:33:06+00:00",
+   "hostname": "ng30602",
+   "argv": [
+    "/home/eserebri/repos/chronos2-layerwise-probing/experiments/run_phase2_latency.py",
+    "--child",
+    "/home/eserebri/repos/chronos2-layerwise-probing/results/three_model_phase2_nested/latency/job1_tirex_b/008_tirex_hard_L10/config.json"
+   ],
+   "git": {
+    "sha": "23cb7e6cfa0fd06f87b3c1138a97ab4be5130d52",
+    "branch": "tirex-experiment",
+    "dirty": true,
+    "dirty_files": [
+     "results/three_model_phase2_nested/",
+     "results/three_model_phase2_nonlinear_smoke/"
+    ],
+    "diff_sha256": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+   }
+  },
+  "slurm": {
+   "SLURM_JOB_ID": "3926525",
+   "SLURM_JOB_NAME": "p2n-lat-txb-1",
+   "SLURM_JOB_ACCOUNT": "def-irina_gpu",
+   "SLURM_JOB_PARTITION": "gpubase_bygpu_b1",
+   "SLURM_JOB_NODELIST": "ng30602",
+   "SLURM_CPUS_PER_TASK": "12",
+   "SLURM_MEM_PER_NODE": "65536",
+   "SLURM_MEM_PER_CPU": "unavailable (not set)",
+   "SLURM_JOB_GPUS": "2",
+   "SLURM_GPUS_ON_NODE": "1",
+   "CUDA_VISIBLE_DEVICES": "0",
+   "SLURM_ARRAY_TASK_ID": "unavailable (not set)",
+   "time_limit": "2:00:00"
+  },
+  "gpu": {
+   "nvidia_smi": "NVIDIA A100-SXM4-40GB, 40960 MiB, 580.178.04, 8.0, Disabled, 1410 MHz, 1215 MHz, 400.00 W, Disabled, Enabled",
+   "name": "NVIDIA A100-SXM4-40GB",
+   "count": 1,
+   "total_memory_mib": 40440.375,
+   "capability": "8.0",
+   "is_mig": false
+  },
+  "cpu": {
+   "model": "AMD EPYC 7413 24-Core Processor",
+   "affinity_count": 12,
+   "os_cpu_count": 48,
+   "omp_num_threads": "12"
+  },
+  "software": {
+   "python": "3.11.4",
+   "platform": "Linux-5.14.0-687.42.1.el9_8.x86_64-x86_64-AMD_EPYC_7413_24-Core_Processor-with-glibc2.37",
+   "torch": "2.12.1+computecanada",
+   "numpy": "1.26.4+computecanada",
+   "scipy": "1.15.2+computecanada",
+   "scikit-learn": "1.7.1+computecanada",
+   "transformers": "5.13.0",
+   "huggingface_hub": "1.22.0",
+   "safetensors": "0.8.0+computecanada",
+   "einops": "0.8.2+computecanada",
+   "datasets": "5.0.0+computecanada",
+   "chronos-forecasting": "2.3.1",
+   "timesfm": "3.0.2",
+   "tirex-ts": "1.4.2",
+   "accelerate": "1.14.0+computecanada",
+   "pandas": "2.3.3+computecanada",
+   "torch_cuda": "13.2",
+   "cudnn": 92101
+  },
+  "numerics": {
+   "matmul_allow_tf32": false,
+   "cudnn_allow_tf32": false,
+   "float32_matmul_precision": "highest",
+   "cudnn_benchmark": false,
+   "cudnn_deterministic": false,
+   "deterministic_algorithms": false,
+   "cublas_workspace_config": "unavailable (not set)",
+   "sdpa": {
+    "flash_sdp_enabled": true,
+    "mem_efficient_sdp_enabled": true,
+    "math_sdp_enabled": true
+   },
+   "amp": false,
+   "torch_compile": false
+  },
+  "models": {
+   "hf_home": "/scratch/eserebri/chronos2/hf_cache",
+   "hf_hub_offline": "1",
+   "amazon/chronos-2": "29ec3766d36d6f73f0696f85560a422f50e8498c",
+   "autogluon/chronos-2-small": "ddec01313e50b6bc58ebaa92ede81bc24a3d9f9a",
+   "google/timesfm-3.0-pytorch": "43046b85ec22d584a13f8098c2ed39c889e129c2",
+   "NX-AI/TiRex": "63c740922493f5fbe60b277609ec62babfba2762"
+  }
+ },
+ "status": "ok",
+ "inputs": {
+  "B1": {
+   "generator": "mu + sigma * cumsum(N(0,1)), mu~U(-50,50), sigma~LogUniform(0.1,10)",
+   "rng": "numpy default_rng([SEED, B, k])",
+   "seed": 0,
+   "n_batches": 4,
+   "C": 512,
+   "dtype": "float32",
+   "sha256": [
+    "sha256:8a59938eeaef59e40f010ddcb788756d683655f2cdf520184d2e03b12445f10b",
+    "sha256:3d46a8a083536f8d02173851c1d47582c2d5c39d23801508e4df15d2ba5ed730",
+    "sha256:e998432c6bcd3953494e58c3e071373545fc232db5bb9af5185f7c3cb200c9ba",
+    "sha256:79968bb808436bbf4021812c2bfaf273759acac80342be3b22523ae2a4b176b9"
+   ]
+  },
+  "B256": {
+   "generator": "mu + sigma * cumsum(N(0,1)), mu~U(-50,50), sigma~LogUniform(0.1,10)",
+   "rng": "numpy default_rng([SEED, B, k])",
+   "seed": 0,
+   "n_batches": 4,
+   "C": 512,
+   "dtype": "float32",
+   "sha256": [
+    "sha256:e56a88d2ec20052d1f85d1ca5897e0d58c48168d6854e6c627005f54b9a5fca4",
+    "sha256:2c3076628ee7fcc9aff27899080722085f93e13384a72ba4f4b2f8b04c38fd37",
+    "sha256:1545013c7a8b4ba184aaabc0deb417493d519132d3edb1cdfbc2962ffc996f71",
+    "sha256:e5e25388381638edcd159b5448342ae59d974a7b7ebdba5801aadd898cca3789"
+   ]
+  }
+ }
+}

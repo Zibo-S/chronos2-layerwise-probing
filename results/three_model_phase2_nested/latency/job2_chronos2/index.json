@@ -1,0 +1,972 @@
+{
+ "job_tag": "job2_chronos2",
+ "headline_eligible": true,
+ "ineligible_reasons": [],
+ "protocol": {
+  "warmup": 20,
+  "reps": 100,
+  "batch_sizes": [
+   1,
+   256
+  ],
+  "levels": [
+   "api_e2e",
+   "device_forward"
+  ],
+  "device": "cuda",
+  "tiny": false,
+  "adapter_kind": "nested",
+  "bottleneck": 64,
+  "allow_unverified": false,
+  "allow_mig": false,
+  "seed": 0
+ },
+ "configs": [
+  {
+   "id": "000_chronos2_native_L12_start",
+   "model": "chronos2",
+   "kind": "native",
+   "depth": 12,
+   "drift": "start",
+   "status": "ok",
+   "median_ms": {
+    "api_e2e__B1": 19.308258000000002,
+    "device_forward__B1": 18.8395495,
+    "api_e2e__B256": 181.7188085,
+    "device_forward__B256": 171.0343025
+   },
+   "params": {
+    "active_params": 119477664,
+    "n_blocks": 12,
+    "block_params": 113273856,
+    "per_block_params": 9439488,
+    "non_block_params": 6203808
+   },
+   "weights_bytes": 477923840
+  },
+  {
+   "id": "001_chronos2_hard_L00",
+   "model": "chronos2",
+   "kind": "hard",
+   "depth": 0,
+   "drift": null,
+   "status": "ok",
+   "median_ms": {
+    "api_e2e__B1": 2.2805355,
+    "device_forward__B1": 1.6331995,
+    "api_e2e__B256": 17.629101499999997,
+    "device_forward__B256": 5.65085
+   },
+   "params": {
+    "active_params": 6203808,
+    "n_blocks": 0,
+    "block_params": 0,
+    "per_block_params": null,
+    "non_block_params": 6203808
+   },
+   "weights_bytes": 24816128
+  },
+  {
+   "id": "002_chronos2_hard_L09",
+   "model": "chronos2",
+   "kind": "hard",
+   "depth": 9,
+   "drift": null,
+   "status": "ok",
+   "median_ms": {
+    "api_e2e__B1": 15.2582465,
+    "device_forward__B1": 14.678744,
+    "api_e2e__B256": 140.570489,
+    "device_forward__B256": 129.70427899999999
+   },
+   "params": {
+    "active_params": 91159200,
+    "n_blocks": 9,
+    "block_params": 84955392,
+    "per_block_params": 9439488,
+    "non_block_params": 6203808
+   },
+   "weights_bytes": 364646912
+  },
+  {
+   "id": "003_chronos2_hard_L04",
+   "model": "chronos2",
+   "kind": "hard",
+   "depth": 4,
+   "drift": null,
+   "status": "ok",
+   "median_ms": {
+    "api_e2e__B1": 8.0038325,
+    "device_forward__B1": 7.3703925,
+    "api_e2e__B256": 71.508548,
+    "device_forward__B256": 60.799104
+   },
+   "params": {
+    "active_params": 43961760,
+    "n_blocks": 4,
+    "block_params": 37757952,
+    "per_block_params": 9439488,
+    "non_block_params": 6203808
+   },
+   "weights_bytes": 175852032
+  },
+  {
+   "id": "004_chronos2_hard_L07",
+   "model": "chronos2",
+   "kind": "hard",
+   "depth": 7,
+   "drift": null,
+   "status": "ok",
+   "median_ms": {
+    "api_e2e__B1": 12.4484285,
+    "device_forward__B1": 11.7872815,
+    "api_e2e__B256": 112.8067615,
+    "device_forward__B256": 102.149737
+   },
+   "params": {
+    "active_params": 72280224,
+    "n_blocks": 7,
+    "block_params": 66076416,
+    "per_block_params": 9439488,
+    "non_block_params": 6203808
+   },
+   "weights_bytes": 289128960
+  },
+  {
+   "id": "005_chronos2_probe_head_L09",
+   "model": "chronos2",
+   "kind": "probe_head",
+   "depth": 9,
+   "drift": null,
+   "status": "ok",
+   "median_ms": {
+    "api_e2e__B1": 15.007933999999999,
+    "device_forward__B1": 14.384257999999999,
+    "api_e2e__B256": 138.7066185,
+    "device_forward__B256": 128.0149235
+   },
+   "params": {
+    "active_params": 87763536,
+    "n_blocks": 9,
+    "block_params": 84955392,
+    "per_block_params": 9439488,
+    "non_block_params": 2808144
+   },
+   "weights_bytes": 351064064
+  },
+  {
+   "id": "006_chronos2_hard_L05",
+   "model": "chronos2",
+   "kind": "hard",
+   "depth": 5,
+   "drift": null,
+   "status": "ok",
+   "median_ms": {
+    "api_e2e__B1": 9.343082500000001,
+    "device_forward__B1": 8.7658895,
+    "api_e2e__B256": 85.126342,
+    "device_forward__B256": 74.57242099999999
+   },
+   "params": {
+    "active_params": 53401248,
+    "n_blocks": 5,
+    "block_params": 47197440,
+    "per_block_params": 9439488,
+    "non_block_params": 6203808
+   },
+   "weights_bytes": 213611008
+  },
+  {
+   "id": "007_chronos2_probe_head_L12",
+   "model": "chronos2",
+   "kind": "probe_head",
+   "depth": 12,
+   "drift": null,
+   "status": "ok",
+   "median_ms": {
+    "api_e2e__B1": 19.068917,
+    "device_forward__B1": 18.3825025,
+    "api_e2e__B256": 180.0808955,
+    "device_forward__B256": 169.3682655
+   },
+   "params": {
+    "active_params": 116082000,
+    "n_blocks": 12,
+    "block_params": 113273856,
+    "per_block_params": 9439488,
+    "non_block_params": 2808144
+   },
+   "weights_bytes": 464340992
+  },
+  {
+   "id": "008_chronos2_adapter_L11",
+   "model": "chronos2",
+   "kind": "adapter",
+   "depth": 11,
+   "drift": null,
+   "status": "ok",
+   "median_ms": {
+    "api_e2e__B1": 17.8518565,
+    "device_forward__B1": 17.271622999999998,
+    "api_e2e__B256": 169.12331799999998,
+    "device_forward__B256": 158.2754835
+   },
+   "params": {
+    "active_params": 110727136,
+    "n_blocks": 11,
+    "block_params": 103834368,
+    "per_block_params": 9439488,
+    "non_block_params": 6892768
+   },
+   "weights_bytes": 442920960
+  },
+  {
+   "id": "009_chronos2_adapter_L00",
+   "model": "chronos2",
+   "kind": "adapter",
+   "depth": 0,
+   "drift": null,
+   "status": "ok",
+   "median_ms": {
+    "api_e2e__B1": 2.3829085,
+    "device_forward__B1": 1.73405,
+    "api_e2e__B256": 18.443668000000002,
+    "device_forward__B256": 6.6677535
+   },
+   "params": {
+    "active_params": 6892768,
+    "n_blocks": 0,
+    "block_params": 0,
+    "per_block_params": null,
+    "non_block_params": 6892768
+   },
+   "weights_bytes": 27572224
+  },
+  {
+   "id": "010_chronos2_probe_head_L06",
+   "model": "chronos2",
+   "kind": "probe_head",
+   "depth": 6,
+   "drift": null,
+   "status": "ok",
+   "median_ms": {
+    "api_e2e__B1": 10.591527,
+    "device_forward__B1": 9.934567999999999,
+    "api_e2e__B256": 97.44290649999999,
+    "device_forward__B256": 86.69047599999999
+   },
+   "params": {
+    "active_params": 59445072,
+    "n_blocks": 6,
+    "block_params": 56636928,
+    "per_block_params": 9439488,
+    "non_block_params": 2808144
+   },
+   "weights_bytes": 237787136
+  },
+  {
+   "id": "011_chronos2_adapter_L02",
+   "model": "chronos2",
+   "kind": "adapter",
+   "depth": 2,
+   "drift": null,
+   "status": "ok",
+   "median_ms": {
+    "api_e2e__B1": 5.2786435,
+    "device_forward__B1": 4.6377749999999995,
+    "api_e2e__B256": 44.886114000000006,
+    "device_forward__B256": 34.2355705
+   },
+   "params": {
+    "active_params": 25771744,
+    "n_blocks": 2,
+    "block_params": 18878976,
+    "per_block_params": 9439488,
+    "non_block_params": 6892768
+   },
+   "weights_bytes": 103090176
+  },
+  {
+   "id": "012_chronos2_probe_head_L01",
+   "model": "chronos2",
+   "kind": "probe_head",
+   "depth": 1,
+   "drift": null,
+   "status": "ok",
+   "median_ms": {
+    "api_e2e__B1": 3.529195,
+    "device_forward__B1": 2.8984810000000003,
+    "api_e2e__B256": 28.6033855,
+    "device_forward__B256": 17.772612
+   },
+   "params": {
+    "active_params": 12247632,
+    "n_blocks": 1,
+    "block_params": 9439488,
+    "per_block_params": 9439488,
+    "non_block_params": 2808144
+   },
+   "weights_bytes": 48992256
+  },
+  {
+   "id": "013_chronos2_adapter_L03",
+   "model": "chronos2",
+   "kind": "adapter",
+   "depth": 3,
+   "drift": null,
+   "status": "ok",
+   "median_ms": {
+    "api_e2e__B1": 6.7118009999999995,
+    "device_forward__B1": 6.0722000000000005,
+    "api_e2e__B256": 58.713452000000004,
+    "device_forward__B256": 48.027260999999996
+   },
+   "params": {
+    "active_params": 35211232,
+    "n_blocks": 3,
+    "block_params": 28318464,
+    "per_block_params": 9439488,
+    "non_block_params": 6892768
+   },
+   "weights_bytes": 140849152
+  },
+  {
+   "id": "014_chronos2_adapter_L04",
+   "model": "chronos2",
+   "kind": "adapter",
+   "depth": 4,
+   "drift": null,
+   "status": "ok",
+   "median_ms": {
+    "api_e2e__B1": 8.113213,
+    "device_forward__B1": 7.4780655,
+    "api_e2e__B256": 72.57695050000001,
+    "device_forward__B256": 61.80285000000001
+   },
+   "params": {
+    "active_params": 44650720,
+    "n_blocks": 4,
+    "block_params": 37757952,
+    "per_block_params": 9439488,
+    "non_block_params": 6892768
+   },
+   "weights_bytes": 178608128
+  },
+  {
+   "id": "015_chronos2_probe_head_L04",
+   "model": "chronos2",
+   "kind": "probe_head",
+   "depth": 4,
+   "drift": null,
+   "status": "ok",
+   "median_ms": {
+    "api_e2e__B1": 7.829042,
+    "device_forward__B1": 7.1773885,
+    "api_e2e__B256": 69.77319399999999,
+    "device_forward__B256": 59.1262125
+   },
+   "params": {
+    "active_params": 40566096,
+    "n_blocks": 4,
+    "block_params": 37757952,
+    "per_block_params": 9439488,
+    "non_block_params": 2808144
+   },
+   "weights_bytes": 162269184
+  },
+  {
+   "id": "016_chronos2_adapter_L12",
+   "model": "chronos2",
+   "kind": "adapter",
+   "depth": 12,
+   "drift": null,
+   "status": "ok",
+   "median_ms": {
+    "api_e2e__B1": 19.403417,
+    "device_forward__B1": 18.772081,
+    "api_e2e__B256": 182.7447225,
+    "device_forward__B256": 172.04643449999998
+   },
+   "params": {
+    "active_params": 120166624,
+    "n_blocks": 12,
+    "block_params": 113273856,
+    "per_block_params": 9439488,
+    "non_block_params": 6892768
+   },
+   "weights_bytes": 480679936
+  },
+  {
+   "id": "017_chronos2_adapter_L07",
+   "model": "chronos2",
+   "kind": "adapter",
+   "depth": 7,
+   "drift": null,
+   "status": "ok",
+   "median_ms": {
+    "api_e2e__B1": 12.2483105,
+    "device_forward__B1": 11.611014,
+    "api_e2e__B256": 114.000409,
+    "device_forward__B256": 103.1522935
+   },
+   "params": {
+    "active_params": 72969184,
+    "n_blocks": 7,
+    "block_params": 66076416,
+    "per_block_params": 9439488,
+    "non_block_params": 6892768
+   },
+   "weights_bytes": 291885056
+  },
+  {
+   "id": "018_chronos2_chronos2_small_na",
+   "model": "chronos2",
+   "kind": "chronos2_small",
+   "depth": null,
+   "drift": null,
+   "status": "ok",
+   "median_ms": {
+    "api_e2e__B1": 10.9046465,
+    "device_forward__B1": 10.24592,
+    "api_e2e__B256": 55.210815499999995,
+    "device_forward__B256": 44.603965
+   },
+   "params": {
+    "active_params": 27934624,
+    "n_blocks": 6,
+    "block_params": 25175040,
+    "per_block_params": 4195840,
+    "non_block_params": 2759584
+   },
+   "weights_bytes": 111745536
+  },
+  {
+   "id": "019_chronos2_probe_head_L07",
+   "model": "chronos2",
+   "kind": "probe_head",
+   "depth": 7,
+   "drift": null,
+   "status": "ok",
+   "median_ms": {
+    "api_e2e__B1": 11.9259625,
+    "device_forward__B1": 11.308353499999999,
+    "api_e2e__B256": 111.160909,
+    "device_forward__B256": 100.451711
+   },
+   "params": {
+    "active_params": 68884560,
+    "n_blocks": 7,
+    "block_params": 66076416,
+    "per_block_params": 9439488,
+    "non_block_params": 2808144
+   },
+   "weights_bytes": 275546112
+  },
+  {
+   "id": "020_chronos2_probe_head_L05",
+   "model": "chronos2",
+   "kind": "probe_head",
+   "depth": 5,
+   "drift": null,
+   "status": "ok",
+   "median_ms": {
+    "api_e2e__B1": 9.258106999999999,
+    "device_forward__B1": 8.6254995,
+    "api_e2e__B256": 83.708395,
+    "device_forward__B256": 72.896037
+   },
+   "params": {
+    "active_params": 50005584,
+    "n_blocks": 5,
+    "block_params": 47197440,
+    "per_block_params": 9439488,
+    "non_block_params": 2808144
+   },
+   "weights_bytes": 200028160
+  },
+  {
+   "id": "021_chronos2_native_L12_middle",
+   "model": "chronos2",
+   "kind": "native",
+   "depth": 12,
+   "drift": "middle",
+   "status": "ok",
+   "median_ms": {
+    "api_e2e__B1": 19.217211,
+    "device_forward__B1": 18.598484,
+    "api_e2e__B256": 181.7078525,
+    "device_forward__B256": 171.0312305
+   },
+   "params": {
+    "active_params": 119477664,
+    "n_blocks": 12,
+    "block_params": 113273856,
+    "per_block_params": 9439488,
+    "non_block_params": 6203808
+   },
+   "weights_bytes": 477923840
+  },
+  {
+   "id": "022_chronos2_probe_head_L02",
+   "model": "chronos2",
+   "kind": "probe_head",
+   "depth": 2,
+   "drift": null,
+   "status": "ok",
+   "median_ms": {
+    "api_e2e__B1": 4.9777315,
+    "device_forward__B1": 4.341661500000001,
+    "api_e2e__B256": 42.2630515,
+    "device_forward__B256": 31.562354
+   },
+   "params": {
+    "active_params": 21687120,
+    "n_blocks": 2,
+    "block_params": 18878976,
+    "per_block_params": 9439488,
+    "non_block_params": 2808144
+   },
+   "weights_bytes": 86751232
+  },
+  {
+   "id": "023_chronos2_probe_head_L11",
+   "model": "chronos2",
+   "kind": "probe_head",
+   "depth": 11,
+   "drift": null,
+   "status": "ok",
+   "median_ms": {
+    "api_e2e__B1": 17.645432,
+    "device_forward__B1": 17.0124085,
+    "api_e2e__B256": 166.275904,
+    "device_forward__B256": 155.595034
+   },
+   "params": {
+    "active_params": 106642512,
+    "n_blocks": 11,
+    "block_params": 103834368,
+    "per_block_params": 9439488,
+    "non_block_params": 2808144
+   },
+   "weights_bytes": 426582016
+  },
+  {
+   "id": "024_chronos2_hard_L01",
+   "model": "chronos2",
+   "kind": "hard",
+   "depth": 1,
+   "drift": null,
+   "status": "ok",
+   "median_ms": {
+    "api_e2e__B1": 3.7133415000000003,
+    "device_forward__B1": 3.0666275,
+    "api_e2e__B256": 30.1695025,
+    "device_forward__B256": 19.445256
+   },
+   "params": {
+    "active_params": 15643296,
+    "n_blocks": 1,
+    "block_params": 9439488,
+    "per_block_params": 9439488,
+    "non_block_params": 6203808
+   },
+   "weights_bytes": 62575104
+  },
+  {
+   "id": "025_chronos2_hard_L11",
+   "model": "chronos2",
+   "kind": "hard",
+   "depth": 11,
+   "drift": null,
+   "status": "ok",
+   "median_ms": {
+    "api_e2e__B1": 17.766966500000002,
+    "device_forward__B1": 17.178507,
+    "api_e2e__B256": 168.073769,
+    "device_forward__B256": 157.26069999999999
+   },
+   "params": {
+    "active_params": 110038176,
+    "n_blocks": 11,
+    "block_params": 103834368,
+    "per_block_params": 9439488,
+    "non_block_params": 6203808
+   },
+   "weights_bytes": 440164864
+  },
+  {
+   "id": "026_chronos2_hard_L03",
+   "model": "chronos2",
+   "kind": "hard",
+   "depth": 3,
+   "drift": null,
+   "status": "ok",
+   "median_ms": {
+    "api_e2e__B1": 6.599793999999999,
+    "device_forward__B1": 5.951297,
+    "api_e2e__B256": 57.738246000000004,
+    "device_forward__B256": 47.0090955
+   },
+   "params": {
+    "active_params": 34522272,
+    "n_blocks": 3,
+    "block_params": 28318464,
+    "per_block_params": 9439488,
+    "non_block_params": 6203808
+   },
+   "weights_bytes": 138093056
+  },
+  {
+   "id": "027_chronos2_adapter_L01",
+   "model": "chronos2",
+   "kind": "adapter",
+   "depth": 1,
+   "drift": null,
+   "status": "ok",
+   "median_ms": {
+    "api_e2e__B1": 3.8788845,
+    "device_forward__B1": 3.236097,
+    "api_e2e__B256": 31.0949375,
+    "device_forward__B256": 20.463811
+   },
+   "params": {
+    "active_params": 16332256,
+    "n_blocks": 1,
+    "block_params": 9439488,
+    "per_block_params": 9439488,
+    "non_block_params": 6892768
+   },
+   "weights_bytes": 65331200
+  },
+  {
+   "id": "028_chronos2_hard_L12",
+   "model": "chronos2",
+   "kind": "hard",
+   "depth": 12,
+   "drift": null,
+   "status": "ok",
+   "median_ms": {
+    "api_e2e__B1": 19.588857,
+    "device_forward__B1": 18.939798,
+    "api_e2e__B256": 181.9514765,
+    "device_forward__B256": 171.03638999999998
+   },
+   "params": {
+    "active_params": 119477664,
+    "n_blocks": 12,
+    "block_params": 113273856,
+    "per_block_params": 9439488,
+    "non_block_params": 6203808
+   },
+   "weights_bytes": 477923840
+  },
+  {
+   "id": "029_chronos2_hard_L02",
+   "model": "chronos2",
+   "kind": "hard",
+   "depth": 2,
+   "drift": null,
+   "status": "ok",
+   "median_ms": {
+    "api_e2e__B1": 5.168125,
+    "device_forward__B1": 4.533544,
+    "api_e2e__B256": 43.859765499999995,
+    "device_forward__B256": 33.233344
+   },
+   "params": {
+    "active_params": 25082784,
+    "n_blocks": 2,
+    "block_params": 18878976,
+    "per_block_params": 9439488,
+    "non_block_params": 6203808
+   },
+   "weights_bytes": 100334080
+  },
+  {
+   "id": "030_chronos2_adapter_L09",
+   "model": "chronos2",
+   "kind": "adapter",
+   "depth": 9,
+   "drift": null,
+   "status": "ok",
+   "median_ms": {
+    "api_e2e__B1": 15.0451985,
+    "device_forward__B1": 14.430034,
+    "api_e2e__B256": 141.43010099999998,
+    "device_forward__B256": 130.731723
+   },
+   "params": {
+    "active_params": 91848160,
+    "n_blocks": 9,
+    "block_params": 84955392,
+    "per_block_params": 9439488,
+    "non_block_params": 6892768
+   },
+   "weights_bytes": 367403008
+  },
+  {
+   "id": "031_chronos2_hard_L06",
+   "model": "chronos2",
+   "kind": "hard",
+   "depth": 6,
+   "drift": null,
+   "status": "ok",
+   "median_ms": {
+    "api_e2e__B1": 10.7768455,
+    "device_forward__B1": 10.134494,
+    "api_e2e__B256": 98.9992395,
+    "device_forward__B256": 88.357975
+   },
+   "params": {
+    "active_params": 62840736,
+    "n_blocks": 6,
+    "block_params": 56636928,
+    "per_block_params": 9439488,
+    "non_block_params": 6203808
+   },
+   "weights_bytes": 251369984
+  },
+  {
+   "id": "032_chronos2_probe_head_L03",
+   "model": "chronos2",
+   "kind": "probe_head",
+   "depth": 3,
+   "drift": null,
+   "status": "ok",
+   "median_ms": {
+    "api_e2e__B1": 6.449105,
+    "device_forward__B1": 5.807591,
+    "api_e2e__B256": 56.0165435,
+    "device_forward__B256": 45.3365945
+   },
+   "params": {
+    "active_params": 31126608,
+    "n_blocks": 3,
+    "block_params": 28318464,
+    "per_block_params": 9439488,
+    "non_block_params": 2808144
+   },
+   "weights_bytes": 124510208
+  },
+  {
+   "id": "033_chronos2_hard_L10",
+   "model": "chronos2",
+   "kind": "hard",
+   "depth": 10,
+   "drift": null,
+   "status": "ok",
+   "median_ms": {
+    "api_e2e__B1": 16.550562,
+    "device_forward__B1": 15.9900005,
+    "api_e2e__B256": 154.26179050000002,
+    "device_forward__B256": 143.478283
+   },
+   "params": {
+    "active_params": 100598688,
+    "n_blocks": 10,
+    "block_params": 94394880,
+    "per_block_params": 9439488,
+    "non_block_params": 6203808
+   },
+   "weights_bytes": 402405888
+  },
+  {
+   "id": "034_chronos2_adapter_L06",
+   "model": "chronos2",
+   "kind": "adapter",
+   "depth": 6,
+   "drift": null,
+   "status": "ok",
+   "median_ms": {
+    "api_e2e__B1": 10.988439,
+    "device_forward__B1": 10.373059,
+    "api_e2e__B256": 100.37537,
+    "device_forward__B256": 89.37645499999999
+   },
+   "params": {
+    "active_params": 63529696,
+    "n_blocks": 6,
+    "block_params": 56636928,
+    "per_block_params": 9439488,
+    "non_block_params": 6892768
+   },
+   "weights_bytes": 254126080
+  },
+  {
+   "id": "035_chronos2_adapter_L08",
+   "model": "chronos2",
+   "kind": "adapter",
+   "depth": 8,
+   "drift": null,
+   "status": "ok",
+   "median_ms": {
+    "api_e2e__B1": 13.9489315,
+    "device_forward__B1": 13.3283915,
+    "api_e2e__B256": 127.7267475,
+    "device_forward__B256": 116.94613
+   },
+   "params": {
+    "active_params": 82408672,
+    "n_blocks": 8,
+    "block_params": 75515904,
+    "per_block_params": 9439488,
+    "non_block_params": 6892768
+   },
+   "weights_bytes": 329644032
+  },
+  {
+   "id": "036_chronos2_adapter_L10",
+   "model": "chronos2",
+   "kind": "adapter",
+   "depth": 10,
+   "drift": null,
+   "status": "ok",
+   "median_ms": {
+    "api_e2e__B1": 16.5326485,
+    "device_forward__B1": 15.9125745,
+    "api_e2e__B256": 155.185633,
+    "device_forward__B256": 144.502429
+   },
+   "params": {
+    "active_params": 101287648,
+    "n_blocks": 10,
+    "block_params": 94394880,
+    "per_block_params": 9439488,
+    "non_block_params": 6892768
+   },
+   "weights_bytes": 405161984
+  },
+  {
+   "id": "037_chronos2_probe_head_L10",
+   "model": "chronos2",
+   "kind": "probe_head",
+   "depth": 10,
+   "drift": null,
+   "status": "ok",
+   "median_ms": {
+    "api_e2e__B1": 16.5726385,
+    "device_forward__B1": 15.9437225,
+    "api_e2e__B256": 152.7715455,
+    "device_forward__B256": 141.8428945
+   },
+   "params": {
+    "active_params": 97203024,
+    "n_blocks": 10,
+    "block_params": 94394880,
+    "per_block_params": 9439488,
+    "non_block_params": 2808144
+   },
+   "weights_bytes": 388823040
+  },
+  {
+   "id": "038_chronos2_adapter_L05",
+   "model": "chronos2",
+   "kind": "adapter",
+   "depth": 5,
+   "drift": null,
+   "status": "ok",
+   "median_ms": {
+    "api_e2e__B1": 9.591635,
+    "device_forward__B1": 8.965741,
+    "api_e2e__B256": 86.264718,
+    "device_forward__B256": 75.6004845
+   },
+   "params": {
+    "active_params": 54090208,
+    "n_blocks": 5,
+    "block_params": 47197440,
+    "per_block_params": 9439488,
+    "non_block_params": 6892768
+   },
+   "weights_bytes": 216367104
+  },
+  {
+   "id": "039_chronos2_probe_head_L00",
+   "model": "chronos2",
+   "kind": "probe_head",
+   "depth": 0,
+   "drift": null,
+   "status": "ok",
+   "median_ms": {
+    "api_e2e__B1": 2.0878065,
+    "device_forward__B1": 1.454247,
+    "api_e2e__B256": 15.5457875,
+    "device_forward__B256": 3.986066
+   },
+   "params": {
+    "active_params": 2808144,
+    "n_blocks": 0,
+    "block_params": 0,
+    "per_block_params": null,
+    "non_block_params": 2808144
+   },
+   "weights_bytes": 11233280
+  },
+  {
+   "id": "040_chronos2_probe_head_L08",
+   "model": "chronos2",
+   "kind": "probe_head",
+   "depth": 8,
+   "drift": null,
+   "status": "ok",
+   "median_ms": {
+    "api_e2e__B1": 13.519306499999999,
+    "device_forward__B1": 12.874731,
+    "api_e2e__B256": 124.966793,
+    "device_forward__B256": 114.2679545
+   },
+   "params": {
+    "active_params": 78324048,
+    "n_blocks": 8,
+    "block_params": 75515904,
+    "per_block_params": 9439488,
+    "non_block_params": 2808144
+   },
+   "weights_bytes": 313305088
+  },
+  {
+   "id": "041_chronos2_hard_L08",
+   "model": "chronos2",
+   "kind": "hard",
+   "depth": 8,
+   "drift": null,
+   "status": "ok",
+   "median_ms": {
+    "api_e2e__B1": 13.5607145,
+    "device_forward__B1": 12.892920499999999,
+    "api_e2e__B256": 126.842495,
+    "device_forward__B256": 115.919624
+   },
+   "params": {
+    "active_params": 81719712,
+    "n_blocks": 8,
+    "block_params": 75515904,
+    "per_block_params": 9439488,
+    "non_block_params": 6203808
+   },
+   "weights_bytes": 326887936
+  },
+  {
+   "id": "042_chronos2_native_L12_end",
+   "model": "chronos2",
+   "kind": "native",
+   "depth": 12,
+   "drift": "end",
+   "status": "ok",
+   "median_ms": {
+    "api_e2e__B1": 19.445786499999997,
+    "device_forward__B1": 18.849527000000002,
+    "api_e2e__B256": 181.71662350000003,
+    "device_forward__B256": 171.05103300000002
+   },
+   "params": {
+    "active_params": 119477664,
+    "n_blocks": 12,
+    "block_params": 113273856,
+    "per_block_params": 9439488,
+    "non_block_params": 6203808
+   },
+   "weights_bytes": 477923840
+  }
+ ]
+}

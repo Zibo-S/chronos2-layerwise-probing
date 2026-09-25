@@ -1,0 +1,74 @@
+{
+  "model": "timesfm3",
+  "dataset": "wiki_daily_100k",
+  "rule": {
+    "version": "h4-frontier/v1",
+    "question": "how much forecasting accuracy survives a given reduction in inference cost?",
+    "operating_point": "per model x dataset x arm x budget eps: the SHALLOWEST block depth l < L whose VALIDATION MASE ratio to the full native model is <= 1 + eps at EVERY truncation depth j in [l, L-1] (sustained, the Phase-1 operator)",
+    "fallback": "no qualifying depth -> no truncation: the full native model (speedup 1)",
+    "budgets": [
+      0.02,
+      0.05,
+      0.1,
+      0.2
+    ],
+    "selection_data": "validation only; the selected depth is frozen, then test is read once",
+    "entrance_test": "the frozen Phase-1 entrance test (H4_OUTCOME_RULE) is kept unchanged as the stricter secondary hypothesis test"
+  },
+  "blocks_total": 20,
+  "operating_points": [
+    {
+      "arm": "probe",
+      "depth_index": 0,
+      "label": "Emb",
+      "blocks_removed": 20,
+      "budgets": [
+        0.2
+      ],
+      "active_params": 2867776,
+      "fraction_params_removed": 0.9913284523099711,
+      "physical_test_mase": 0.9602535777654573,
+      "offline_test_mase": 0.9602535767857419,
+      "V3": {
+        "check": "V3 (per-window MASE, physical vs offline H3)",
+        "bitwise": false,
+        "max_abs": 1.1839947422487285e-07,
+        "max_scaled": 0.0003923362389252799,
+        "atol": 9.60253576785742e-05,
+        "rtol": 0.0001,
+        "n": 262,
+        "passed": true,
+        "mase_mean_rel_diff": 1.0202673997648127e-09
+      },
+      "V3_passed": true
+    },
+    {
+      "arm": "probe",
+      "depth_index": 7,
+      "label": "L7",
+      "blocks_removed": 13,
+      "budgets": [
+        0.1
+      ],
+      "active_params": 117612896,
+      "fraction_params_removed": 0.6443634940014813,
+      "physical_test_mase": 0.9126566242070535,
+      "offline_test_mase": 0.9126566235106915,
+      "V3": {
+        "check": "V3 (per-window MASE, physical vs offline H3)",
+        "bitwise": false,
+        "max_abs": 1.3644038654447854e-07,
+        "max_scaled": 0.00048441172261046194,
+        "atol": 9.126566235106916e-05,
+        "rtol": 0.0001,
+        "n": 262,
+        "passed": true,
+        "mase_mean_rel_diff": 7.630054394501503e-10
+      },
+      "V3_passed": true
+    }
+  ],
+  "n_points": 2,
+  "all_V3_passed": true,
+  "h3_cell": "results/three_model_phase2_nested/h3/timesfm3/wiki_daily_100k"
+}

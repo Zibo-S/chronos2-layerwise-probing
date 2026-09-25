@@ -1,0 +1,319 @@
+{
+  "rule": {
+    "version": "h4-frontier/v1",
+    "question": "how much forecasting accuracy survives a given reduction in inference cost?",
+    "operating_point": "per model x dataset x arm x budget eps: the SHALLOWEST block depth l < L whose VALIDATION MASE ratio to the full native model is <= 1 + eps at EVERY truncation depth j in [l, L-1] (sustained, the Phase-1 operator)",
+    "fallback": "no qualifying depth -> no truncation: the full native model (speedup 1)",
+    "budgets": [
+      0.02,
+      0.05,
+      0.1,
+      0.2
+    ],
+    "selection_data": "validation only; the selected depth is frozen, then test is read once",
+    "entrance_test": "the frozen Phase-1 entrance test (H4_OUTCOME_RULE) is kept unchanged as the stricter secondary hypothesis test"
+  },
+  "complete_depth_sweep": true,
+  "native_val_mase": 0.9433213626705967,
+  "native_test_mase": 4.2995413838017,
+  "depth_labels": [
+    "Emb",
+    "L1",
+    "L2",
+    "L3",
+    "L4",
+    "L5",
+    "L6",
+    "L7",
+    "L8",
+    "L9",
+    "L10",
+    "L11",
+    "L12"
+  ],
+  "reference_index": 12,
+  "arms": {
+    "hard": {
+      "val_mase_ratio_by_depth": [
+        5.14117928423763,
+        3.216418743493904,
+        2.517484883977536,
+        2.1698198150636743,
+        2.092190274503548,
+        2.0395921452062855,
+        2.0086324677666703,
+        1.9481254028180859,
+        2.035086344278816,
+        2.048928367238157,
+        2.127056179331987,
+        2.3411884940856864,
+        1.0
+      ],
+      "test_mase_ratio_by_depth": [
+        2.1037969197352973,
+        1.6097953161236445,
+        1.4138298017210433,
+        1.3387121045270043,
+        1.3151945374733276,
+        1.2934257979612902,
+        1.2895395826931733,
+        1.2871842516933645,
+        1.2643527383858093,
+        1.2358671464950004,
+        1.218521819682252,
+        1.2625136364132392,
+        1.0
+      ],
+      "budgets": {
+        "eps_0.02": {
+          "depth_index": 12,
+          "label": "L12",
+          "truncated": false,
+          "blocks_removed": 0,
+          "operating_model": "native",
+          "val_mase_ratio": 1.0,
+          "test_mase_ratio": 1.0,
+          "test_mase_ci": [
+            1.0,
+            1.0
+          ],
+          "test_wql_ratio": 1.0,
+          "within_budget_test": true
+        },
+        "eps_0.05": {
+          "depth_index": 12,
+          "label": "L12",
+          "truncated": false,
+          "blocks_removed": 0,
+          "operating_model": "native",
+          "val_mase_ratio": 1.0,
+          "test_mase_ratio": 1.0,
+          "test_mase_ci": [
+            1.0,
+            1.0
+          ],
+          "test_wql_ratio": 1.0,
+          "within_budget_test": true
+        },
+        "eps_0.1": {
+          "depth_index": 12,
+          "label": "L12",
+          "truncated": false,
+          "blocks_removed": 0,
+          "operating_model": "native",
+          "val_mase_ratio": 1.0,
+          "test_mase_ratio": 1.0,
+          "test_mase_ci": [
+            1.0,
+            1.0
+          ],
+          "test_wql_ratio": 1.0,
+          "within_budget_test": true
+        },
+        "eps_0.2": {
+          "depth_index": 12,
+          "label": "L12",
+          "truncated": false,
+          "blocks_removed": 0,
+          "operating_model": "native",
+          "val_mase_ratio": 1.0,
+          "test_mase_ratio": 1.0,
+          "test_mase_ci": [
+            1.0,
+            1.0
+          ],
+          "test_wql_ratio": 1.0,
+          "within_budget_test": true
+        }
+      }
+    },
+    "noa": {
+      "val_mase_ratio_by_depth": [
+        1.5354684625572,
+        1.2026984073788072,
+        1.1882024029852531,
+        1.2028892206312265,
+        1.2007755935374846,
+        1.205282719523365,
+        1.2198365994243001,
+        1.2813377715228573,
+        1.2721651859554064,
+        1.1864609377976487,
+        1.131570977199587,
+        1.0641741255907742,
+        1.0
+      ],
+      "test_mase_ratio_by_depth": [
+        1.1541851837011308,
+        1.0720872919954654,
+        1.0655062780071005,
+        1.0739409392069061,
+        1.0691039598963212,
+        1.069778528711343,
+        1.074448056205557,
+        1.0830387606319576,
+        1.0766413989293648,
+        1.0539014241219236,
+        1.0284640469372104,
+        1.0163471134341395,
+        1.0
+      ],
+      "budgets": {
+        "eps_0.02": {
+          "depth_index": 12,
+          "label": "L12",
+          "truncated": false,
+          "blocks_removed": 0,
+          "operating_model": "native",
+          "val_mase_ratio": 1.0,
+          "test_mase_ratio": 1.0,
+          "test_mase_ci": [
+            1.0,
+            1.0
+          ],
+          "test_wql_ratio": 1.0,
+          "within_budget_test": true
+        },
+        "eps_0.05": {
+          "depth_index": 12,
+          "label": "L12",
+          "truncated": false,
+          "blocks_removed": 0,
+          "operating_model": "native",
+          "val_mase_ratio": 1.0,
+          "test_mase_ratio": 1.0,
+          "test_mase_ci": [
+            1.0,
+            1.0
+          ],
+          "test_wql_ratio": 1.0,
+          "within_budget_test": true
+        },
+        "eps_0.1": {
+          "depth_index": 11,
+          "label": "L11",
+          "truncated": true,
+          "blocks_removed": 1,
+          "operating_model": "noa",
+          "val_mase_ratio": 1.0641741255907742,
+          "test_mase_ratio": 1.0163471134341395,
+          "test_mase_ci": [
+            1.0054919865896068,
+            1.1041574022165968
+          ],
+          "test_wql_ratio": 1.0518415847790585,
+          "within_budget_test": true
+        },
+        "eps_0.2": {
+          "depth_index": 9,
+          "label": "L9",
+          "truncated": true,
+          "blocks_removed": 3,
+          "operating_model": "noa",
+          "val_mase_ratio": 1.1864609377976487,
+          "test_mase_ratio": 1.0539014241219236,
+          "test_mase_ci": [
+            1.018929324203366,
+            1.3297428439155057
+          ],
+          "test_wql_ratio": 1.2288569264822258,
+          "within_budget_test": true
+        }
+      }
+    },
+    "probe": {
+      "val_mase_ratio_by_depth": [
+        1.549755102240343,
+        1.3419649873645807,
+        1.2765072549709109,
+        1.260482247335462,
+        1.2722576208466523,
+        1.2733171729100243,
+        1.3350068216127557,
+        1.3733862512305521,
+        1.3468523742482228,
+        1.347272758234216,
+        1.3037457905497012,
+        1.2176798294138742,
+        1.1956429321198918
+      ],
+      "test_mase_ratio_by_depth": [
+        1.1727804381155402,
+        1.1029270155628847,
+        1.095393966548799,
+        1.085701339505298,
+        1.0851251249367957,
+        1.0824425425151156,
+        1.0915449522121567,
+        1.0995602548551886,
+        1.1015351959698456,
+        1.0868011512279139,
+        1.0765934778931616,
+        1.0578912232302538,
+        1.0490919841944546
+      ],
+      "budgets": {
+        "eps_0.02": {
+          "depth_index": 12,
+          "label": "L12",
+          "truncated": false,
+          "blocks_removed": 0,
+          "operating_model": "native",
+          "val_mase_ratio": 1.0,
+          "test_mase_ratio": 1.0,
+          "test_mase_ci": [
+            1.0,
+            1.0
+          ],
+          "test_wql_ratio": 1.0,
+          "within_budget_test": true
+        },
+        "eps_0.05": {
+          "depth_index": 12,
+          "label": "L12",
+          "truncated": false,
+          "blocks_removed": 0,
+          "operating_model": "native",
+          "val_mase_ratio": 1.0,
+          "test_mase_ratio": 1.0,
+          "test_mase_ci": [
+            1.0,
+            1.0
+          ],
+          "test_wql_ratio": 1.0,
+          "within_budget_test": true
+        },
+        "eps_0.1": {
+          "depth_index": 12,
+          "label": "L12",
+          "truncated": false,
+          "blocks_removed": 0,
+          "operating_model": "native",
+          "val_mase_ratio": 1.0,
+          "test_mase_ratio": 1.0,
+          "test_mase_ci": [
+            1.0,
+            1.0
+          ],
+          "test_wql_ratio": 1.0,
+          "within_budget_test": true
+        },
+        "eps_0.2": {
+          "depth_index": 12,
+          "label": "L12",
+          "truncated": false,
+          "blocks_removed": 0,
+          "operating_model": "native",
+          "val_mase_ratio": 1.0,
+          "test_mase_ratio": 1.0,
+          "test_mase_ci": [
+            1.0,
+            1.0
+          ],
+          "test_wql_ratio": 1.0,
+          "within_budget_test": true
+        }
+      }
+    }
+  }
+}

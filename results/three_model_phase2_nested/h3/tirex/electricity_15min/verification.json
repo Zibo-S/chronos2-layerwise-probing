@@ -1,0 +1,37 @@
+{
+  "native_gate": {
+    "available": true,
+    "rtol": 0.0001,
+    "test_loss_mean_ours": 0.18627675927903073,
+    "test_loss_mean_phase1": 0.186276756755662,
+    "test_loss_mean_rel_diff": 1.3546342443006115e-08,
+    "test_loss_window_max_abs_diff": 8.046627044677734e-07,
+    "test_mase_mean_ours": 1.2409612472262626,
+    "test_mase_mean_phase1": 1.2409612395737233,
+    "test_mase_mean_rel_diff": 6.166622312523342e-09,
+    "test_mase_window_max_abs_diff": 3.311400818217791e-06,
+    "test_mase_window_max_rel_diff": 3.897020280038111e-05,
+    "passed": true
+  },
+  "native_raw_vs_phase1_cache": {
+    "max_abs": 0.008184971287846565,
+    "max_rel_to_mean_abs": 1.308222824074853e-05,
+    "note": "offline f(h_L) on the (n, R, d) readout vs the model's own full-sequence forward: a different GEMM shape, so not bitwise; measured every run"
+  },
+  "final_norm_vs_cached_head_input": {
+    "max_abs": 0.0,
+    "note": "head(norm(h_L)) vs head(cached post-norm state): the pathway applies the checkpoint's own final norm to the pre-norm final block"
+  },
+  "native_quantile_crossing_fraction_test": 0.008289599236641222,
+  "hard_cut_at_final_depth_equals_native": true,
+  "identity_adapter_equals_hard_cut_bitwise": {
+    "depth": "Emb",
+    "bitwise": true
+  },
+  "probe_inverse_gate": {
+    "max_rel_diff_mean_test_mase": 0.0,
+    "rtol": 0.0001,
+    "passed": true
+  },
+  "wql_denominator_equals_phase1": true
+}

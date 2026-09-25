@@ -1,0 +1,257 @@
+{
+  "schema": "phase2_h3_cell/v1",
+  "model": "tirex",
+  "dataset": "uber_tlc_hourly",
+  "question": "Once forecasting is recoverable from an intermediate representation, can a lightweight transformation make it usable by the model's ORIGINAL frozen forecasting pathway, close to the full native model?",
+  "families": [
+    "hard",
+    "noa",
+    "probe"
+  ],
+  "dropped_families": {},
+  "depths_evaluated": [
+    "Emb",
+    "L1",
+    "L2",
+    "L3",
+    "L4",
+    "L5",
+    "L6",
+    "L7",
+    "L8",
+    "L9",
+    "L10",
+    "L11",
+    "L12"
+  ],
+  "complete_depth_sweep": true,
+  "phase1_tunnel_entrance": "L10",
+  "blocks_removed_at_entrance": 2,
+  "ladder_at_entrance": {
+    "hard": {
+      "mase_ratio": 1.3447505568730889,
+      "mase_ci": [
+        1.2904962993097662,
+        1.4073137006540302
+      ],
+      "wql_ratio": 1.528730405170728,
+      "within_budget_mase": false
+    },
+    "noa": {
+      "mase_ratio": 1.0230242701592065,
+      "mase_ci": [
+        1.0172269061523227,
+        1.0297147624023435
+      ],
+      "wql_ratio": 1.029106096569231,
+      "within_budget_mase": true
+    },
+    "probe": {
+      "mase_ratio": 1.1294692527623875,
+      "mase_ci": [
+        1.0995572410453434,
+        1.1646004234459792
+      ],
+      "wql_ratio": 1.125103331953476,
+      "within_budget_mase": false
+    }
+  },
+  "compatibility_gap_exists_at_entrance": true,
+  "native": {
+    "test_loss": 0.23161723307933293,
+    "test_mase": 0.802104333993898,
+    "test_mae": 4.698163699247523,
+    "test_wql": 0.21948414970743976,
+    "val_loss": 0.18194110651301906,
+    "wql_standard": 0.21948414970743976
+  },
+  "low_skill": {
+    "native_val_over_floor": 0.6672572307810483,
+    "flag": false,
+    "threshold": 0.9
+  },
+  "frontier_budgets": {
+    "hard": {
+      "eps_0.02": {
+        "label": "L12",
+        "truncated": false,
+        "test_mase_ratio": 1.0
+      },
+      "eps_0.05": {
+        "label": "L12",
+        "truncated": false,
+        "test_mase_ratio": 1.0
+      },
+      "eps_0.1": {
+        "label": "L12",
+        "truncated": false,
+        "test_mase_ratio": 1.0
+      },
+      "eps_0.2": {
+        "label": "L12",
+        "truncated": false,
+        "test_mase_ratio": 1.0
+      }
+    },
+    "noa": {
+      "eps_0.02": {
+        "label": "L10",
+        "truncated": true,
+        "test_mase_ratio": 1.0230242701592065
+      },
+      "eps_0.05": {
+        "label": "L9",
+        "truncated": true,
+        "test_mase_ratio": 1.0457292352500969
+      },
+      "eps_0.1": {
+        "label": "L5",
+        "truncated": true,
+        "test_mase_ratio": 1.1331997298469316
+      },
+      "eps_0.2": {
+        "label": "L2",
+        "truncated": true,
+        "test_mase_ratio": 1.285078486837292
+      }
+    },
+    "probe": {
+      "eps_0.02": {
+        "label": "L12",
+        "truncated": false,
+        "test_mase_ratio": 1.0
+      },
+      "eps_0.05": {
+        "label": "L12",
+        "truncated": false,
+        "test_mase_ratio": 1.0
+      },
+      "eps_0.1": {
+        "label": "L12",
+        "truncated": false,
+        "test_mase_ratio": 1.0
+      },
+      "eps_0.2": {
+        "label": "L9",
+        "truncated": true,
+        "test_mase_ratio": 1.1697028793040947
+      }
+    }
+  },
+  "verification": {
+    "native_gate": true,
+    "native_raw_vs_phase1_cache": {
+      "max_abs": 0.00011840393199236132,
+      "max_rel_to_mean_abs": 7.782319321192292e-06,
+      "note": "offline f(h_L) on the (n, R, d) readout vs the model's own full-sequence forward: a different GEMM shape, so not bitwise; measured every run"
+    },
+    "final_norm_vs_cached_head_input": {
+      "max_abs": 0.0,
+      "note": "head(norm(h_L)) vs head(cached post-norm state): the pathway applies the checkpoint's own final norm to the pre-norm final block"
+    },
+    "native_quantile_crossing_fraction_test": 0.13925333969465647,
+    "hard_cut_at_final_depth_equals_native": true,
+    "identity_adapter_equals_hard_cut_bitwise": {
+      "depth": "Emb",
+      "bitwise": true
+    },
+    "probe_inverse_gate": true,
+    "wql_denominator_equals_phase1": true
+  },
+  "timings": {
+    "Emb": 22.07,
+    "L1": 21.9,
+    "L2": 21.89,
+    "L3": 21.98,
+    "L4": 22.02,
+    "L5": 21.91,
+    "L6": 21.96,
+    "L7": 21.92,
+    "L8": 22.0,
+    "L9": 21.97,
+    "L10": 21.93,
+    "L11": 21.93,
+    "L12": 0.01,
+    "cell_total_s": 263.9
+  },
+  "fit_cfg": {
+    "epochs": 1500,
+    "lr": 0.001,
+    "wd_grid": [
+      0.0,
+      0.1,
+      1.0,
+      10.0,
+      30.0,
+      100.0
+    ],
+    "eval_every": 25,
+    "kappas": [
+      1e-12,
+      1e-11,
+      1e-10,
+      1e-09,
+      1e-08,
+      1e-07,
+      1e-06,
+      1e-05,
+      0.0001,
+      0.001,
+      0.01,
+      0.1,
+      1.0,
+      10.0,
+      100.0
+    ],
+    "seed": 0,
+    "native_gate_rtol": 0.0001,
+    "boot_b": 5000,
+    "boot_seed": 0,
+    "noa_adapter": "nested",
+    "bottleneck": 64
+  },
+  "pathway": {
+    "model": "tirex",
+    "d": 512,
+    "rows_per_window": 2,
+    "n_out_per_row": 288,
+    "layout": "quantile-major (q*P + t), passes concatenated",
+    "inverse": "per-pass z*scale_k + loc_k (StandardScaler.re_scale)",
+    "final_norm": "out_norm: RMSNorm computed in fp32",
+    "passes": 2
+  },
+  "phase1_dependency": {
+    "root": "/home/eserebri/repos/chronos2-layerwise-probing/results/three_model_phase1_q9_expanded",
+    "model": "tirex",
+    "dataset": "uber_tlc_hourly",
+    "config_hash": "sha256:ece66d6068187bcc1ffe50c7dafdc8888f55d7efd671038880ab10e2ee169a21",
+    "fit_hash": "sha256:eb7921fbb642a7c6abb6b46c118a2febe89e060f80f72f6f9c20032bed175b03",
+    "postprocess_hash": "sha256:584a3c65d0f25e8875be66632b91f9e0d289c075b73e11fa47b77305d187e5f6",
+    "completed_utc": "2026-09-22T12:06:37+00:00",
+    "protocol": "phase1/v1",
+    "tunnel_definition": "sustained_suffix_v1",
+    "window_digest": "sha256:80d43a522c99132981130b9ec59ce6a82f96b1c4486e3f69d95673ff440cf75d",
+    "checkpoint": "NX-AI/TiRex",
+    "quantile_set": "q9",
+    "sha256_bootstrap_inputs.npz": "sha256:831e9cafdc054b0ee408b9094da7eb54f26645e95f224b02f8acbae7df736e0c",
+    "sha256_tunnel.json": "sha256:76728256422d35b7c268b3bd5c1d24587b201f33ed8cb331309a53a7794010d1",
+    "sha256_cell_config.json": "sha256:4fb6d4cbbddb89a005fc0747d1434bb707701976547e404a48580ac975aa14e4",
+    "sha256_predictions_val.npz": "sha256:70b8b384c391f1718275747e825c819eb38ddf56f0cf302c91148d00a24811dc",
+    "sha256_predictions_test.npz": "sha256:ccb912a0f0447232b10a6ebdd7ff6298407ff222f29d7aea159080295ce4a41e"
+  },
+  "provenance": {
+    "cache_files": {
+      "train": "/scratch/eserebri/chronos2/phase1_shared_cache/tirex-q1-shared-patch-v1__two_pass__uber_tlc_hourly__train.npz",
+      "val": "/scratch/eserebri/chronos2/phase1_shared_cache/tirex-q1-shared-patch-v1__two_pass__uber_tlc_hourly__val.npz",
+      "test": "/scratch/eserebri/chronos2/phase1_shared_cache/tirex-q1-shared-patch-v1__two_pass__uber_tlc_hourly__test.npz"
+    },
+    "rollout_mode": "two_pass"
+  },
+  "caveats": {
+    "recoverability_vs_replaceability": "A strong intermediate-layer probe establishes RECOVERABILITY but not REPLACEABILITY: the probe replaces the pretrained pathway. The hard cut and the aligned native pathway test replaceability; only they license H4.",
+    "cross_model_loss": "Each model is probed where its OWN head reads, in its OWN normalized target space (Chronos-2: context-standardized + arcsinh at the K=4 forecast slots; TimesFM-3: detrend + RevIN at the last real context token; TiRex: per-pass loc/scale at the two native forecast-producing states). The absolute Q=9 mean pinball loss is therefore NOT comparable ACROSS models. Cross-model comparison is valid for (a) the tunnel entrance, which is a within-model ratio against that model's own final depth, and (b) MASE, which is in raw units under one shared in-context seasonal-naive denominator.",
+    "wql": "WQL is reported with the standard 1/Q normalization (phase2.standard_wql)",
+    "operating_point": "the frozen Phase-1 sustained 5% entrance; compatibility tunnels are a secondary diagnostic"
+  },
+  "smoke": false
+}

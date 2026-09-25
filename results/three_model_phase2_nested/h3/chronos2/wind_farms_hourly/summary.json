@@ -1,0 +1,271 @@
+{
+  "schema": "phase2_h3_cell/v1",
+  "model": "chronos2",
+  "dataset": "wind_farms_hourly",
+  "question": "Once forecasting is recoverable from an intermediate representation, can a lightweight transformation make it usable by the model's ORIGINAL frozen forecasting pathway, close to the full native model?",
+  "families": [
+    "hard",
+    "noa",
+    "probe"
+  ],
+  "dropped_families": {},
+  "depths_evaluated": [
+    "Emb",
+    "L1",
+    "L2",
+    "L3",
+    "L4",
+    "L5",
+    "L6",
+    "L7",
+    "L8",
+    "L9",
+    "L10",
+    "L11",
+    "L12"
+  ],
+  "complete_depth_sweep": true,
+  "phase1_tunnel_entrance": "L3",
+  "blocks_removed_at_entrance": 9,
+  "ladder_at_entrance": {
+    "hard": {
+      "mase_ratio": 1.171820344343705,
+      "mase_ci": [
+        1.0583995936409045,
+        2.0141188235831344
+      ],
+      "wql_ratio": 1.477340643794018,
+      "within_budget_mase": false
+    },
+    "noa": {
+      "mase_ratio": 1.0296263265179775,
+      "mase_ci": [
+        1.0085403076686301,
+        1.2117760533253643
+      ],
+      "wql_ratio": 1.048388307490013,
+      "within_budget_mase": true
+    },
+    "probe": {
+      "mase_ratio": 1.1386440606347679,
+      "mase_ci": [
+        1.0479502286838576,
+        1.8249823963180754
+      ],
+      "wql_ratio": 1.185183974390582,
+      "within_budget_mase": false
+    }
+  },
+  "compatibility_gap_exists_at_entrance": true,
+  "native": {
+    "test_loss": 0.1352746567760198,
+    "test_mase": 4.354279986092688,
+    "test_mae": 14.686288858226757,
+    "test_wql": 0.16029983191930874,
+    "val_loss": 0.12811325312685842,
+    "wql_standard": 0.16029983191930874
+  },
+  "low_skill": {
+    "native_val_over_floor": 0.5766118993680992,
+    "flag": false,
+    "threshold": 0.9
+  },
+  "frontier_budgets": {
+    "hard": {
+      "eps_0.02": {
+        "label": "L12",
+        "truncated": false,
+        "test_mase_ratio": 1.0
+      },
+      "eps_0.05": {
+        "label": "L12",
+        "truncated": false,
+        "test_mase_ratio": 1.0
+      },
+      "eps_0.1": {
+        "label": "L12",
+        "truncated": false,
+        "test_mase_ratio": 1.0
+      },
+      "eps_0.2": {
+        "label": "L12",
+        "truncated": false,
+        "test_mase_ratio": 1.0
+      }
+    },
+    "noa": {
+      "eps_0.02": {
+        "label": "L12",
+        "truncated": false,
+        "test_mase_ratio": 1.0
+      },
+      "eps_0.05": {
+        "label": "L11",
+        "truncated": true,
+        "test_mase_ratio": 1.0044350335288619
+      },
+      "eps_0.1": {
+        "label": "L9",
+        "truncated": true,
+        "test_mase_ratio": 1.0158575750924026
+      },
+      "eps_0.2": {
+        "label": "L2",
+        "truncated": true,
+        "test_mase_ratio": 1.0314475018885618
+      }
+    },
+    "probe": {
+      "eps_0.02": {
+        "label": "L12",
+        "truncated": false,
+        "test_mase_ratio": 1.0
+      },
+      "eps_0.05": {
+        "label": "L12",
+        "truncated": false,
+        "test_mase_ratio": 1.0
+      },
+      "eps_0.1": {
+        "label": "L12",
+        "truncated": false,
+        "test_mase_ratio": 1.0
+      },
+      "eps_0.2": {
+        "label": "L12",
+        "truncated": false,
+        "test_mase_ratio": 1.0
+      }
+    }
+  },
+  "verification": {
+    "native_gate": true,
+    "final_norm_vs_cached_head_input": {
+      "max_abs": 0.0,
+      "note": "head(norm(h_L)) vs head(cached post-norm state): the pathway applies the checkpoint's own final norm to the pre-norm final block"
+    },
+    "native_quantile_crossing_fraction_test": 0.1326932251908397,
+    "hard_cut_at_final_depth_equals_native": true,
+    "identity_adapter_equals_hard_cut_bitwise": {
+      "depth": "Emb",
+      "bitwise": true
+    },
+    "probe_inverse_gate": true,
+    "wql_denominator_equals_phase1": true
+  },
+  "timings": {
+    "Emb": 63.0,
+    "L1": 62.96,
+    "L2": 62.98,
+    "L3": 62.97,
+    "L4": 62.99,
+    "L5": 62.98,
+    "L6": 62.98,
+    "L7": 62.97,
+    "L8": 63.49,
+    "L9": 62.97,
+    "L10": 62.98,
+    "L11": 62.96,
+    "L12": 0.02,
+    "cell_total_s": 756.7
+  },
+  "fit_cfg": {
+    "epochs": 1500,
+    "lr": 0.001,
+    "wd_grid": [
+      0.0,
+      0.1,
+      1.0,
+      10.0,
+      30.0,
+      100.0
+    ],
+    "eval_every": 25,
+    "kappas": [
+      1e-12,
+      1e-11,
+      1e-10,
+      1e-09,
+      1e-08,
+      1e-07,
+      1e-06,
+      1e-05,
+      0.0001,
+      0.001,
+      0.01,
+      0.1,
+      1.0,
+      10.0,
+      100.0
+    ],
+    "seed": 0,
+    "native_gate_rtol": 0.0001,
+    "boot_b": 5000,
+    "boot_seed": 0,
+    "noa_adapter": "nested",
+    "bottleneck": 64
+  },
+  "pathway": {
+    "model": "chronos2",
+    "d": 768,
+    "rows_per_window": 1,
+    "n_out_per_row": 336,
+    "native_quantiles": 21,
+    "q9_native_indices": [
+      2,
+      4,
+      6,
+      8,
+      10,
+      12,
+      14,
+      16,
+      18
+    ],
+    "layout": "b n (q p) -> b q (n p)  (Chronos2Model.forward)",
+    "inverse": "loc + scale * sinh(z)  (InstanceNorm, use_arcsinh=True)",
+    "final_norm": "encoder.final_layer_norm: T5-style RMS scaling, no mean, no bias"
+  },
+  "phase1_dependency": {
+    "root": "/home/eserebri/repos/chronos2-layerwise-probing/results/three_model_phase1_q9_expanded",
+    "model": "chronos2",
+    "dataset": "wind_farms_hourly",
+    "config_hash": "sha256:d3403405041898a4c523be46ef0244a9ec74c36704b5415f87a658988c439ad3",
+    "fit_hash": "sha256:a6a34b3ca80e72512f4cb08aac037ce499213584333c7dfbd24f8faf6c8d829e",
+    "postprocess_hash": "sha256:584a3c65d0f25e8875be66632b91f9e0d289c075b73e11fa47b77305d187e5f6",
+    "completed_utc": "2026-09-22T12:07:51+00:00",
+    "protocol": "phase1/v1",
+    "tunnel_definition": "sustained_suffix_v1",
+    "window_digest": "sha256:f6062120f4117747776f95a53f8b676b54dc69cae7a735322957d065057355eb",
+    "checkpoint": "amazon/chronos-2",
+    "quantile_set": "q9",
+    "sha256_bootstrap_inputs.npz": "sha256:f5195e8b418a9c45fda961bd178e207f4cb1bbc78a9d6b729775c089bb2c100a",
+    "sha256_tunnel.json": "sha256:b62bac3fc239b8b7ef730d8b81ca845ce21eca54a6ac3d154b550e91e8cd0446",
+    "sha256_cell_config.json": "sha256:130aa7c8be3d4557958784c712f23c126853b22e117ad77506a5e7d86733985e",
+    "sha256_predictions_val.npz": "sha256:6135d67669737f7112f2b2af3f7106813751a59a950c3e25cda85d8836323b85",
+    "sha256_predictions_test.npz": "sha256:97560c06b500e3b6cb8cc533b1e4152994df5afc37e67ff976e3dd5daa1da2db"
+  },
+  "provenance": {
+    "feature_files": {
+      "train": {
+        "path": "/home/eserebri/repos/chronos2-layerwise-probing/features_cache/IDF_wind_farms_hourly__paper14_rolling__train__clean__K4_H64.npz",
+        "candidates_tried": []
+      },
+      "val": {
+        "path": "/home/eserebri/repos/chronos2-layerwise-probing/features_cache/IDF_wind_farms_hourly__paper14_rolling__val__clean__K4_H64.npz",
+        "candidates_tried": []
+      },
+      "test": {
+        "path": "/home/eserebri/repos/chronos2-layerwise-probing/features_cache/IDF_wind_farms_hourly__paper14_rolling__test__clean__K4_H64.npz",
+        "candidates_tried": []
+      }
+    }
+  },
+  "caveats": {
+    "recoverability_vs_replaceability": "A strong intermediate-layer probe establishes RECOVERABILITY but not REPLACEABILITY: the probe replaces the pretrained pathway. The hard cut and the aligned native pathway test replaceability; only they license H4.",
+    "cross_model_loss": "Each model is probed where its OWN head reads, in its OWN normalized target space (Chronos-2: context-standardized + arcsinh at the K=4 forecast slots; TimesFM-3: detrend + RevIN at the last real context token; TiRex: per-pass loc/scale at the two native forecast-producing states). The absolute Q=9 mean pinball loss is therefore NOT comparable ACROSS models. Cross-model comparison is valid for (a) the tunnel entrance, which is a within-model ratio against that model's own final depth, and (b) MASE, which is in raw units under one shared in-context seasonal-naive denominator.",
+    "wql": "WQL is reported with the standard 1/Q normalization (phase2.standard_wql)",
+    "operating_point": "the frozen Phase-1 sustained 5% entrance; compatibility tunnels are a secondary diagnostic"
+  },
+  "smoke": false
+}

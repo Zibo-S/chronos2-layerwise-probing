@@ -1,0 +1,686 @@
+{
+ "job_tag": "job1_tirex_a",
+ "headline_eligible": true,
+ "ineligible_reasons": [],
+ "protocol": {
+  "warmup": 20,
+  "reps": 100,
+  "batch_sizes": [
+   1,
+   256
+  ],
+  "levels": [
+   "api_e2e",
+   "device_forward"
+  ],
+  "device": "cuda",
+  "tiny": false,
+  "adapter_kind": "nested",
+  "bottleneck": 64,
+  "allow_unverified": false,
+  "allow_mig": false,
+  "seed": 0
+ },
+ "configs": [
+  {
+   "id": "000_tirex_native_L12_start",
+   "model": "tirex",
+   "kind": "native",
+   "depth": 12,
+   "drift": "start",
+   "status": "ok",
+   "median_ms": {
+    "api_e2e__B1": 495.19739200000004,
+    "device_forward__B1": 495.0741245,
+    "api_e2e__B256": 845.7410219999999,
+    "device_forward__B256": 843.368974
+   },
+   "params": {
+    "active_params": 35291200,
+    "n_blocks": 12,
+    "block_params": 32286720,
+    "per_block_params": 2690560,
+    "non_block_params": 3004480
+   },
+   "weights_bytes": 145359872
+  },
+  {
+   "id": "001_tirex_hard_L01",
+   "model": "tirex",
+   "kind": "hard",
+   "depth": 1,
+   "drift": null,
+   "status": "ok",
+   "median_ms": {
+    "api_e2e__B1": 41.949884999999995,
+    "device_forward__B1": 41.886195,
+    "api_e2e__B256": 84.641467,
+    "device_forward__B256": 82.72491
+   },
+   "params": {
+    "active_params": 5695040,
+    "n_blocks": 1,
+    "block_params": 2690560,
+    "per_block_params": 2690560,
+    "non_block_params": 3004480
+   },
+   "weights_bytes": 23043072
+  },
+  {
+   "id": "002_tirex_probe_head_L04",
+   "model": "tirex",
+   "kind": "probe_head",
+   "depth": 4,
+   "drift": null,
+   "status": "ok",
+   "median_ms": {
+    "api_e2e__B1": 164.109358,
+    "device_forward__B1": 163.9953425,
+    "api_e2e__B256": 285.1267425,
+    "device_forward__B256": 283.19645
+   },
+   "params": {
+    "active_params": 12125472,
+    "n_blocks": 4,
+    "block_params": 10762240,
+    "per_block_params": 2690560,
+    "non_block_params": 1363232
+   },
+   "weights_bytes": 49550848
+  },
+  {
+   "id": "003_tirex_adapter_L03",
+   "model": "tirex",
+   "kind": "adapter",
+   "depth": 3,
+   "drift": null,
+   "status": "ok",
+   "median_ms": {
+    "api_e2e__B1": 125.661745,
+    "device_forward__B1": 125.74602949999999,
+    "api_e2e__B256": 224.821655,
+    "device_forward__B256": 222.883082
+   },
+   "params": {
+    "active_params": 11404416,
+    "n_blocks": 3,
+    "block_params": 8071680,
+    "per_block_params": 2690560,
+    "non_block_params": 3332736
+   },
+   "weights_bytes": 46667264
+  },
+  {
+   "id": "004_tirex_probe_head_L05",
+   "model": "tirex",
+   "kind": "probe_head",
+   "depth": 5,
+   "drift": null,
+   "status": "ok",
+   "median_ms": {
+    "api_e2e__B1": 203.1341505,
+    "device_forward__B1": 202.941261,
+    "api_e2e__B256": 354.5815035,
+    "device_forward__B256": 352.6103085
+   },
+   "params": {
+    "active_params": 14816032,
+    "n_blocks": 5,
+    "block_params": 13452800,
+    "per_block_params": 2690560,
+    "non_block_params": 1363232
+   },
+   "weights_bytes": 61099520
+  },
+  {
+   "id": "005_tirex_probe_head_L01",
+   "model": "tirex",
+   "kind": "probe_head",
+   "depth": 1,
+   "drift": null,
+   "status": "ok",
+   "median_ms": {
+    "api_e2e__B1": 42.099258,
+    "device_forward__B1": 42.1574825,
+    "api_e2e__B256": 77.624243,
+    "device_forward__B256": 75.760761
+   },
+   "params": {
+    "active_params": 4053792,
+    "n_blocks": 1,
+    "block_params": 2690560,
+    "per_block_params": 2690560,
+    "non_block_params": 1363232
+   },
+   "weights_bytes": 16477696
+  },
+  {
+   "id": "006_tirex_hard_L00",
+   "model": "tirex",
+   "kind": "hard",
+   "depth": 0,
+   "drift": null,
+   "status": "ok",
+   "median_ms": {
+    "api_e2e__B1": 1.385438,
+    "device_forward__B1": 1.2637785,
+    "api_e2e__B256": 15.463554,
+    "device_forward__B256": 13.5330565
+   },
+   "params": {
+    "active_params": 3004480,
+    "n_blocks": 0,
+    "block_params": 0,
+    "per_block_params": null,
+    "non_block_params": 3004480
+   },
+   "weights_bytes": 12018688
+  },
+  {
+   "id": "007_tirex_adapter_L02",
+   "model": "tirex",
+   "kind": "adapter",
+   "depth": 2,
+   "drift": null,
+   "status": "ok",
+   "median_ms": {
+    "api_e2e__B1": 83.49610200000001,
+    "device_forward__B1": 83.4046945,
+    "api_e2e__B256": 155.710648,
+    "device_forward__B256": 153.7404755
+   },
+   "params": {
+    "active_params": 8713856,
+    "n_blocks": 2,
+    "block_params": 5381120,
+    "per_block_params": 2690560,
+    "non_block_params": 3332736
+   },
+   "weights_bytes": 35118592
+  },
+  {
+   "id": "008_tirex_hard_L07",
+   "model": "tirex",
+   "kind": "hard",
+   "depth": 7,
+   "drift": null,
+   "status": "ok",
+   "median_ms": {
+    "api_e2e__B1": 286.05273250000005,
+    "device_forward__B1": 285.50989649999997,
+    "api_e2e__B256": 499.8783395,
+    "device_forward__B256": 497.91952849999996
+   },
+   "params": {
+    "active_params": 21838400,
+    "n_blocks": 7,
+    "block_params": 18833920,
+    "per_block_params": 2690560,
+    "non_block_params": 3004480
+   },
+   "weights_bytes": 89189376
+  },
+  {
+   "id": "009_tirex_adapter_L06",
+   "model": "tirex",
+   "kind": "adapter",
+   "depth": 6,
+   "drift": null,
+   "status": "ok",
+   "median_ms": {
+    "api_e2e__B1": 246.05302749999998,
+    "device_forward__B1": 245.34005000000002,
+    "api_e2e__B256": 432.4088395,
+    "device_forward__B256": 430.511159
+   },
+   "params": {
+    "active_params": 19476096,
+    "n_blocks": 6,
+    "block_params": 16143360,
+    "per_block_params": 2690560,
+    "non_block_params": 3332736
+   },
+   "weights_bytes": 79740416
+  },
+  {
+   "id": "010_tirex_hard_L06",
+   "model": "tirex",
+   "kind": "hard",
+   "depth": 6,
+   "drift": null,
+   "status": "ok",
+   "median_ms": {
+    "api_e2e__B1": 248.976055,
+    "device_forward__B1": 247.5358835,
+    "api_e2e__B256": 430.54602,
+    "device_forward__B256": 428.67797199999995
+   },
+   "params": {
+    "active_params": 19147840,
+    "n_blocks": 6,
+    "block_params": 16143360,
+    "per_block_params": 2690560,
+    "non_block_params": 3004480
+   },
+   "weights_bytes": 78427136
+  },
+  {
+   "id": "011_tirex_probe_head_L07",
+   "model": "tirex",
+   "kind": "probe_head",
+   "depth": 7,
+   "drift": null,
+   "status": "ok",
+   "median_ms": {
+    "api_e2e__B1": 287.07822450000003,
+    "device_forward__B1": 287.518256,
+    "api_e2e__B256": 493.286167,
+    "device_forward__B256": 490.999642
+   },
+   "params": {
+    "active_params": 20197152,
+    "n_blocks": 7,
+    "block_params": 18833920,
+    "per_block_params": 2690560,
+    "non_block_params": 1363232
+   },
+   "weights_bytes": 82624000
+  },
+  {
+   "id": "012_tirex_adapter_L08",
+   "model": "tirex",
+   "kind": "adapter",
+   "depth": 8,
+   "drift": null,
+   "status": "ok",
+   "median_ms": {
+    "api_e2e__B1": 333.212637,
+    "device_forward__B1": 333.0776515,
+    "api_e2e__B256": 570.3599959999999,
+    "device_forward__B256": 568.398945
+   },
+   "params": {
+    "active_params": 24857216,
+    "n_blocks": 8,
+    "block_params": 21524480,
+    "per_block_params": 2690560,
+    "non_block_params": 3332736
+   },
+   "weights_bytes": 102051328
+  },
+  {
+   "id": "013_tirex_adapter_L01",
+   "model": "tirex",
+   "kind": "adapter",
+   "depth": 1,
+   "drift": null,
+   "status": "ok",
+   "median_ms": {
+    "api_e2e__B1": 42.294962999999996,
+    "device_forward__B1": 42.218157500000004,
+    "api_e2e__B256": 86.4437835,
+    "device_forward__B256": 84.53295299999999
+   },
+   "params": {
+    "active_params": 6023296,
+    "n_blocks": 1,
+    "block_params": 2690560,
+    "per_block_params": 2690560,
+    "non_block_params": 3332736
+   },
+   "weights_bytes": 24356352
+  },
+  {
+   "id": "014_tirex_native_L12_middle",
+   "model": "tirex",
+   "kind": "native",
+   "depth": 12,
+   "drift": "middle",
+   "status": "ok",
+   "median_ms": {
+    "api_e2e__B1": 492.3908005,
+    "device_forward__B1": 487.430167,
+    "api_e2e__B256": 845.5637485,
+    "device_forward__B256": 843.423279
+   },
+   "params": {
+    "active_params": 35291200,
+    "n_blocks": 12,
+    "block_params": 32286720,
+    "per_block_params": 2690560,
+    "non_block_params": 3004480
+   },
+   "weights_bytes": 145359872
+  },
+  {
+   "id": "015_tirex_probe_head_L00",
+   "model": "tirex",
+   "kind": "probe_head",
+   "depth": 0,
+   "drift": null,
+   "status": "ok",
+   "median_ms": {
+    "api_e2e__B1": 1.124685,
+    "device_forward__B1": 1.0032809999999999,
+    "api_e2e__B256": 8.527418,
+    "device_forward__B256": 6.571191499999999
+   },
+   "params": {
+    "active_params": 1363232,
+    "n_blocks": 0,
+    "block_params": 0,
+    "per_block_params": null,
+    "non_block_params": 1363232
+   },
+   "weights_bytes": 5453312
+  },
+  {
+   "id": "016_tirex_adapter_L07",
+   "model": "tirex",
+   "kind": "adapter",
+   "depth": 7,
+   "drift": null,
+   "status": "ok",
+   "median_ms": {
+    "api_e2e__B1": 291.295834,
+    "device_forward__B1": 291.480729,
+    "api_e2e__B256": 501.7234595,
+    "device_forward__B256": 499.64270799999997
+   },
+   "params": {
+    "active_params": 22166656,
+    "n_blocks": 7,
+    "block_params": 18833920,
+    "per_block_params": 2690560,
+    "non_block_params": 3332736
+   },
+   "weights_bytes": 90502656
+  },
+  {
+   "id": "017_tirex_hard_L02",
+   "model": "tirex",
+   "kind": "hard",
+   "depth": 2,
+   "drift": null,
+   "status": "ok",
+   "median_ms": {
+    "api_e2e__B1": 84.298021,
+    "device_forward__B1": 84.34675250000001,
+    "api_e2e__B256": 153.850378,
+    "device_forward__B256": 151.90588400000001
+   },
+   "params": {
+    "active_params": 8385600,
+    "n_blocks": 2,
+    "block_params": 5381120,
+    "per_block_params": 2690560,
+    "non_block_params": 3004480
+   },
+   "weights_bytes": 33805312
+  },
+  {
+   "id": "018_tirex_probe_head_L03",
+   "model": "tirex",
+   "kind": "probe_head",
+   "depth": 3,
+   "drift": null,
+   "status": "ok",
+   "median_ms": {
+    "api_e2e__B1": 124.588281,
+    "device_forward__B1": 124.545239,
+    "api_e2e__B256": 216.1311865,
+    "device_forward__B256": 214.18076050000002
+   },
+   "params": {
+    "active_params": 9434912,
+    "n_blocks": 3,
+    "block_params": 8071680,
+    "per_block_params": 2690560,
+    "non_block_params": 1363232
+   },
+   "weights_bytes": 38788608
+  },
+  {
+   "id": "019_tirex_probe_head_L06",
+   "model": "tirex",
+   "kind": "probe_head",
+   "depth": 6,
+   "drift": null,
+   "status": "ok",
+   "median_ms": {
+    "api_e2e__B1": 245.1504145,
+    "device_forward__B1": 244.95882799999998,
+    "api_e2e__B256": 423.671459,
+    "device_forward__B256": 421.71815849999996
+   },
+   "params": {
+    "active_params": 17506592,
+    "n_blocks": 6,
+    "block_params": 16143360,
+    "per_block_params": 2690560,
+    "non_block_params": 1363232
+   },
+   "weights_bytes": 71861760
+  },
+  {
+   "id": "020_tirex_hard_L03",
+   "model": "tirex",
+   "kind": "hard",
+   "depth": 3,
+   "drift": null,
+   "status": "ok",
+   "median_ms": {
+    "api_e2e__B1": 124.8797825,
+    "device_forward__B1": 124.6593655,
+    "api_e2e__B256": 222.951043,
+    "device_forward__B256": 221.098196
+   },
+   "params": {
+    "active_params": 11076160,
+    "n_blocks": 3,
+    "block_params": 8071680,
+    "per_block_params": 2690560,
+    "non_block_params": 3004480
+   },
+   "weights_bytes": 45353984
+  },
+  {
+   "id": "021_tirex_probe_head_L08",
+   "model": "tirex",
+   "kind": "probe_head",
+   "depth": 8,
+   "drift": null,
+   "status": "ok",
+   "median_ms": {
+    "api_e2e__B1": 326.6168445,
+    "device_forward__B1": 326.745132,
+    "api_e2e__B256": 562.1006735,
+    "device_forward__B256": 560.1593405000001
+   },
+   "params": {
+    "active_params": 22887712,
+    "n_blocks": 8,
+    "block_params": 21524480,
+    "per_block_params": 2690560,
+    "non_block_params": 1363232
+   },
+   "weights_bytes": 94172672
+  },
+  {
+   "id": "022_tirex_hard_L05",
+   "model": "tirex",
+   "kind": "hard",
+   "depth": 5,
+   "drift": null,
+   "status": "ok",
+   "median_ms": {
+    "api_e2e__B1": 205.50104,
+    "device_forward__B1": 205.114445,
+    "api_e2e__B256": 361.47359800000004,
+    "device_forward__B256": 359.479205
+   },
+   "params": {
+    "active_params": 16457280,
+    "n_blocks": 5,
+    "block_params": 13452800,
+    "per_block_params": 2690560,
+    "non_block_params": 3004480
+   },
+   "weights_bytes": 67664896
+  },
+  {
+   "id": "023_tirex_adapter_L05",
+   "model": "tirex",
+   "kind": "adapter",
+   "depth": 5,
+   "drift": null,
+   "status": "ok",
+   "median_ms": {
+    "api_e2e__B1": 206.32049849999999,
+    "device_forward__B1": 206.01915350000002,
+    "api_e2e__B256": 363.223129,
+    "device_forward__B256": 361.218616
+   },
+   "params": {
+    "active_params": 16785536,
+    "n_blocks": 5,
+    "block_params": 13452800,
+    "per_block_params": 2690560,
+    "non_block_params": 3332736
+   },
+   "weights_bytes": 68978176
+  },
+  {
+   "id": "024_tirex_probe_head_L02",
+   "model": "tirex",
+   "kind": "probe_head",
+   "depth": 2,
+   "drift": null,
+   "status": "ok",
+   "median_ms": {
+    "api_e2e__B1": 82.7692815,
+    "device_forward__B1": 82.7495295,
+    "api_e2e__B256": 147.04514999999998,
+    "device_forward__B256": 145.03943950000001
+   },
+   "params": {
+    "active_params": 6744352,
+    "n_blocks": 2,
+    "block_params": 5381120,
+    "per_block_params": 2690560,
+    "non_block_params": 1363232
+   },
+   "weights_bytes": 27239936
+  },
+  {
+   "id": "025_tirex_adapter_L00",
+   "model": "tirex",
+   "kind": "adapter",
+   "depth": 0,
+   "drift": null,
+   "status": "ok",
+   "median_ms": {
+    "api_e2e__B1": 1.6392925,
+    "device_forward__B1": 1.518073,
+    "api_e2e__B256": 17.300395,
+    "device_forward__B256": 15.414447
+   },
+   "params": {
+    "active_params": 3332736,
+    "n_blocks": 0,
+    "block_params": 0,
+    "per_block_params": null,
+    "non_block_params": 3332736
+   },
+   "weights_bytes": 13331968
+  },
+  {
+   "id": "026_tirex_adapter_L04",
+   "model": "tirex",
+   "kind": "adapter",
+   "depth": 4,
+   "drift": null,
+   "status": "ok",
+   "median_ms": {
+    "api_e2e__B1": 164.492447,
+    "device_forward__B1": 164.389126,
+    "api_e2e__B256": 294.043401,
+    "device_forward__B256": 292.037907
+   },
+   "params": {
+    "active_params": 14094976,
+    "n_blocks": 4,
+    "block_params": 10762240,
+    "per_block_params": 2690560,
+    "non_block_params": 3332736
+   },
+   "weights_bytes": 57429504
+  },
+  {
+   "id": "027_tirex_hard_L08",
+   "model": "tirex",
+   "kind": "hard",
+   "depth": 8,
+   "drift": null,
+   "status": "ok",
+   "median_ms": {
+    "api_e2e__B1": 327.9554225,
+    "device_forward__B1": 328.04758200000003,
+    "api_e2e__B256": 568.55269,
+    "device_forward__B256": 566.6290604999999
+   },
+   "params": {
+    "active_params": 24528960,
+    "n_blocks": 8,
+    "block_params": 21524480,
+    "per_block_params": 2690560,
+    "non_block_params": 3004480
+   },
+   "weights_bytes": 100738048
+  },
+  {
+   "id": "028_tirex_hard_L04",
+   "model": "tirex",
+   "kind": "hard",
+   "depth": 4,
+   "drift": null,
+   "status": "ok",
+   "median_ms": {
+    "api_e2e__B1": 166.2157985,
+    "device_forward__B1": 166.308704,
+    "api_e2e__B256": 292.19323499999996,
+    "device_forward__B256": 290.2362475
+   },
+   "params": {
+    "active_params": 13766720,
+    "n_blocks": 4,
+    "block_params": 10762240,
+    "per_block_params": 2690560,
+    "non_block_params": 3004480
+   },
+   "weights_bytes": 56116224
+  },
+  {
+   "id": "029_tirex_native_L12_end",
+   "model": "tirex",
+   "kind": "native",
+   "depth": 12,
+   "drift": "end",
+   "status": "ok",
+   "median_ms": {
+    "api_e2e__B1": 493.1508885,
+    "device_forward__B1": 493.0629315,
+    "api_e2e__B256": 845.40947,
+    "device_forward__B256": 843.3483555
+   },
+   "params": {
+    "active_params": 35291200,
+    "n_blocks": 12,
+    "block_params": 32286720,
+    "per_block_params": 2690560,
+    "non_block_params": 3004480
+   },
+   "weights_bytes": 145359872
+  }
+ ]
+}
