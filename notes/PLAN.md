@@ -742,11 +742,15 @@ is extracted.
 | 11 | monash_london_smart_meters | 30min | residential energy | 48 | `autogluon/chronos_datasets` |
 | 12 | m5 | 1D | retail | 7 | `autogluon/chronos_datasets` |
 | 13 | wiki_daily_100k | 1D | web | 7 | `autogluon/chronos_datasets` |
-| 14 | monash_traffic | 1H | road volume | 24 | `autogluon/chronos_datasets` |
+| 14 | monash_traffic | 1H | road occupancy (NOT volume; registry.py:275 mislabels it) | 24 | `autogluon/chronos_datasets` |
 
-**#9 `electricity_15min` is a CONTROL, not a domain.** It is the SAME 370 meters as
-`monash_electricity_hourly` at 4x the sampling rate, so it holds domain AND series fixed and
-varies only the rate: *does the tunnel entrance move with sampling frequency?* Every table and
+**#9 `electricity_15min` is a CONTROL, not a domain.** Same UCI source (Trindade 2015) as
+`monash_electricity_hourly`, but NOT the same series set (CORRECTED 2026-09-25): 15min = all
+370 clients, 2011-2014; hourly = the 321-client subset from 2012-2014, aggregated by Lai et al.
+(LSTNet) and republished by Monash. So it holds the DOMAIN fixed and the meters largely fixed
+(321 of 370 shared), and varies the rate: *does the tunnel entrance move with sampling
+frequency?* Also note C=512 spans 5.3 days at 15min vs 21 days hourly, so rate and context
+duration change together. (`probing/registry.py:246` still says "the same 370 meters".) Every table and
 figure must label it as a frequency control — it may never be counted toward domain diversity.
 
 Designated alternates, screened but NOT in the roster: `rossmann_1D` (M5 fallback, target col
@@ -1690,3 +1694,121 @@ Latency per repeat:
 - FL and RA are NOT rerun (FL is appendix-only; RA TimesFM-3-only diagnostic) — they stay from the affine tree.
 - If the smoke rule says "do not adopt": `scancel` every `p2n-*` job and delete the nested tree.
 - The V3 per-window gate issue (see H4 notes) applies to this tree too; decide once for both.
+
+## PROVENANCE RE-DERIVED FROM PRIMARY SOURCES (2026-09-25) — registry.py is WRONG in 24/42 cells
+
+Checked against: Chronos-2 arXiv:2510.15821 Table 6 (full list, 23 rows) + fev-bench / Bench II
+exclusion sentences; Chronos arXiv:2403.07815 Table 3 (Bench II contains M5 and Traffic);
+fev-bench tasks.yaml (LOOP_SEATTLE_5T, SZ_TAXI_15T, m5_*, 15 boomlet_*); TimesFM-3 card;
+HF Salesforce/GiftEvalPretrain file tree; TiRex arXiv:2505.23719 App C.2 Tables 5-6.
+
+| dataset | Chronos-2 | TimesFM-3 | TiRex |
+|---|---|---|---|
+| M4 hourly | listed (T6) | not listed | listed (T5) |
+| Electricity 1H | listed (T6) | not listed | listed (T5) |
+| Uber TLC | listed (T6, EXACT — registry said source_family) | listed (GEP) | listed (T5) |
+| Wind Farms | listed (T6) | listed, source (GEP has minute-level) | listed (T5) |
+| BOOM | not listed (fev has 15 boomlet tasks; overlap unknown) | same | not listed |
+| SG Carpark / Coastal | not listed | not listed | not listed |
+| LOOP_SEATTLE_5T / SZ_TAXI_15T | held out (fev) | held out (fev) | not listed |
+| Electricity 15min | listed (T6 lists 15min — EXACT, registry said source_level) | not listed | listed (T5) |
+| London | listed (T6) | listed (GEP) | listed (T5) |
+| M5 | held out (BII + fev) | held out (fev) | held out (Chronos-ZS = BII) |
+| Wiki Daily | listed (T6) | listed, source (Wikipedia pageviews) | listed (T5) |
+| Traffic | held out (BII) — registry said undocumented | listed (GEP traffic_hourly) | held out (BII) |
+
+Main registry errors: TiRex's real data IS enumerated (Tables 5+6), so "undocumented" everywhere
+was wrong; TimesFM-3's corpus is enumerable via GiftEvalPretrain. Paper text: notes/help.tex
+(app:provenance). TODO (user): update PROVENANCE in probing/registry.py and regenerate any
+table/figure that prints provenance.
+
+## V3 decision — option A (user decision 2026-09-26)
+- **Rule change, made AFTER the pre-specified check failed:** a physically truncated configuration passes V3 when its test MASE agrees with the offline H3 pathway to 1e-4 relative (`make_phase2_tables.V3_MEAN_RTOL`). The pre-specified element-wise check (rtol 1e-4 on every forecast value / per-window MASE) is kept beside it (`V3_elementwise_passed`, `status_elementwise_v3`) and counted in `phase2_stats.json`; no saved cell is rewritten.
+- **Evidence it measures numerics, not truncation:** the UNMODIFIED TiRex model fails it (max single-value difference 10.5% of the mean forecast magnitude; bf16 recurrence). TimesFM-3's unmodified model agrees; its aligned pathway differs by up to 5.3%. Mean test MASE agrees everywhere to ≤ 7.9e-5.
+- **Counts:** 419 physical configurations (196 entrance + 223 budget); element-wise rejected 96 (43 + 53); mean rule passes all 419.
+- **Effect:** the three blocked H4 tables now build. The pre-registered entrance test, re-derived with the same `phase2.h4_outcome`, is identical to the offline result: Chronos-2 7/14, TimesFM-3 0/14, TiRex 5/12 (+2 entrance = final).
+- Paper: Reproducibility statement + Appendix `app:latency` ("Physical versus offline truncation") state the change and its evidence.
+
+---
+
+# PHASE 2c: pooled LODO adapter transfer (Chronos-2): CODE IMPLEMENTED 2026-11-12, NOT RUN
+
+**Question (reviewer):** can ONE affine adapter, fitted on the other datasets, align Chronos-2's
+L4 / L6 / L9 states well enough to truncate on an unseen dataset with no target calibration?
+Depth selection on an unseen dataset is a SEPARATE question and is not answered here.
+
+**Design:** 14 folds x {L4, L6, L9} = 42 pooled fits. Target excluded from fitting AND selection.
+Same windows, splits, K=4 slots, frozen `encoder.final_layer_norm` + output head, label-free NOA
+objective (MSE to the full model's 21x16 normalized head outputs per slot), Q=9 metrics, MASE.
+
+**Reuse (nothing re-implemented):**
+- windows: `run_phase2_h3.windows_readonly` (Phase-1 window cache, digest-checked vs `Phase1Cell`)
+- states: `phase2_pathways.load_chronos2` ($SCRATCH/chronos2/features_cache via the repo symlink)
+- pathway: `Chronos2Pathway.from_pipeline(get_pipeline())`
+- fit: `phase2_align.fit_residual_adapter` UNCHANGED (AdamW lr 1e-3, 1500 epochs, eval every 25,
+  wd {0, .1, 1, 10, 30, 100} on Delta only, epoch 0 = hard cut, same tie-breaking)
+- metrics: `phase1_metrics.raw_window_metrics`, `phase2.cluster_replicates` / `ratio_summary`
+- dataset-specific arm: the committed H3 cells (`results/three_model_phase2/h3/chronos2/*`), re-scored
+  from the saved adapters (`$SCRATCH/chronos2_phase2/adapters/chronos2/<tag>/noa__L*.npz`) as a gate
+- speed: the pooled adapter has the identical shape, so the measured Phase-2 speedups at L4/L6/L9
+  (`combined/h4_with_latency.csv`) carry over; no new latency runs
+
+**Equal weighting, measured:** every source has exactly 1,394 train windows, so the plain pooled
+mean MSE IS the equal-weighted mean of per-dataset means (asserted). Val counts differ (48 to 354), so
+the selection criterion averages per-dataset val MSE explicitly. Hard-cut val distillation MSE
+spans only 3 to 5x across datasets (max share of the total 14%, LOOP), so no rescaling is needed.
+
+**Optimizer: NO departure.** Full batch still fits on one A100 (pooled train at one depth:
+~0.2 GB states + ~1 GB head activations), so the protocol is literally the H3 one, 13x the rows.
+
+**Verification gates:** target-poisoning invariance (replace target train/val with noise: adapter
+must be bitwise identical); fold record + assertion target not in sources; per-dataset native
+gate (1e-4); hard cut == H3 hard test MASE at L4/6/9; saved dataset-specific adapters reproduce H3
+NOA test MASE; fit receives no `target`/`y_raw`; test loaded only after selection.
+
+**Outputs:** `results/three_model_phase2_lodo/` (new tree), adapters (~100 MB) in
+`$SCRATCH/chronos2_phase2/adapters_lodo`. One restartable cell per (fold, depth).
+
+**Compute (estimate; the smoke measures it):** ~10 to 15 min per (fold, depth), ~8 to 11 GPU-h total.
+Jobs: 3 depths x 2 fold halves = 6 jobs of <= 3 h.
+
+**Decided (user, 2026-11-12):** MAIN protocol = sibling exclusion (`sibling_excluded`: 12 sources
+for the two Electricity folds, 13 elsewhere). The 13-source fit for the two Electricity targets is
+a SEPARATE sensitivity analysis (`sibling_included`, 6 cells), never pooled with the main
+unseen-series result. Total 48 cells. The analysis keeps three readings apart: unseen DATASET
+(every main fold), unseen SERIES by the adapter (main folds only), and held out from BACKBONE
+pretraining (only LOOP, SZ Taxi, M5, Traffic; "listed" targets may be series the frozen backbone
+saw; "not listed" is undocumented).
+
+**Files.** New: `probing/phase2_lodo.py`, `experiments/run_phase2_lodo.py`,
+`experiments/make_phase2_lodo_tables.py`, `tests/test_phase2_lodo.py` (10 contracts),
+`job_phase2_lodo.sh`, `job_archive_phase2_inputs.sh`. Modified: `probing/phase2_h3.py` only to
+lift the gap-closure formula to module level (`gap_closure_stats`); H3 output is unchanged and the
+27 H3 contracts still pass. Provenance is transcribed from the PAPER's `tab:provenance` and
+cross-checked against `notes/help.tex` by contract 10 (registry.py is stale for Chronos-2).
+
+**Verified (Mac scratch venv, no model):** 10/10 LODO contracts (fold logic; equal-weight criterion
+== the H3 pooled mean at equal counts; target train/val/test replaced by NaN -> adapter BITWISE
+unchanged; all futures NaN -> adapter bitwise unchanged; one-source pooled fit == the H3 NOA fit;
+gates abort on a 0.1% hard/specific or 1% native mismatch; gap recovery only for a significantly
+positive hard-cut gap; resume; tables from artifacts only). H3 27/27 and nested 8/8 unchanged.
+`--plan` on the real committed trees: 48 cells, correct source counts. On Narval: all 42 H3
+forecast-slot caches and all 42 dataset-specific adapters present, sha256 recorded for 42/42.
+
+**Run order (Narval; the user submits):**
+1. `git pull`, then login node: `python -m tests.test_phase2_lodo` and `--plan`.
+2. Archive first (CPU): `sbatch -J archive-p2 job_archive_phase2_inputs.sh`.
+3. Smoke: `sbatch --time=00:45:00 -J p2c-smoke job_phase2_lodo.sh --smoke`; validate gates,
+   timings and memory before step 4.
+4. Full: 6 main jobs (`--variants sibling_excluded --depths {4,6,9} --chunk {1,2}/2`) +
+   `--variants sibling_included`; then `python -m experiments.make_phase2_lodo_tables`.
+5. After the full run: `ARCHIVE_GROUPS=lodo sbatch job_archive_phase2_inputs.sh`.
+
+**Pending deliverables (need results):** technical report, rebuttal paragraph.
+
+**Context for the writeup:** the earlier "very poor" single-source transfer used the ext_v5
+forecast-loss adapter that decayed toward ZERO (flag F7), not the identity-anchored NOA adapter,
+so it is not a clean prior for this experiment.
+
+**Purge risk:** the Chronos-2 K4 caches are purge-eligible from 11-20 and the dataset-specific
+adapters from 11-22; reading them during the run resets the clock, but archive them first.

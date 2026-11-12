@@ -39,7 +39,8 @@ from probing.phase2_align import (NestedResidualAdapter, ResidualAdapter, affine
                                   adapter_arrays_sha256, anchored_ridge_path,
                                   fit_residual_adapter, mse_loss, pinball_mean, save_adapter)
 
-__all__ = ["DEFAULT_FIT_CFG", "run_h3_cell", "save_h3_cell", "native_gate", "families_for"]
+__all__ = ["DEFAULT_FIT_CFG", "run_h3_cell", "save_h3_cell", "native_gate", "families_for",
+           "gap_closure_stats"]
 
 DEFAULT_FIT_CFG = {"epochs": ADAPTER_EPOCHS, "lr": ADAPTER_LR, "wd_grid": list(ADAPTER_WD_GRID),
                    "eval_every": ADAPTER_EVAL_EVERY, "kappas": list(RIDGE_KAPPAS), "seed": SEED,
@@ -96,6 +97,25 @@ def native_gate(ours_loss, ours_mase, phase1_arrays: dict, rtol: float) -> dict:
             "test_mase_window_max_abs_diff": float(dm.max()),
             "test_mase_window_max_rel_diff": float((dm / np.maximum(np.abs(ref_m), 1e-12)).max()),
             "passed": bool(rl <= rtol and rm <= rtol)}
+
+
+def gap_closure_stats(p_hard, p_arm, p_native, r_hard, r_arm, r_native) -> dict | None:
+    """G = (M_hard - M_arm) / (M_hard - M_native); valid only if the hard-cut gap's CI
+    excludes 0 (otherwise there is nothing to close).
+
+    ``p_*`` are point estimates, ``r_*`` the paired (B,) bootstrap replicates of the same arms
+    (one shared cluster count matrix). Shared by H3 and the Phase-2c LODO transfer."""
+    if not (np.isfinite(p_hard) and np.isfinite(p_arm)):
+        return None
+    gap = r_hard - r_native
+    glo, ghi = np.percentile(gap, [2.5, 97.5])
+    valid = bool(glo > 0 or ghi < 0)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        g = (r_hard - r_arm) / gap
+    lo, hi = np.nanpercentile(g, [2.5, 97.5]) if valid else (np.nan, np.nan)
+    return {"gap_closure": float((p_hard - p_arm) / (p_hard - p_native)) if valid else None,
+            "ci_lo": float(lo) if valid else None, "ci_hi": float(hi) if valid else None,
+            "hard_gap_ci": [float(glo), float(ghi)], "valid": valid}
 
 
 def _crossing_fraction(z) -> float:
@@ -410,24 +430,11 @@ def run_h3_cell(pathway, data, phase1_arrays: dict, *, entrances: dict, families
         return ratio_summary(p, points[metric][0], reps[metric][:, i], reps[metric][:, 0])
 
     def gap_closure(f, l, metric="mase"):
-        """G = (M_hard - M_arm) / (M_hard - M_native); valid only if the hard-cut gap's CI
-        excludes 0 (otherwise there is nothing to close)."""
         if "hard" not in arms or f == "hard":
             return None
         ih, ia = keys.index(("hard", l)), keys.index((f, l))
-        ph, pa, pn = points[metric][ih], points[metric][ia], points[metric][0]
-        if not (np.isfinite(ph) and np.isfinite(pa)):
-            return None
-        rh, ra_, rn = reps[metric][:, ih], reps[metric][:, ia], reps[metric][:, 0]
-        gap = rh - rn
-        glo, ghi = np.percentile(gap, [2.5, 97.5])
-        valid = bool(glo > 0 or ghi < 0)
-        with np.errstate(divide="ignore", invalid="ignore"):
-            g = (rh - ra_) / gap
-        lo, hi = np.nanpercentile(g, [2.5, 97.5]) if valid else (np.nan, np.nan)
-        return {"gap_closure": float((ph - pa) / (ph - pn)) if valid else None,
-                "ci_lo": float(lo) if valid else None, "ci_hi": float(hi) if valid else None,
-                "hard_gap_ci": [float(glo), float(ghi)], "valid": valid}
+        return gap_closure_stats(points[metric][ih], points[metric][ia], points[metric][0],
+                                 reps[metric][:, ih], reps[metric][:, ia], reps[metric][:, 0])
 
     # ---------------------------------------------------------------- tunnels
     complete = set(depths) == set(all_depths)
