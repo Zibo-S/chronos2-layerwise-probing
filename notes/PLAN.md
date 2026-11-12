@@ -1812,3 +1812,193 @@ so it is not a clean prior for this experiment.
 
 **Purge risk:** the Chronos-2 K4 caches are purge-eligible from 11-20 and the dataset-specific
 adapters from 11-22; reading them during the run resets the clock, but archive them first.
+
+---
+
+# PHASE 2d: content-mean-pooled layerwise readouts (3 models x 14 datasets): CODE IMPLEMENTED 2026-11-12, NOT RUN
+
+**Question (reviewer dHTD):** Phase 1 reads each model where its own head reads. Does a GENERIC
+readout (mean over the valid content tokens, one linear head to the full horizon) change
+(1) the layerwise loss curves, (2) the sustained 5% entrance, (3) the early-recoverability
+conclusion? Independent of Phase 2c. Negative or mixed results are reported as they fall.
+Prior internal evidence to RE-TEST, not assume: on the old 4-dataset Chronos-2 line, pooled
+readouts favoured intermediate layers and forecast slots did not (README finding 3).
+
+**Design principle:** the pooled arm uses the SAME forward pass as the native arm, so the
+encoder computation is identical and only WHICH token states are read changes.
+
+## What inspection found
+
+| model | native readout (Phase 1) | pooled readout (2d) | excluded tokens | in a cache today? |
+|---|---|---|---|---|
+| Chronos-2 | 4 forecast slots of the K=4 pass | mean of context patches 0..31 of the same K=4 pass | REG (32), forecast slots (33..36) | **YES.** The Phase-1 K4 cache already stores `content_L0..L12` + `content_final` (`extraction.py`, mean over `[:ncp]`). No extraction. |
+| TimesFM-3 | token 15 of one decode() pass | mean of tokens 0..15 of the same pass | 2 horizon placeholders (16, 17) | NO (token 15 only): new extraction |
+| TiRex | token 63 of pass 0 and of pass 1 | mean of pass-0 real tokens 48..63 | 48 NaN left-pad tokens; all of pass 1 | NO (readouts only): new extraction |
+
+- **Validity masks.** `id_data` rejects any window with a non-finite context or future
+  (`id_data.py:179,223`), so every observed-context patch is fully observed and the valid set is
+  exactly the range above. The extractors still derive the mask from the INPUT (TiRex: NaN pad of
+  the padded context; Chronos-2/TimesFM-3: patch finiteness) and assert 32 / 16 / 16 valid tokens
+  in every window.
+- **TiRex, why pass 0 only.** Pass 0 consumes exactly the observed context. Pass 1 holds the same
+  512 values (one fewer pad step) plus one appended missing patch. Its 16 real-token states are a
+  near-duplicate (max |delta| vs pass 0 recorded per depth as a diagnostic), and its token 63 is a
+  missing-value token. Pass-0 token 63 (native state 0) is one of the 16 pooled tokens.
+- **Structural fact, for interpretation only.** TimesFM-3 (causal attention) and TiRex (causal
+  recurrence): token j has seen only patches <= j, so the mean mixes states conditioned on truncated
+  history; only the last token has seen all 512 points. Chronos-2 is bidirectional: every content
+  token sees the whole context (and the 4 forecast-slot placeholders, which carry no future values).
+
+## Readout and training (unchanged protocol)
+
+Per depth: train-only StandardScaler, then one `Linear(d, 64*9)` reshaped to (n, 9, 64). Each
+model is fitted with its OWN Phase-1 fitter, so the training procedure is the native one:
+- Chronos-2: `probes.fit_shared_forecast_probe_explicit_val` with K=1, P=64 (sum-over-quantile loss).
+- TiRex: `tirex_probes.fit_shared_patch_probe` with K=1, out_patch=64.
+- TimesFM-3: `phase1_timesfm3.fit_layerwise` UNCHANGED (its native probe already is Linear(1280, 576)).
+
+Same lr 1e-2, 300 epochs, seed 0, 13-value wd grid, val selection, no refit, test read once.
+LOOP Seattle: lr 1e-3 + the 21-value grid (the paper's exception). Same targets (Chronos-2 arcsinh;
+TimesFM-3 token-15 RevIN + detrend; TiRex per-pass loc/scale), same valid rows. Head-input points
+(Chronos-2 `content_final`, TiRex mean of `out_norm` tokens) are probed and saved but stay off the
+depth axis, as in Phase 1.
+
+**Readout-structure confound (must appear next to every pooled result):**
+
+| model | native head | params | pooled head | params | ratio |
+|---|---|---|---|---|---|
+| Chronos-2 | shared Linear(768, 144) x 4 slots | 110,736 | Linear(768, 576) | 442,944 | 4.0x |
+| TimesFM-3 | Linear(1280, 576) | 737,856 | Linear(1280, 576) | 737,856 | 1.0x |
+| TiRex | shared Linear(512, 288) x 2 states | 147,744 | Linear(512, 576) | 295,488 | 2.0x |
+
+TimesFM-3 is the controlled case: only the representation changes. For Chronos-2 and TiRex the
+pooled arm also changes the head: one vector to the whole horizon, no patch-wise sharing, 4x / 2x
+the parameters on the same 1,394 train windows (the shared native heads also see K rows per window).
+**Optional control (D1):** native states concatenated -> one Linear(K*d, 576) (Chronos-2 3072 ->
+576; TiRex 1024 -> 576). It reads the Phase-1 caches only (no extraction). Native vs this control
+isolates the patch-structured head with the token states held fixed.
+
+## Tunnel, comparisons, reproduction
+
+- Tunnel: `phase1.tunnel_record` verbatim (sustained 5% headline; 1/2/10% saved; validation only).
+  Reference = the SAME arm's final block (L12 / L20 / L12). Because each arm is judged against its
+  own final block, an earlier entrance can come from a weaker final block, so final-block losses and
+  absolute curves are always reported beside the entrances.
+- Native arm: never refit for the tables. Read from the committed Phase-1 cells via
+  `phase2.Phase1Cell` (LOOP rerouted by `phase2.PHASE1_REROUTES`).
+- Per model x dataset: val/test curves for both arms; both entrances and their difference in blocks;
+  delta_abs(l) = L_pool(l) - L_nat(l) and delta_rel(l) = L_pool(l)/L_nat(l) - 1 at every depth, with
+  a paired series-cluster bootstrap CI (B=5000, seed 0) computed INSIDE the cell job; final-block
+  test loss + MASE for both arms; pre-final-entrance counts per arm.
+- Aggregates per architecture: entrance agreement (exact / +-1 / +-2 blocks), median delta_rel at
+  the final block and at each arm's entrance, Spearman over depths, number of datasets where the
+  pooled arm is better or worse with the CI excluding 0.
+- **Reproduction gate (model-free, aborts):** recompute the native mean val/test curves from the
+  saved per-window arrays and the sustained entrance from the val curve. They must equal
+  `layer_metrics.csv` / `tunnel.json` and the frozen entrance table. The smoke also refits native
+  Chronos-2 x Electricity from its cache inside the 2d harness and reports the max difference
+  against the committed val curve.
+
+## Gates (abort on failure)
+
+- Window digest + per-window val/test cluster ids == the Phase-1 cell.
+- Valid-token count per window == 32 / 16 / 16; mask derived from the input.
+- TimesFM-3: the token-15 state captured in the same pass == the Phase-1 cache; mu/sd identical.
+  Same pass, same target space.
+- TiRex: pass-0/pass-1 token-63 states == the Phase-1 cache bitwise (batch 256, torch backend,
+  both part of the cache identity); loc/scale identical.
+- Chronos-2: the existing label guard; a with-model contract recomputes the masked mean on one
+  batch from hooks and must equal the cached `content_L*`.
+- No future input: extractors accept (n, 512) only and raise on (n, 576). Selection code never
+  receives test arrays (structural test). TimesFM-3 valid rows == Phase-1 rows.
+
+## Separation, files, outputs
+
+Nothing existing is modified; Phase-1 functions are imported only. No Phase 2c path is read or
+written.
+- New: `probing/phase2d_pooled.py`, `experiments/run_phase2d_pooled.py` (`--plan`, `--smoke`,
+  `--models`, `--datasets`, resume via `phase2.Phase2CellStore(required=...)`),
+  `experiments/make_phase2d_tables.py` (artifacts only), `tests/test_phase2d_pooled.py`
+  (model-free contracts + `--with-model`), `job_phase2d_pooled.sh`.
+- Results `results/three_model_phase2d_pooled/`. Pooled caches
+  `$SCRATCH/chronos2/phase2d_pooled_cache/` (TimesFM-3 ~3 GB, TiRex ~0.8 GB, float32).
+  Paper outputs `three_models_paper/figures/pooled/`.
+- Deliverables: a 42-row entrance table (native vs pooled, + control if D1); a per-architecture
+  aggregate table; layerwise curves for Electricity, Uber TLC and London Smart Meters (the main
+  recoverability figure's datasets, named in prose); LaTeX tables + macros; an appendix paragraph
+  on the readout-structure confound.
+
+## Compute and run order (estimate; the smoke measures it)
+
+Phase 1 needed 15-27 GPU-min per model, extraction included. Phase 2d: Chronos-2 is probe fitting
+only; TimesFM-3 is one decode() pass per batch; TiRex two_pass extraction is the slow part.
+Estimate ~2-4 A100-h total (+ ~1 h for the D1 control). One job per model, each <= 3 h.
+1. Login node: `python -m tests.test_phase2d_pooled` (seconds), `python -m experiments.run_phase2d_pooled --plan`.
+2. Smoke (one pair): TiRex x Electricity, the riskiest path (pad mask, two passes, per-pass
+   targets, batch-size cache identity). The same job runs the `--with-model` one-batch contracts
+   for all three models.
+3. STOP and review: gates, timings, `seff`.
+4. Full: 3 jobs (`--models chronos2|timesfm3|tirex`), resubmit the same line to resume.
+5. Login node: `python -m experiments.make_phase2d_tables` (aggregation + plotting only).
+
+**Purge risk:** Phase 2d reads the Chronos-2 K4 caches (purge-eligible from 11-20) and the Phase-1
+TimesFM-3/TiRex caches for the identity gates. The Phase 2c input archives are already verified on
+nearline (user, 2026-11-12), so no re-archive is needed before Phase 2d.
+
+**Decisions open (user):** D1 include the structure control (recommended: yes); D2 TiRex pass 0
+only (recommended) vs both passes; D3 smoke pair TiRex x Electricity (recommended). Not built:
+CKA / effective rank of the pooled states (not requested).
+
+## Implementation record (2026-11-12): decisions D1 yes, D2 pass 0, D3 TiRex x Electricity
+
+**Arms (one factor changes per step).** D1's concatenated control alone cannot separate token
+selection from pooling, so a fourth arm, `native_mean`, was added (no extraction, probe fitting only):
+
+| step | from -> to | what changes |
+|---|---|---|
+| readout structure | native -> concat | same token states; patch-shared head -> one full-horizon head |
+| pooling + capacity | concat -> native_mean | same tokens, same head form; K states concatenated -> averaged. NOT pure pooling: params drop K-fold (input K*d -> d) |
+| token selection | native_mean -> pooled | same head, same params; native readout tokens -> content tokens. **The cleanest comparison** (user, 2026-11-12): only the tokens change |
+| representation (TimesFM-3) | native -> pooled | same head, same params; token 15 -> mean of tokens 0..15 |
+
+**Parameter counts** (documented == measured == committed Phase 1, contract 01):
+
+| model | native | concat | native_mean | pooled |
+|---|---|---|---|---|
+| Chronos-2 | 110,736 | 1,770,048 (16.0x) | 442,944 (4.0x) | 442,944 (4.0x) |
+| TimesFM-3 | 737,856 | (= native) | (= native) | 737,856 (1.0x) |
+| TiRex | 147,744 | 590,400 (4.0x) | 295,488 (2.0x) | 295,488 (2.0x) |
+
+**Files (all new; nothing existing modified):** `probing/phase2d_pooled.py`,
+`experiments/run_phase2d_pooled.py`, `experiments/make_phase2d_tables.py`,
+`tests/test_phase2d_pooled.py` (20 groups), `job_phase2d_pooled.sh`.
+
+**Verified (Mac scratch venv, no model, 11.5 s):**
+- The 20 contracts pass. Fit wrappers are BITWISE equal to `phase1_chronos2/phase1_tirex.fit_layerwise`
+  at the native K. The K=1/P=64 head equals the committed pooled quantile probe (max |d| 0).
+- All 42 committed native cells are reproduced from artifacts (curves and entrances at
+  1/2/5/10%) and equal the frozen entrance table.
+- Masks: Chronos-2 0..31, TimesFM-3 0..15, TiRex pass0 48..63 / pass1 47..62; a NaN patch is
+  refused; a parent window (n, 576) is refused before any model.
+- The LOOP protocol (lr 1e-3, 21-value grid) is read from its rerun cell.
+- The driver glue runs end to end for all three models.
+- `--plan` reads all 42 Phase-1 sources.
+- Figures render and were inspected on synthetic cells.
+
+**NOT verified (needs Narval):** anything model-backed. The smoke is the first contact. Gates
+it must pass:
+- one-batch identity vs the Phase-1 caches for all three models (Chronos-2 content mean +
+  slots, TimesFM-3 token 15 + RevIN, TiRex both token-63 readouts);
+- the native refit reproducing the committed TiRex Electricity curve.
+
+**Smoke:** `mkdir -p results/three_model_phase2d_pooled/logs` once, then
+`sbatch --time=00:45:00 -J p2d-smoke job_phase2d_pooled.sh --smoke`.
+
+**Full (after review):** `sbatch -J p2d-<model> job_phase2d_pooled.sh --models <model>` x 3,
+then `python -m experiments.make_phase2d_tables`.
+
+**Open:**
+- Whether the identity gates are bitwise on the A100 (expected; tolerance 1e-3 of the layer std).
+- Whether the pooled / concat arms clip the wd grid more often than native (concat has 16x the
+  params on 1,394 windows). `wd_selection.csv` + `val_over_floor` report it per depth.
+- Wall time per model (the smoke measures TiRex).
