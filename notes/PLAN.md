@@ -2002,3 +2002,84 @@ then `python -m experiments.make_phase2d_tables`.
 - Whether the pooled / concat arms clip the wd grid more often than native (concat has 16x the
   params on 1,394 windows). `wd_selection.csv` + `val_over_floor` report it per depth.
 - Wall time per model (the smoke measures TiRex).
+
+---
+
+# PHASE 2e: non-contiguous block selection (Chronos-2): CODE IMPLEMENTED 2026-11-12, NOT RUN
+
+**Reviewer question:** non-contiguous layer selection / skipping intermediate layers instead of
+truncating from the end; how does it compare? Independent of 2c and 2d (own modules, output tree,
+scratch dirs, job; their trees are refused as output roots, contract 9).
+
+**Masks (FROZEN 2026-11-12 from the rebuttal spec, before any number; contract 1 pins them):**
+
+| strategy | k=4 | k=6 | k=9 |
+|---|---|---|---|
+| prefix (paper) | 1-4 | 1-6 | 1-9 |
+| uniform | 1,4,8,12 | 1,3,5,8,10,12 | 1,2,4,5,7,8,10,11,12 |
+| early_late | 1,2,11,12 | 1,2,3,10,11,12 | 1-5,9-12 |
+| middle (contiguous CONTROL) | 4-7 | 4-9 | 2-10 |
+
+**Mechanism.** `encoder.block` is swapped for a ModuleList of the retained (same, never copied)
+blocks in original order, restored on exit. Exact for chronos-forecasting 2.3.1: each block is
+self-contained (RoPE inside each attention; the encoder passes the same masks to every block; no
+block-0 position bias). Contract 2 proves skipped blocks are exactly the identity (hand-composed
+retained blocks == the mask's state, bitwise).
+
+**Arms per (dataset, mask):** native (cached L12 -> pathway, == H3) | hard | NOA = the H3 fit
+UNCHANGED (`fit_residual_adapter`, lr 1e-3, 1500 epochs, wd {0,.1,1,10,30,100}, eval 25; contract
+7: bitwise the H3 adapter on H3's own mock cell; protocol drift refused) on states of the
+SKIPPED-BLOCK backbone (extracted exactly like Phase 1: batch 128, `model.encode`, K=4 slots).
+Teacher = full model head outputs from the cached L12 (as H3). Test read once.
+
+**Prefix reuse (42 cells, no refit):** used only if (a) re-extracted prefix states == Phase-1
+cache (max|d|/std <= 1e-3, bitwise expected), (b) our scorer on H3's cached inputs == H3 per-window
+(1e-6), (c) re-extracted -> H3 adapter == H3 (mean MASE 1e-4), (d) physical (public API) == H3
+offline (V3 rule). Also compared with the committed physical H4 per-window MASE where it exists
+(hard/NOA at L4/L6/L9 on 10 of 14 datasets). If (a) fails the prefix is REFIT and labelled.
+
+**Gates per dataset:** native vs Phase 1 (1e-4) and vs H3 (1e-6); all-12 mask states == cached
+L12; all-12 physical == unmodified public API (bitwise). Model-level (synthetic contexts, before
+any dataset): execution trace == mask, restore, identity adapter == hard (bitwise), physical ==
+offline, weights sha256 unchanged (also after every dataset and at job end). A cell whose
+physical model does not reproduce the offline forecast is written as `invalid_v3`, never averaged.
+
+**Diagnostic (separate):** single-block skipping, 12 masks x 14 datasets, hard only (skip L12 ==
+prefix L11, gated vs H3 hard L11).
+
+**Latency:** 12 masks x {hard, adapter} + native start/middle/end, the Phase-2 protocol IMPORTED
+(20 warmup / 100 reps, B in {1,256}, api_e2e + device_forward, fresh process each), 3 in-job
+repeats on one node; a repeat is atomic (renamed only after index.json).
+
+**Stats:** paired cluster bootstrap (B=5000, seed 0, one count matrix per dataset): each strategy
+vs prefix as the difference of degradations in pp of the full model, with CI; counts better/worse
+(CI) per budget; sign test; secondary: strategy picked on VALIDATION MASE per dataset.
+
+**Files (all new; nothing existing modified):** `probing/phase2e_noncontig.py`,
+`experiments/run_phase2e_noncontig.py`, `experiments/run_phase2e_latency.py`,
+`experiments/make_phase2e_tables.py`, `tests/test_phase2e_noncontig.py` (15 groups),
+`job_phase2e_noncontig.sh`.
+
+**Outputs:** `results/three_model_phase2e_noncontig/{masks,single_skip,comparison,gates,verification,
+latency,tables,figures,report,runs}`; adapters + skipped-block states (~5.5 GB, verified on read) in
+`$SCRATCH/chronos2/phase2e_noncontig/`; paper outputs `three_models_paper/figures/noncontig/`.
+Report + rebuttal draft auto-filled with numbers at `report/`; final wording by hand.
+
+**Verified (Mac scratch venv, chronos-forecasting 2.3.1, tiny 12-block Chronos-2, no checkpoint):**
+15/15 contract groups (~25 s), incl. contract 15 = the WHOLE driver end to end on a synthetic
+Phase-1 + H3 + H4 tree built by the real Phase-1 extractor and the real H3 cell code: every gate,
+bitwise H3 reuse, H4 gate, resume without loading the model, read-only inputs byte-identical.
+`--plan` on the real committed trees: 168 cells (126 new fits), 14/14 H3 lineages consistent with
+Phase 1 (fit hash, window digest, test rows; LOOP reroute OK). H3 27/27 and H4 suites unchanged.
+
+**NOT verified:** anything on the real checkpoint / GPU (no smoke, by decision). First contact =
+the overnight job; the gates abort or flag rather than report a wrong number.
+
+**Run (Narval; the user submits):**
+1. login node: `python -m tests.test_phase2e_noncontig`; `python -m experiments.run_phase2e_noncontig --plan --check-inputs`
+2. `mkdir -p results/three_model_phase2e_noncontig/logs && sbatch -J p2e-noncontig job_phase2e_noncontig.sh`
+   (full A100 typed `gpu:a100:1`, 12 CPUs, 64G, 8 h; estimate ~4 h = 2.6 h fits + 1.4 h latency;
+   GPU wall limit on Narval is 7 d, tiers 3 h / 12 h / 24 h / 3 d / 7 d -> 8 h sits in the 12 h tier)
+3. resume = resubmit the identical line; tables again: `python -m experiments.make_phase2e_tables`
+
+**Pending deliverables (need results):** technical report, rebuttal paragraph (drafts auto-filled).
