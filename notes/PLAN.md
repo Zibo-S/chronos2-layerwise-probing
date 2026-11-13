@@ -2250,3 +2250,14 @@ compute-bound -> ~2.6-3.6 h + ~20 min load/gates. Job: 1 full A100, 4 CPU, 48G, 
 && sbatch -J p2f-source-scaling job_phase2f_source_scaling.sh`. Resume = the identical line. Tables /
 report by hand if needed: `python -m experiments.make_phase2f_tables && python -m
 experiments.make_phase2f_report`.
+
+**SUBMITTED 2026-11-13 01:48 (narval2, from `$SCRATCH/repos/chronos2-layerwise-probing` at
+`affd819`):** job **9253740** `p2f-source-scaling`, gpubase_bygpu_b2 + gpubackfill, 8 h, 1 full A100,
+4 CPU, 48G; PENDING (Priority). Pre-submit on narval2: 13/13 contracts (433 s on the loaded login
+node, niced), `--plan --check-inputs` 40 cells pending, all inputs present (4 target H3 adapters'
+sha256 match). The sync fast-forwarded the clone 9bd5cd1 -> affd819: every file except PLAN.md and
+the new Phase 2f files is byte-identical to 9bd5cd1, and the queued 2c / 2d / 2e jobs (9229954,
+9229962, 9229964) were verified unchanged before and after (state, limit, workdir, command,
+partition, TRES). They will record affd819 as their commit when they start; their code is the
+9bd5cd1 code. Purge list (2026-10-02): no 2f input listed; its 83 hf_cache entries are raw dataset
+downloads, lock and `.no_exist` files, not the Chronos-2 checkpoint (present, 478 MB).
