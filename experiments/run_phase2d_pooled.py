@@ -337,6 +337,49 @@ def refit_native_check(model, tag, info, qvec, med, args) -> dict:
     return rec
 
 
+def _cell_status(model, tag, args, arms, qvec) -> tuple[str, str]:
+    """The resume status ``run_cell`` would see (the cell's real config hash; JSON reads only)."""
+    try:
+        cell, p1cfg, p1root = phase1_source(model, tag, args)
+    except Exception as exc:                       # not ready: run_cell will report it
+        return "pending", f"{type(exc).__name__}: {exc}"
+    cfg = cell_config(model, tag, p1cfg, p1root, args, arms, qvec)
+    return phase2.Phase2CellStore(args.output_root, p2d.KIND, model, tag,
+                                  required=p2d.REQUIRED).status(p2d.config_hash(cfg))
+
+
+def preflight_native_refit(model, tag, args, bb, qvec, med) -> dict:
+    """PRODUCTION GATE, run per model BEFORE any of its cells: the same ``refit_native_check`` the
+    smoke runs (the Phase-1 fitter, unchanged, on the Phase-1 cached native states, in THIS job's
+    environment, must give back the committed validation curve within 1e-4 and identical entrances
+    at every tolerance). It proves that the arms fitted in this job and the native arm read from
+    Phase 1 come from equivalent fitting environments. Never raises: an error is a FAIL record."""
+    from probing.window_reference import window_digest
+    t0 = time.time()
+    try:
+        spec = phase1.model_spec(model)
+        cell, p1cfg, _root = phase1_source(model, tag, args)
+        w = windows_readonly(tag, args.window_cache, args.suite)
+        dig = window_digest(w)
+        if dig != p1cfg.get("window_digest"):
+            raise phase2.Phase1DependencyError(f"{model}/{tag}: window digest {dig} != Phase-1 "
+                                               f"{p1cfg.get('window_digest')}")
+        native = p2d.native_from_phase1(cell, spec)
+        p2d.reproduce_native(native, spec)
+        D = load_data(model, tag, w, p1cfg, cell.arrays(), args, bb)
+        rec = refit_native_check(model, tag, {"data": D, "native": native, "p1cfg": p1cfg},
+                                 qvec, med, args)
+        rec["data_gates"] = D.get("gates", {})
+    except Exception as exc:
+        traceback.print_exc()
+        rec = {"model": model, "dataset": tag, "status": "FAIL",
+               "error": f"{type(exc).__name__}: {exc}"}
+    rec["seconds"] = round(time.time() - t0, 1)
+    rec["role"] = ("production preflight gate: on FAIL none of this model's cells are run "
+                   "(the other models continue; the job exits non-zero)")
+    return rec
+
+
 def one_batch_checks(models, tag, args, bb) -> dict:
     out = {}
     for model in models:
@@ -435,7 +478,11 @@ def parse_args(argv=None):
     ap.add_argument("--one-batch-checks", nargs="*", default=None, choices=phase1.MODELS)
     ap.add_argument("--checks-only", action="store_true")
     ap.add_argument("--check-dataset", default=SMOKE_DATASET)
-    ap.add_argument("--refit-native-check", action="store_true")
+    ap.add_argument("--refit-native-check", action="store_true",
+                    help="after EVERY built cell (smoke diagnostic; records, never gates)")
+    ap.add_argument("--refit-native-preflight", action="store_true",
+                    help="PRODUCTION GATE: per model, refit the Phase-1 native probes on "
+                         "--check-dataset BEFORE that model's cells; on FAIL skip the model")
     ap.add_argument("--force-recompute", action="store_true")
     ap.add_argument("--force-extract", action="store_true")
     ap.add_argument("--quiet-probes", action="store_true")
@@ -492,6 +539,27 @@ def main(argv=None) -> int:
     state, failures = {}, []
     for m in models:
         arms = tuple(a for a in p2d.ARMS_BY_MODEL[m] if not args.arms or a in args.arms)
+        if args.refit_native_preflight:
+            pending_m = [t for t in tags if args.force_recompute
+                         or _cell_status(m, t, args, arms, qvec)[0] != "complete"]
+            if pending_m:
+                print(f"\nNATIVE-REFIT PREFLIGHT {m} on {args.check_dataset} (before any {m} cell)")
+                rec = preflight_native_refit(m, args.check_dataset, args, bb, qvec, med)
+                phase1.atomic_write_json(
+                    run_dir / f"preflight_native_refit__{m}__{args.check_dataset}.json", rec)
+                state[f"preflight/{m}"] = {k: rec.get(k) for k in
+                                           ("status", "val_curve_max_rel_diff", "error",
+                                            "seconds")}
+                if rec.get("status") != "pass":
+                    print(f"NATIVE-REFIT PREFLIGHT FAILED for {m}: none of its {len(pending_m)} "
+                          f"pending cells run; diagnostics in {run_dir}")
+                    failures.append(f"{m}/preflight_native_refit")
+                    for t in pending_m:
+                        state[f"{m}/{t}"] = {"status": "not_run",
+                                             "error": "native-refit preflight failed"}
+                    phase1.atomic_write_json(run_dir / "cells.json", state)
+                    continue
+                phase1.atomic_write_json(run_dir / "cells.json", state)
         for t in tags:
             try:
                 info = run_cell(m, t, args, bb, qvec, med, arms)

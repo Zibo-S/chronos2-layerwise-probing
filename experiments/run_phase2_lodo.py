@@ -19,6 +19,11 @@ pooled transfer | the committed dataset-specific H3 adapter. See ``probing.phase
 WHERE TO RUN. A COMPUTE NODE with a GPU for everything except ``--plan``. Every job loads the
 forecast-slot caches of all 14 datasets (each one is a source in 13 folds), ~5 GB of reads.
 
+PREFLIGHT. Before the first fit, the cell's reproduction gates (full model vs Phase 1 and H3, hard
+cut and dataset-specific adapter vs H3, test rows, identity adapter, adapter sha256) are run for
+every pending (target, depth) -- ``lodo.preflight_gates``, minutes, no fit. Any failure writes
+``runs/<job>/preflight.json`` and exits 3 before any GPU time is spent fitting.
+
 READ-ONLY INPUTS. Phase-1 windows/caches/cells and the committed H3 cells + adapters are never
 written. Outputs: ``results/three_model_phase2_lodo/`` and the pooled adapters under
 ``$SCRATCH/chronos2_phase2/adapters_lodo``.
@@ -172,6 +177,56 @@ def main(argv=None) -> int:
         print(f"  [data] {t:<28} train/val/test {n}  ({time.time() - t1:.1f}s)")
         del data, w
 
+    # ------------------------------------------------------------ PREFLIGHT (before ANY fit)
+    # The cell's own reproduction gates run only AFTER its ~10-15 min pooled fit. Run the same
+    # gates (lodo.preflight_gates) for every pending (target, depth) first, so a systematic
+    # mismatch (environment, inputs) stops the job in minutes. Nothing here reads a pooled adapter
+    # or a train/val array; the per-cell gates still run and stay authoritative.
+    if args.preflight:
+        t_pf = time.time()
+        pf, bad_pf = [], []
+        pairs = sorted({(c["target"], c["depth"]) for c in pending},
+                       key=lambda p: (roster.index(p[0]), p[1]))
+        for t, dep in pairs:
+            lab = lodo.depth_label(dep)
+            sp = Path(args.h3_adapter_root) / lodo.MODEL / t / f"noa__{lab}.npz"
+            try:
+                spec_ad, spec_meta = load_adapter(sp, device)
+                want = h3refs[t]["fits"]["noa"][lab].get("adapter_sha256")
+                rec = lodo.preflight_gates(pathway, prepared, t, dep, phase1_arrays=p1arrays[t],
+                                           h3_ref=h3refs[t], specific_adapter=spec_ad,
+                                           fit_cfg=fit_cfg, device=device)
+                rec["specific_adapter"] = {"path": str(sp), "sha256": spec_meta.get("sha256"),
+                                           "expected_sha256": want,
+                                           "passed": spec_meta.get("sha256") == want}
+                if not rec["specific_adapter"]["passed"]:
+                    rec["failed"].append("specific_adapter_sha256")
+                    rec["all_passed"] = False
+            except Exception as exc:
+                traceback.print_exc()
+                rec = {"target": t, "depth": dep, "label": lab, "all_passed": False,
+                       "failed": ["exception"], "error": f"{type(exc).__name__}: {exc}"}
+            pf.append(rec)
+            m = rec.get("mean_test_mase", {})
+            print(f"  [preflight] {t:<28} {lab:<4} {'PASS' if rec['all_passed'] else 'FAIL'}"
+                  + (f"  mean test MASE native {m['native']:.4f} hard {m['hard']:.4f} "
+                     f"specific {m['specific']:.4f}" if m else "")
+                  + ("" if rec["all_passed"] else f"  failed: {rec['failed']}"))
+            if not rec["all_passed"]:
+                bad_pf.append(f"{t}/{lab}")
+        phase2.atomic_write_json(run_dir / "preflight.json", {
+            "schema": "phase2c_lodo_preflight/v1", "protocol": lodo.LODO_PROTOCOL_VERSION,
+            "gates": list(lodo.PREFLIGHT_GATES) + ["specific_adapter_sha256"],
+            "n_pairs": len(pf), "n_failed": len(bad_pf), "failed": bad_pf,
+            "seconds": round(time.time() - t_pf, 1), "pairs": pf})
+        print(f"  [preflight] {len(pf) - len(bad_pf)}/{len(pf)} (target, depth) pairs pass the "
+              f"reproduction gates ({time.time() - t_pf:.0f}s) -> {run_dir / 'preflight.json'}")
+        if bad_pf:
+            print(f"\nPREFLIGHT FAILED for {bad_pf}: NO pooled fit was started. Diagnostics: "
+                  f"{run_dir / 'preflight.json'}. Fix the cause, then resubmit the same line "
+                  "(--no-preflight skips this stage; the per-cell gates would still refuse).")
+            return 3
+
     state = {"cells": {}}
     failures = []
     for c in pending:
@@ -287,6 +342,9 @@ def parse_args(argv=None):
     g.add_argument("--no-resume", dest="resume", action="store_false")
     g.add_argument("--force-recompute", action="store_true")
     g.add_argument("--fail-on-error", action="store_true")
+    g.add_argument("--no-preflight", dest="preflight", action="store_false", default=True,
+                   help="skip the reproduction gates run for every pending (target, depth) "
+                        "BEFORE the first fit (default: run them; any failure exits 3)")
     g = p.add_argument_group("protocol (defaults = the frozen H3 optimizer)")
     g.add_argument("--epochs", type=int, default=phase2.ADAPTER_EPOCHS)
     g.add_argument("--lr", type=float, default=phase2.ADAPTER_LR)

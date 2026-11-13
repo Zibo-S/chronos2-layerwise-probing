@@ -603,6 +603,90 @@ def test_20_driver_glue_all_models():
           " refit check run end to end for all three models                      OK")
 
 
+def test_21_native_refit_preflight_gates_per_model():
+    """--refit-native-preflight (the production gate): a model whose refit FAILS runs none of its
+    cells and makes the job exit non-zero, the other models still run, the diagnostics are
+    written; the gate itself never raises (an exception becomes a FAIL record)."""
+    import contextlib
+    import io
+    from experiments import run_phase2d_pooled as drv
+    tmp = Path(tempfile.mkdtemp())
+    calls, orig = [], (drv.preflight_native_refit, drv.run_cell)
+
+    def fake_preflight(model, tag, *a, **k):
+        return {"model": model, "dataset": tag,
+                "status": "FAIL" if model == "chronos2" else "pass",
+                "val_curve_max_rel_diff": 0.5 if model == "chronos2" else 0.0}
+
+    def fake_run_cell(model, tag, *a, **k):
+        calls.append((model, tag))
+        return {"status": "complete", "path": "x", "timings": {}}
+    try:
+        drv.preflight_native_refit, drv.run_cell = fake_preflight, fake_run_cell
+        with contextlib.redirect_stdout(io.StringIO()):
+            rc = drv.main(["--output-root", str(tmp / "out"), "--models", "chronos2", "tirex",
+                           "--datasets", "m4_hourly", "monash_electricity_hourly",
+                           "--refit-native-preflight", "--window-cache", str(tmp),
+                           "--device", "cpu"])
+        assert rc == 1, rc
+        assert calls == [("tirex", "m4_hourly"), ("tirex", "monash_electricity_hourly")], calls
+        run = next((tmp / "out" / "runs").iterdir())
+        st = json.loads((run / "cells.json").read_text())
+        assert st["chronos2/m4_hourly"]["status"] == "not_run"
+        assert st["preflight/chronos2"]["status"] == "FAIL" and st["preflight/tirex"]["status"] == "pass"
+        assert (run / "preflight_native_refit__chronos2__monash_electricity_hourly.json").exists()
+        # the real gate on an unloadable input returns a FAIL record instead of raising
+        drv.preflight_native_refit = orig[0]
+        args = types.SimpleNamespace(phase1_root=str(tmp / "nope"), phase1_override=[],
+                                     suite="paper14", window_cache=str(tmp))
+        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+            rec = drv.preflight_native_refit("tirex", "m4_hourly", args, None, Q9, MED)
+        assert rec["status"] == "FAIL" and rec.get("error"), rec
+    finally:
+        drv.preflight_native_refit, drv.run_cell = orig
+        shutil.rmtree(tmp, ignore_errors=True)
+    print(" 21  native-refit preflight gates per model: FAIL -> none of that model's cells run, "
+          "others run, job exits 1, diagnostics written; errors become FAIL records       OK")
+
+
+def test_22_report_and_rebuttal_draft_from_tables_only():
+    """make_phase2d_report: built from the tables only, INCOMPLETE stamped on a partial run,
+    gates summarized, coverage stated in the draft, paper prose rules respected."""
+    from experiments import make_phase2d_report as rep
+    from experiments import make_phase2d_tables as mt
+    tmp = Path(tempfile.mkdtemp())
+    try:
+        root, paper = tmp / "out", tmp / "paper"
+        for m in phase1.MODELS:
+            for t in ("monash_electricity_hourly", "uber_tlc_hourly"):
+                _build(root, m, t, scales={"pooled": 1.2, "concat": 0.97})
+        assert mt.main(["--output-root", str(root), "--paper-dir", str(paper),
+                        "--no-figures"]) == 0
+        run = root / "runs" / "job1"
+        run.mkdir(parents=True)
+        (run / "one_batch_checks.json").write_text(json.dumps(
+            {m: {"model": m, "passed": True} for m in phase1.MODELS}))
+        (run / "preflight_native_refit__tirex__monash_electricity_hourly.json").write_text(
+            json.dumps({"model": "tirex", "dataset": "monash_electricity_hourly",
+                        "status": "pass", "val_curve_max_rel_diff": 0.0}))
+        s = rep.build(root)
+        md = Path(s["report"]).read_text()
+        rb = Path(s["rebuttal_draft"]).read_text()
+        assert "INCOMPLETE RESULTS" in md and "INCOMPLETE RESULTS" in rb
+        assert "6 of the 42 model-dataset pairs" in rb, rb
+        assert "TiRex PASS" in md and "native-refit gate TiRex" in md
+        for sec in ("Coverage and gates", "Readout configurations", "Per model and readout",
+                    "One-factor decomposition", "Per dataset", "Fixed limitations"):
+            assert sec in md, sec
+        assert "+20.0%" in md                       # the injected 1.2x final-block loss
+        for bad in ("--", "representative"):
+            assert bad not in rb, bad
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+    print(" 22  report + rebuttal draft from the tables only: INCOMPLETE stamped, gates "
+          "summarized, coverage stated, no '--' / 'representative'                  OK")
+
+
 def main(argv=None):
     import traceback
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]

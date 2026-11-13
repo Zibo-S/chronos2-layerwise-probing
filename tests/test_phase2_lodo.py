@@ -485,6 +485,80 @@ def test_10_provenance_is_the_papers_table():
           f" listed{' -- cross-checked against notes/help.tex' if checked else ''}       OK")
 
 
+def test_11_preflight_gates_equal_the_cells_and_need_no_fit():
+    """The driver's pre-fit stage must run the SAME gates as the cell (identical values) and fail
+    on exactly the mismatches that abort a cell -- without fitting anything."""
+    pw = _pathway()
+    prep = _prepared(pw, _mock_data(pw))
+    target, depth = "monash_electricity_hourly", 9
+    cell = _mock_cell(target, depth)
+    ref, p1, spec_ad = _h3_ref_and_specific(pw, prep, target, depth)
+    before = {k: v.detach().clone() for k, v in spec_ad.state_dict().items()}
+    pf = lodo.preflight_gates(pw, prep, target, depth, phase1_arrays=p1, h3_ref=ref,
+                              specific_adapter=spec_ad, fit_cfg=FAST)
+    assert pf["all_passed"] and not pf["failed"] and pf["label"] == "L9"
+    assert set(lodo.PREFLIGHT_GATES) <= set(pf["gates"])
+    assert all(torch.equal(before[k], v) for k, v in spec_ad.state_dict().items())
+    res = lodo.run_lodo_cell(pw, prep, cell, phase1_arrays=p1, h3_ref=ref,
+                             specific_adapter=spec_ad, fit_cfg=FAST, log=None)
+    for k in lodo.PREFLIGHT_GATES:
+        assert json.dumps(pf["gates"][k], sort_keys=True, default=str) == json.dumps(
+            res["verification"][k], sort_keys=True, default=str), k
+    for key, gate in (("hard__test_mase", "hard_vs_h3"), ("noa__test_mase", "specific_vs_h3"),
+                      ("native_test_mase", "native_vs_h3")):
+        bad = {**ref, "arrays": {**ref["arrays"], key: ref["arrays"][key] * 1.001}}
+        r = lodo.preflight_gates(pw, prep, target, depth, phase1_arrays=p1, h3_ref=bad,
+                                 specific_adapter=spec_ad, fit_cfg=FAST)
+        assert not r["all_passed"] and gate in r["failed"], (gate, r["failed"])
+    bad_p1 = {**p1, "native_mase_window": p1["native_mase_window"] * 1.01}
+    r = lodo.preflight_gates(pw, prep, target, depth, phase1_arrays=bad_p1, h3_ref=ref,
+                             specific_adapter=spec_ad, fit_cfg=FAST)
+    assert not r["all_passed"] and "native_gate_vs_phase1" in r["failed"]
+    rows = {**ref, "arrays": {**ref["arrays"],
+                              "cluster_ids_test": ref["arrays"]["cluster_ids_test"][::-1].copy()}}
+    r = lodo.preflight_gates(pw, prep, target, depth, phase1_arrays=p1, h3_ref=rows,
+                             specific_adapter=spec_ad, fit_cfg=FAST)
+    assert not r["all_passed"] and "test_rows_vs_h3" in r["failed"]
+    print(" 11  preflight (driver, before any fit) = the cell's gates value for value; fails on "
+          "a 0.1% hard/specific/native or 1% Phase-1 mismatch and on shuffled rows      OK")
+
+
+def test_12_report_and_rebuttal_draft_from_tables_only():
+    """make_phase2_lodo_report: built from the tables only, stamped INCOMPLETE on a partial run,
+    states its coverage in the draft, and follows the paper's prose rules."""
+    from experiments import make_phase2_lodo_report as rep
+    from experiments import make_phase2_lodo_tables as mt
+    pw = _pathway()
+    prep = _prepared(pw, _mock_data(pw))
+    tmp = Path(tempfile.mkdtemp())
+    try:
+        for target in ("monash_electricity_hourly", "m5"):
+            for depth in lodo.LODO_DEPTHS:
+                _write_cell(tmp, pw, prep, _mock_cell(target, depth))
+        _write_cell(tmp, pw, prep, _mock_cell("monash_electricity_hourly", 9, lodo.SENSITIVITY))
+        mt.build(tmp, tmp / "paper", tmp / "no_latency.csv", figures=False)
+        pf = tmp / lodo.KIND / "runs" / "job1"
+        pf.mkdir(parents=True)
+        (pf / "preflight.json").write_text(json.dumps({"n_pairs": 6, "n_failed": 0,
+                                                       "failed": [], "pairs": []}))
+        s = rep.build(tmp)
+        md = Path(s["report"]).read_text()
+        rb = Path(s["rebuttal_draft"]).read_text()
+        assert not s["complete"] and "INCOMPLETE RESULTS" in md and "INCOMPLETE RESULTS" in rb
+        assert "2 of the 14 datasets" in rb, rb
+        for sec in ("Coverage and gates", "Main protocol", "Per dataset", "Depth consistency",
+                    "sibling sensitivity", "Fixed limitations"):
+            assert sec in md, sec
+        assert "6 of 6 (target, depth) pairs passed" in md
+        assert "M5" in rb and "held out" in rb      # the held-out group is named in the draft
+        for bad in ("--", "representative"):
+            assert bad not in rb, bad
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+    print(" 12  report + rebuttal draft from the tables only: INCOMPLETE stamped, coverage "
+          "stated, held-out group named, no '--' / 'representative'                OK")
+
+
 def main(argv=None):
     import traceback
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]

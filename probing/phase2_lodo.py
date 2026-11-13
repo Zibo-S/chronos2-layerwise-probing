@@ -49,7 +49,8 @@ __all__ = ["LODO_PROTOCOL_VERSION", "KIND", "MODEL", "LODO_DEPTHS", "MAIN", "SEN
            "LODO_REQUIRED", "ARMS", "fold_sources", "plan_cells", "chunk", "depth_label",
            "PreparedDataset", "prepare_dataset", "pooled_split", "equal_weight_mse",
            "per_source_mse", "fit_pooled_adapter", "score_arm", "load_h3_reference",
-           "gap_sign", "cell_statistics", "run_lodo_cell", "cell_config", "save_lodo_cell"]
+           "gap_sign", "cell_statistics", "PREFLIGHT_GATES", "preflight_gates", "run_lodo_cell",
+           "cell_config", "save_lodo_cell"]
 
 LODO_PROTOCOL_VERSION = "phase2c/lodo-v1"
 KIND = "lodo"
@@ -361,6 +362,48 @@ def cell_statistics(pw: dict, wql_den, cluster_ids, *, B: int = BOOT_B, seed: in
             g[arm] = gc
         out["gap"][m] = g
     return out
+
+
+#: the gates of ``run_lodo_cell`` that do not need the pooled fit (``preflight_gates`` runs them)
+PREFLIGHT_GATES = ("native_gate_vs_phase1", "native_vs_h3", "hard_vs_h3", "specific_vs_h3",
+                   "test_rows_vs_h3", "identity_adapter_equals_hard_cut")
+
+
+def preflight_gates(pathway, prepared: dict, target: str, depth: int, *, phase1_arrays: dict,
+                    h3_ref: dict, specific_adapter, fit_cfg=None, device=None,
+                    h3_rtol: float = H3_REPRO_RTOL) -> dict:
+    """The reproduction gates of ``run_lodo_cell`` for one (target, depth), WITHOUT a pooled fit.
+
+    Same functions, same arrays, same tolerances as the cell: the full model vs Phase 1 and vs H3,
+    the hard cut and the committed dataset-specific adapter vs H3, the test rows, and identity
+    adapter == hard cut. The driver runs it for every pending (target, depth) BEFORE the first fit,
+    so a systematic mismatch stops a job in minutes instead of after hours of fitting. The cell
+    still re-runs every gate (that copy is authoritative). It reads no pooled adapter and no
+    train/val array, so it cannot influence any fit or selection."""
+    cfg = {**DEFAULT_FIT_CFG, **(fit_cfg or {})}
+    l = int(depth)
+    device = device or pathway.device
+    pathway.assert_frozen()
+    te = prepared[target].test
+    L = prepared[target].reference_index
+    pw = {"native": score_arm(pathway, te, target, te.feats[L]),
+          "hard": score_arm(pathway, te, target, te.feats[l]),
+          "specific": score_arm(pathway, te, target, te.feats[l], specific_adapter)}
+    ref = h3_ref["arrays"]
+    ver = {"native_gate_vs_phase1": native_gate(pw["native"]["loss"], pw["native"]["mase"],
+                                                phase1_arrays, cfg["native_gate_rtol"]),
+           "native_vs_h3": _repro(pw["native"]["mase"], ref["native_test_mase"], h3_rtol),
+           "hard_vs_h3": _repro(pw["hard"]["mase"], ref["hard__test_mase"][l], h3_rtol),
+           "specific_vs_h3": _repro(pw["specific"]["mase"], ref["noa__test_mase"][l], h3_rtol),
+           "test_rows_vs_h3": {"passed": bool(np.array_equal(np.asarray(te.cluster_ids),
+                                                             ref["cluster_ids_test"]))}}
+    _, z_id = pathway.run(te.feats[l], ResidualAdapter(pathway.d).to(device).eval())
+    _, z_h = pathway.run(te.feats[l], None)
+    ver["identity_adapter_equals_hard_cut"] = {"passed": bool(np.array_equal(z_id, z_h))}
+    failed = [k for k in PREFLIGHT_GATES if ver[k].get("passed") is False]
+    return {"target": target, "depth": l, "label": depth_label(l), "gates": ver,
+            "failed": failed, "all_passed": not failed,
+            "mean_test_mase": {a: float(np.mean(v["mase"])) for a, v in pw.items()}}
 
 
 def run_lodo_cell(pathway, prepared: dict, cell: dict, *, phase1_arrays: dict, h3_ref: dict,

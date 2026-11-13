@@ -2083,3 +2083,62 @@ the overnight job; the gates abort or flag rather than report a wrong number.
 3. resume = resubmit the identical line; tables again: `python -m experiments.make_phase2e_tables`
 
 **Pending deliverables (need results):** technical report, rebuttal paragraph (drafts auto-filled).
+
+---
+
+# REBUTTAL PRODUCTION RUNS: 2c + 2d + 2e as three full jobs (2026-11-12)
+
+No separate smoke stage (the GPU queue is the bottleneck). Each job validates before its workload
+and stops (or skips the affected part) on a failed gate; no tolerance was changed.
+
+**Narval /home is partly unreadable (2026-11-12).** `lfs check osts`: `lustre05-OST000d ... Cannot
+send after transport endpoint shutdown (108)`, on narval1 AND narval2 (not a node problem; the
+status page still said "healthy"). 587 files of `~/repos/chronos2-layerwise-probing` and parts of
+its `.venv` are unreadable (`git status`: `bad object HEAD`; numpy fails to import). That repo was
+NOT touched. The jobs run from a fresh GitHub clone on scratch instead:
+
+| what | where |
+|---|---|
+| repo clone (branch `rebuttal`) | `$SCRATCH/repos/chronos2-layerwise-probing` |
+| venv (exact Phase-1 versions: torch 2.12.1, numpy 1.26.4, chronos 2.3.1, timesfm 3.0.2, tirex-ts 1.4.2, transformers 5.13.0; aeon 1.3.0 as the old venv, not requirements.txt's 1.4.0) | `$SCRATCH/venvs/c2lp-py311`, linked as `.venv` |
+| `features_cache` | symlink to `$SCRATCH/chronos2/features_cache` (unchanged) |
+| caches (HF, pip, matplotlib, XDG) | all on `$SCRATCH`, never `~/.cache` |
+
+Access: narval2 needs MFA from the Mac; the route is the `narval` ControlMaster (narval1) then a
+hostbased hop `ssh narval2` (no MFA inside the cluster).
+
+**Production gates added (protocol unchanged):**
+- 2c: `lodo.preflight_gates` runs the cell's own reproduction gates for every pending (target,
+  depth) BEFORE the first fit; any failure exits 3 (`runs/<job>/preflight.json`), no fit started.
+  The per-cell gates still run and stay authoritative. Contract 11.
+- 2d: `--one-batch-checks chronos2 timesfm3 tirex` (real extraction == Phase-1 caches; any failure
+  = no cell) and `--refit-native-preflight` (per model, before its cells: the Phase-1 fitter in this
+  environment reproduces the committed native Electricity curve to 1e-4 and every entrance; FAIL =
+  that model skipped, job exits non-zero). Contract 21.
+- 2e: unchanged (model-level mask checks before any dataset, dataset gates, prefix gates).
+
+**Jobs** (`job_rebuttal_common.sh` = shared machinery; contract `bash tests/test_job_rebuttal_common.sh`):
+model-free tests -> `--plan` -> main (GPU) -> tables -> report -> archive staging (only after a
+clean main stage). `#SBATCH --signal=B:USR1@900`: a TIMEOUT during the GPU work resubmits the same
+script + args with `--dependency=afterany` (at most 2 continuations); every driver resumes. All
+three: `--gres=gpu:a100:1` (full A100 = the Phase-1 hardware).
+
+| job | wall | estimate | cells |
+|---|---|---|---|
+| `job_phase2_lodo.sh` | 24 h | ~11 h (48 x ~13 min: H3 NOA fit 62 s on 1394 windows, compute-bound, LODO pools 12-13x) | 48 |
+| `job_phase2d_pooled.sh` | 8 h | ~3 h | 42 |
+| `job_phase2e_noncontig.sh` | 8 h | ~4 h | 168 mask cells (126 fits) + 14 single-skip + latency |
+
+Full-A100 nodes are the same 118 for the 3 h / 12 h / 24 h / 3 d tiers, so a longer limit does not
+shrink the pool (it only lowers backfill chances).
+
+**Reports (new, artifacts only):** `make_phase2_lodo_report`, `make_phase2d_report` write
+`<results>/report/{report.md, rebuttal_draft.md}` (2e already had them); a partial run is stamped
+INCOMPLETE and the draft states its coverage. Contracts 12 (LODO) and 22 (2d).
+
+**Archive:** the job stages `$SCRATCH/archive/rebuttal_<phase>_<jobid>/` (tars + contents +
+MANIFEST + SHA256SUMS). Compute nodes cannot see /nearline: on a LOGIN node run
+`bash tools/rebuttal_nearline_copy.sh <stage>` (re-verifies, adds the final logs, copies to
+`/nearline/def-irina/$USER/chronos2_archive/<name>/`, re-verifies there, then writes
+`ARCHIVED_ON_NEARLINE.txt`). Not archived (regenerable caches): 2d pooled states, 2e skipped-block
+states.
