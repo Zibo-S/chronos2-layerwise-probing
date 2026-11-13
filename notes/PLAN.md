@@ -2159,3 +2159,94 @@ suite on the compute node first). No preemption on these partitions (`PreemptMod
 `JobRequeue=0`): a node failure needs a manual resubmit of the same line (resume is per cell).
 Results land in the SCRATCH clone (`results/three_model_phase2_lodo|2d_pooled|2e_noncontig/`);
 bring them into the main repo by committing from that clone.
+
+---
+
+# PHASE 2f: source-dataset scaling of zero-shot adapter transfer (Chronos-2, L6) -- IMPLEMENTED 2026-11-13
+
+**Question (rebuttal: "dataset-specific calibration weakens zero-shot acceleration"):** does the
+label-free adapter transfer better to an unseen target when it is fitted on MORE source datasets
+(N = 1, 4, 8, 13), and does it approach the dataset-specific H3 adapter? A testable hypothesis: no
+monotone trend is presumed, and nothing is extrapolated beyond N = 13. Independent of the queued
+2c / 2d / 2e jobs (own module, tree, adapter dir, job; overlapping roots are refused).
+
+**Fit: the Phase 2c pooled fit, UNCHANGED.** Every cell calls `lodo.run_lodo_cell` with a source
+subset (-> `fit_pooled_adapter` -> the H3 NOA `fit_residual_adapter`: residual affine adapter from
+the identity, AdamW lr 1e-3, 1500 full-batch epochs, decay on Delta only over {0, .1, 1, 10, 30,
+100}, eval every 25, epoch 0 = hard cut, equal-weighted per-source objective AND selection). Same
+frozen backbone / final norm / head / inverse, same windows, same per-source budget (1,394 train
+windows each). The ONLY variable is which sources the fit reads. All 2c gates run in every cell.
+
+**Targets (frozen from METADATA before any 2c / 2f result; `ss.select_targets` re-derives them):**
+R1 no Electricity dataset (so the pool is all 13 others, = the 2c main fold); R2 full 262-series
+test budget (drops SZ Taxi 156, Coastal 24); R3 four distinct frequencies, all three provenance
+groups, four distinct domain families; R4 ties -> more held-out targets. Result:
+
+| target | freq | domain | Chronos-2 provenance | signal |
+|---|---|---|---|---|
+| Loop Seattle | 5min | transport | held out | smooth, strongly daily-periodic speeds |
+| London Smart Meters | 30min | energy | listed | noisy, spiky household load (near-domain to the Electricity sources) |
+| BOOM | 1H | cloud | not listed | lowest dynamic range, many flat stretches |
+| M5 | 1D | retail | held out | intermittent low counts |
+
+Only two sets satisfied R1-R3 (the daily slot: M5 or Wiki Daily); R4 picked M5.
+
+**Source orders (frozen; `tests/test_phase2f_source_scaling.py::FROZEN_ORDERS`):** per target,
+three orders (seeds 0/1/2) of the 13-dataset pool; N = 1/4/8 = nested prefixes (a larger N only
+ADDS datasets); N = 13 = whole pool, one cell shared by the three orders. The permutation sorts the
+pool by sha256(rule, target, seed, draw, tag), so it is identical on every machine. Two
+restrictions, fixed before any fit and blind to performance (rejection over draws, recorded):
+the Electricity pair never shares an N <= 8 prefix; the N = 1 source differs across a target's
+orders. The fit reads each subset in ROSTER order, so the N = 13 cell is exactly the 2c main cell
+(target, L6) (contract 11); the tables cross-check it against 2c read-only if 2c has finished.
+**40 fits** = 4 x (3 x 3 + 1). N = 13 contains both Electricity datasets = 12 families, not 13.
+
+**Known confound, reported not "fixed":** each source adds 1,394 windows, so N also scales the
+training data and the work per step (reported per cell: windows, steps, window passes, fit time,
+GPU memory). Optional follow-up, NOT run: fixed-total-window control (each source subsampled to
+1,394 / N windows), < 1 GPU-h.
+
+**In-job validation (no separate smoke):** (1) preflight per target at L6 = the 2c
+`preflight_gates` + the H3 adapter sha256, before any fit (fail -> exit 3); (2) the N = 1 cells run
+first and each must REPRODUCE the committed H3 NOA fit of its single source (same epoch-0 criterion
+1e-6, same selected wd and epoch, selected val 1e-4, the source's own test MASE vs H3 1e-4; bitwise
+adapter recorded); with one source the pooled fit IS the H3 fit (2c contract 5); a failure stops
+the job before any larger fit (exit 4, `runs/<job>/fit_reproduction_failure.json`); (3) every cell
+re-runs every 2c gate. No automatic resubmission after a failed gate; a TIMEOUT continues (<= 2).
+
+**Statistics:** per cell the 2c paired series-cluster bootstrap (B = 5000): dMASE vs full, pooled -
+specific (pp), gap recovery (only for a significantly positive hard gap), pooled vs hard. Between
+source pools of one target (1->4->8->13, and 1->13): paired cluster bootstrap on the same test
+rows. Orders = repeated source-set choices within a target (averaged within target first);
+across-target interval resamples targets then orders (descriptive, four targets). Questions
+answered with counts: improvement with N, monotonicity, dependence on source identity (range over
+orders), negative transfer (worse than the hard cut; steps that worsen), N = 13 vs H3, diminishing
+returns (gain per added dataset per step).
+
+**Files (all new; nothing existing modified):** `probing/phase2f_source_scaling.py`,
+`experiments/run_phase2f_source_scaling.py`, `experiments/make_phase2f_tables.py`,
+`experiments/make_phase2f_report.py`, `tests/test_phase2f_source_scaling.py` (13 contracts),
+`job_phase2f_source_scaling.sh`.
+
+**Outputs:** `results/three_model_phase2f_source_scaling/source_scaling/<target>/N<nn>_<seed|all>/`
+(2c artifacts + `selection.json`, `forecasts.npz`), `.../source_scaling/{design.json, baselines/,
+runs/<job>/}`, `.../combined/`, `.../report/{report.md, rebuttal_draft.md}`; adapters in
+`$SCRATCH/chronos2/phase2f_source_scaling/adapters/`; paper outputs
+`three_models_paper/figures/source_scaling/`.
+
+**Verified (Mac scratch venv, no model):** 13/13 contracts (selection rule; 40 nested cells; frozen
+orders identical in fresh processes; Electricity restriction; the cell IS the 2c fit bitwise with
+equal source weights; target and every label poisoned -> adapter bitwise unchanged; fit-reproduction
+gate passes bitwise on the H3 code path and fails on a moved epoch / val / wd / source MASE; driver
+loop: atomic cells, forecasts reproduce per-window MASE, resume refits nothing, scoped staging
+cleanup; a failed reproduction stops after one fit; isolation of roots; N = 13 == the 2c main cell;
+tables / figures / report / draft from artifacts with a known synthetic trend recovered; job script).
+2c suite 12/12 unchanged. `--plan` on the committed trees: 40 cells, all dependencies resolve.
+
+**Compute:** 208 one-source fit units (4 x (3 x 13 + 13)); the H3 NOA fit = 62 s per unit and
+compute-bound -> ~2.6-3.6 h + ~20 min load/gates. Job: 1 full A100, 4 CPU, 48G, **8 h**.
+
+**Run (Narval, from the scratch clone):** `mkdir -p results/three_model_phase2f_source_scaling/logs
+&& sbatch -J p2f-source-scaling job_phase2f_source_scaling.sh`. Resume = the identical line. Tables /
+report by hand if needed: `python -m experiments.make_phase2f_tables && python -m
+experiments.make_phase2f_report`.
