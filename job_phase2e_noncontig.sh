@@ -46,7 +46,7 @@ set -uo pipefail
 # Optional env: PHASE2E_SKIP_LATENCY=1 (accuracy + tables only).
 # =======================================================================================
 
-source job_rebuttal_common.sh
+source ./job_rebuttal_common.sh       # explicit path: never resolved through $PATH
 rb_setup "PHASE 2e / non-contiguous" results/three_model_phase2e_noncontig job_phase2e_noncontig.sh "$@"
 echo "  H3 adapters (read-only) : $SCRATCH/chronos2_phase2/adapters"
 echo "  2e adapters + states    : $SCRATCH/chronos2/phase2e_noncontig/"

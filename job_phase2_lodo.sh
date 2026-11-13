@@ -39,7 +39,7 @@ set -uo pipefail
 # A TIMEOUT resubmits itself (at most RB_MAX_CONT=2 times). `--smoke` still works (separate tree).
 # =======================================================================================
 
-source job_rebuttal_common.sh
+source ./job_rebuttal_common.sh       # explicit path: never resolved through $PATH
 rb_setup "PHASE 2c / LODO" results/three_model_phase2_lodo job_phase2_lodo.sh "$@"
 export CUBLAS_WORKSPACE_CONFIG=:4096:8     # deterministic cuBLAS (full-batch fits), as in H3
 echo "  phase-1 windows (read-only) : $PHASE1_WINDOWS"

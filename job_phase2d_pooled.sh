@@ -45,7 +45,7 @@ set -uo pipefail
 # RESUME:  resubmit the identical line (COMPLETE cells skipped). A TIMEOUT resubmits itself.
 # =======================================================================================
 
-source job_rebuttal_common.sh
+source ./job_rebuttal_common.sh       # explicit path: never resolved through $PATH
 rb_setup "PHASE 2d / pooled readouts" results/three_model_phase2d_pooled job_phase2d_pooled.sh "$@"
 export OOD_TARGET_ROOT=${OOD_TARGET_ROOT:-$SCRATCH/chronos2/ood_targets}
 export TORCH_EXTENSIONS_DIR=${TORCH_EXTENSIONS_DIR:-$SCRATCH/tirex/torch_extensions}
