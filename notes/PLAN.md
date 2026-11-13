@@ -2142,3 +2142,20 @@ MANIFEST + SHA256SUMS). Compute nodes cannot see /nearline: on a LOGIN node run
 `/nearline/def-irina/$USER/chronos2_archive/<name>/`, re-verifies there, then writes
 `ARCHIVED_ON_NEARLINE.txt`). Not archived (regenerable caches): 2d pooled states, 2e skipped-block
 states.
+
+**SUBMITTED 2026-11-12 20:20 (narval2, from `$SCRATCH/repos/chronos2-layerwise-probing` at `9bd5cd1`):**
+
+| job id | name | partition | wall | resources |
+|---|---|---|---|---|
+| 9229954 | `p2c-lodo` | gpubase_bygpu_b3, gpubackfill | 24 h | 1 full A100, 4 CPU, 48G |
+| 9229962 | `p2d-pooled` | gpubase_bygpu_b2, gpubackfill | 8 h | 1 full A100, 4 CPU, 48G |
+| 9229964 | `p2e-noncontig` | gpubase_bygpu_b2, gpubackfill | 8 h | 1 full A100, 12 CPU, 64G |
+
+Cancelled (pending, never started, no outputs): 9206427 `p2c-smoke`, 9213915 `p2c-smoke-mig`.
+Pre-submit checks: `--plan` 48 / 42 / 168 cells pending, all Phase-1 sources COMPLETE, 2e
+`--check-inputs` all present; contracts on narval2: LODO 12/12, 2d 22/22, job machinery 5/5 (2e/H3/H4
+suites stopped on the overloaded login node: I/O-bound, ~3 min each; every job reruns its own
+suite on the compute node first). No preemption on these partitions (`PreemptMode=OFF`,
+`JobRequeue=0`): a node failure needs a manual resubmit of the same line (resume is per cell).
+Results land in the SCRATCH clone (`results/three_model_phase2_lodo|2d_pooled|2e_noncontig/`);
+bring them into the main repo by committing from that clone.
