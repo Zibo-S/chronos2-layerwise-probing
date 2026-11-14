@@ -3,7 +3,7 @@
 #SBATCH --gpus-per-node=h100:1       # fir/submit_fir.sh requests the chunks' GPU shape (3g.40gb)
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=48G
-#SBATCH --time=01:00:00
+#SBATCH --time=00:45:00
 #SBATCH --output=results/fir_smoke/logs/%x-%j.out
 #SBATCH --error=results/fir_smoke/logs/%x-%j.err
 
@@ -16,15 +16,16 @@ set -uo pipefail
 #   A. (CPU, before this job: fir/job_fir_validate_cpu.sh) model-free contracts of all four
 #      phases + the job machinery, every driver's --plan / --check-inputs, the input sizes
 #   B. every driver's --plan (and --check-inputs) again, on the GPU node
-#   C. GPU, real Chronos-2 checkpoint, the PRODUCTION code paths:
-#      C1 2c --smoke: Electricity x L9, main protocol, real 1500 epochs: the preflight gates
-#         (full model vs Phase 1 + H3, hard cut + dataset-specific adapter vs H3), one pooled
-#         12-source fit, the per-cell gates. Also measures the H100 time per pooled fit.
-#      C2 2f N = 1 fits for M5 (3 cells): each must reproduce the committed (A100) H3 fit of
-#         its single source (same wd and epoch, val 1e-4, hard-cut val 1e-6).
-#      C3 2d one-batch identity checks, all three backbones (real extraction vs the A100
-#         Phase-1 caches, tolerance 1e-3 of the layer std).
-# EXIT 0 iff B and C1 pass. C2 / C3 are reported (the production jobs re-run them as gates).
+#   C. GPU, real checkpoints, the PRODUCTION code paths (short: the chunks wait for this job):
+#      C1 2f N = 1 fits for M5 at L6 (3 cells): the Phase 2c preflight gates on the target (full
+#         model vs Phase 1 + H3, hard cut + dataset-specific adapter vs H3, adapter sha256), then
+#         three real adapter fits, each of which must reproduce the committed (A100) H3 fit of its
+#         single source (same wd and epoch, val 1e-4, hard-cut val 1e-6).
+#      C2 2d one-batch identity checks, all three backbones (real extraction vs the A100 Phase-1
+#         caches, tolerance 1e-3 of the layer std).
+# EXIT 0 iff B passes and C1 exits 0, or 4 (a fit-reproduction mismatch: 2f-specific, the 2f chunks
+# stop on that gate themselves); a preflight failure (3) or any other error blocks every chunk.
+# C2 is reported only (each 2d job gates its own model).
 # =======================================================================================
 
 export RB_CLUSTER=fir
@@ -48,15 +49,17 @@ rb_stage plan_2d      python -m experiments.run_phase2d_pooled --plan           
 rb_stage plan_2e      python -m experiments.run_phase2e_noncontig --plan --check-inputs  || FAIL=1
 rb_stage plan_2f      python -m experiments.run_phase2f_source_scaling --plan --check-inputs || FAIL=1
 
-rb_stage gpu_2c_smoke env CUBLAS_WORKSPACE_CONFIG=:4096:8 \
-    python -m experiments.run_phase2_lodo --smoke --device cuda --fail-on-error           || FAIL=1
-
 rb_stage gpu_2f_n1 env CUBLAS_WORKSPACE_CONFIG=:4096:8 \
     python -m experiments.run_phase2f_source_scaling --device cuda --fail-on-error \
         --targets m5 --n 1 \
         --output-root results/three_model_phase2f_source_scaling_smoke \
         --adapter-root "$SCRATCH/chronos2/phase2f_source_scaling_smoke/adapters"
 RC_2F=$?
+case "$RC_2F" in
+    0) ;;
+    4) echo "2f fit reproduction did NOT hold on this GPU (exit 4): reported; 2f chunks gate it" ;;
+    *) echo "2f smoke failed (exit $RC_2F): blocking"; FAIL=1 ;;
+esac
 
 # 2d mirrors the Phase-1 environment: NO deterministic-cuBLAS setting
 rb_stage gpu_2d_checks env -u CUBLAS_WORKSPACE_CONFIG \
