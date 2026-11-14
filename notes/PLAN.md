@@ -2261,3 +2261,83 @@ the new Phase 2f files is byte-identical to 9bd5cd1, and the queued 2c / 2d / 2e
 partition, TRES). They will record affd819 as their commit when they start; their code is the
 9bd5cd1 code. Purge list (2026-10-02): no 2f input listed; its 83 hf_cache entries are raw dataset
 downloads, lock and `.no_exist` files, not the Chronos-2 checkpoint (present, 478 MB).
+
+---
+
+# FIR (H100) COPY OF THE REBUTTAL RUNS 2c / 2d / 2e / 2f (2026-11-14)
+
+**Why.** The four Narval jobs (9229954 2c, 9229962 2d, 9229964 2e, 9253740 2f) had been pending
+since 11-12/13 (ReqNodeNotAvail / Priority; Slurm start estimate 11-15 14:46 EST). The deadline is
+11-18. Fir runs an independent copy. **The Narval jobs were not touched** (no cancel, no modify);
+whichever cluster finishes a phase first provides it, and the overlap is decided by hand.
+
+**Same code, same protocol, same inputs; only the job layer differs** (`fir/`, see `fir/README.md`):
+- code: the Fir clone is commit `a646e06` (= the Narval code `affd819` + `fir/` + PLAN; every
+  driver, test and Narval job script is byte-identical);
+- venv: rebuilt on Fir from the Alliance wheelhouse + 6 PyPI pins; `pip freeze` is identical to the
+  Narval venv (only the arrow module's own pyarrow 24.0.0 is listed in addition). Fir's CVMFS stack
+  is x86-64-v4 (AVX-512) where Narval's is v3, so CPU-side floats may differ in the last bits;
+- inputs: copied from Narval scratch with the SAME paths: the 42 Chronos-2 K=4 cache files the
+  committed H3 cells record as inputs, the 168 H3 `noa__` adapters, the Phase-1 windows, the
+  TimesFM-3 / TiRex Phase-1 caches, the OOD shards and the checkpoints. Stream sha256 checked on
+  both ends, file sizes against the Narval listings, content by the drivers' own gates.
+
+**Fir specifics found on 11-14.**
+- **login1 is unusable:** every binary there dies with SIGBUS. Plain `ssh fir` can land on it.
+  Slurm commands still work from it, so all setup ran as `srun` steps on compute nodes.
+- **Compute nodes have internet,** but GitHub ran at ~55 KB/s, so the repo was shipped as a
+  depth-1 sparse partial clone of the exact commit.
+- **Accounts:** `def-irina` maps to `def-irina_gpu` / `def-irina_cpu`.
+- **GPU fairshare is low:** 0.098, because the group's Fir GPU usage is ~8× its share.
+- **Start estimates for ≤ 3 h jobs:**
+  - H100 3g.40gb MIG slice: 08:03–08:34 MST;
+  - full H100: 10:22 MST;
+  - 12 h and 24 h jobs: much later.
+
+**Jobs:** every job ≤ 3 h. The cells are split into disjoint chunks (the drivers' own selectors):
+
+| phase | chunks | split |
+|---|---|---|
+| 2c | 7 | depth × target half; plus sibling_included |
+| 2f | 4 | one per target |
+| 2d | 3 | one per backbone, each gated by its own one-batch check and native-refit preflight |
+| 2e | 3 | 4 / 5 / 5 datasets; the latency stage in group A only, on a full H100, H100 timings |
+
+- **GPU shape:** all chunks except 2e group A run on an H100 3g.40gb slice: 60 of the 132 SMs
+  (~A100-class FP32), and 40 GB, the same memory as Narval's A100-40GB.
+- **Aggregation:** one CPU aggregation job per phase follows timeout continuations, then builds
+  the tables and report. It stages the archive only if every chunk ends COMPLETED 0:0.
+- **Order:** CPU validation job, then a GPU smoke (2f N = 1 fit reproduction vs the A100 H3 fits,
+  plus the 2d identity checks), then the chunks with `afterok` on the smoke.
+- **Ledger:** `results/fir_submissions.tsv` on Fir.
+
+**Hardware caveat for the write-up:** Fir numbers come from H100 (mostly MIG) instead of A100.
+- The fits are FP32 with TF32 off on both clusters.
+- Every reproduction gate compares against the committed A100 artifacts at the unchanged
+  tolerances.
+- The 2e latency on Fir is an H100 measurement; do not mix it with the paper's A100 latency
+  table.
+
+**SUBMITTED on Fir, 2026-11-14 ~06:15 MST** (from `/scratch/eserebri/repos/chronos2-layerwise-probing`
+at `a646e06`, via an `srun` step; ledger `results/fir_submissions.tsv`).
+
+- **CPU validation** ran on a compute node before any submission and PASSED:
+  - all five model-free suites (job machinery, 2c, 2d, 2e, 2f);
+  - all four `--plan` runs (2c 48, 2d 42, 2e 168 mask cells / 14 datasets, 2f 40), with
+    `--check-inputs` for 2e and 2f;
+  - 229 core input files, sizes identical to Narval;
+  - core stream sha256 `5960d3a6…`, identical at both ends.
+
+| job | id | GPU | waits for |
+|---|---|---|---|
+| fir-smoke | 4019987 | 3g.40gb | none |
+| fir-p2c-L4-a/b, L6-a/b, L9-a/b, sib | 4019989–4019995 | 3g.40gb | afterok smoke |
+| fir-p2f-LOOP / London / BOOM / M5 | 4019997–4020000 | 3g.40gb | afterok smoke |
+| fir-p2d-chronos2 / timesfm3 / tirex | 4020005, 4020006, 4020008 | 3g.40gb | afterok smoke + 2d transfer (4019468) |
+| fir-p2e-A (datasets 1–4 + latency) | 4020010 | full H100 | afterok smoke |
+| fir-p2e-B / C | 4020011, 4020012 | 3g.40gb | afterok smoke |
+| fir-agg-2c / 2f / 2d / 2e (CPU) | 4019996, 4020001, 4020009, 4020013 | none | afterany: their chunks |
+
+The Narval jobs were re-checked after submission: unchanged (state, limit, submit time, command,
+workdir, `gres/gpu:a100:1`). **Overlap rule:** if both clusters run the same phase, keep both
+trees separate; pick one complete set per phase, and record the cluster in the write-up.
