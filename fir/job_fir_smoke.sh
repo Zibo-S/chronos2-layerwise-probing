@@ -1,9 +1,9 @@
 #!/bin/bash
 #SBATCH --account=def-irina          # Fir maps it to def-irina_gpu for a GPU request
-#SBATCH --gpus-per-node=h100:1       # ONE FULL H100 80GB: the production hardware
+#SBATCH --gpus-per-node=h100:1       # fir/submit_fir.sh requests the chunks' GPU shape (3g.40gb)
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=48G
-#SBATCH --time=01:15:00
+#SBATCH --time=01:00:00
 #SBATCH --output=results/fir_smoke/logs/%x-%j.out
 #SBATCH --error=results/fir_smoke/logs/%x-%j.err
 
@@ -13,8 +13,9 @@ set -uo pipefail
 # FIR SMOKE: is this Fir setup (venv, copied inputs, H100) able to run Phases 2c / 2d / 2e / 2f?
 # Writes ONLY to smoke trees (never to a production results tree or adapter directory).
 #
-#   A. model-free contracts of all four phases + the shared job machinery
-#   B. every driver's --plan (and --check-inputs): the copied inputs resolve and validate
+#   A. (CPU, before this job: fir/job_fir_validate_cpu.sh) model-free contracts of all four
+#      phases + the job machinery, every driver's --plan / --check-inputs, the input sizes
+#   B. every driver's --plan (and --check-inputs) again, on the GPU node
 #   C. GPU, real Chronos-2 checkpoint, the PRODUCTION code paths:
 #      C1 2c --smoke: Electricity x L9, main protocol, real 1500 epochs: the preflight gates
 #         (full model vs Phase 1 + H3, hard cut + dataset-specific adapter vs H3), one pooled
@@ -23,7 +24,7 @@ set -uo pipefail
 #         its single source (same wd and epoch, val 1e-4, hard-cut val 1e-6).
 #      C3 2d one-batch identity checks, all three backbones (real extraction vs the A100
 #         Phase-1 caches, tolerance 1e-3 of the layer std).
-# EXIT 0 iff A, B and C1 pass. C2 / C3 are reported (the production jobs re-run them as gates).
+# EXIT 0 iff B and C1 pass. C2 / C3 are reported (the production jobs re-run them as gates).
 # =======================================================================================
 
 export RB_CLUSTER=fir
@@ -42,12 +43,6 @@ EOF
 cat "$RB_REC/torch_cuda.txt"
 
 FAIL=0
-rb_stage tests_jobs   bash tests/test_job_rebuttal_common.sh          || FAIL=1
-rb_stage tests_2c     python -m tests.test_phase2_lodo               || FAIL=1
-rb_stage tests_2d     python -m tests.test_phase2d_pooled            || FAIL=1
-rb_stage tests_2e     python -m tests.test_phase2e_noncontig         || FAIL=1
-rb_stage tests_2f     python -m tests.test_phase2f_source_scaling    || FAIL=1
-
 rb_stage plan_2c      python -m experiments.run_phase2_lodo --plan                       || FAIL=1
 rb_stage plan_2d      python -m experiments.run_phase2d_pooled --plan                    || FAIL=1
 rb_stage plan_2e      python -m experiments.run_phase2e_noncontig --plan --check-inputs  || FAIL=1

@@ -66,7 +66,9 @@ for j in "${CHUNKS[@]}"; do
 done
 if [ ${#WAIT[@]} -gt 0 ]; then
     dep=$(IFS=:; echo "${WAIT[*]}")
-    nxt=$(sbatch --parsable --dependency="afterany:$dep" --job-name="${SLURM_JOB_NAME:-fir-agg-$PHASE}" \
+    unset_args=()
+    for v in $(compgen -e | grep -E '^(SLURM|SBATCH)_'); do unset_args+=(-u "$v"); done
+    nxt=$(env "${unset_args[@]}" sbatch --parsable --dependency="afterany:$dep" --job-name="${SLURM_JOB_NAME:-fir-agg-$PHASE}" \
           --output="results/fir_logs/%x-%j.out" --error="results/fir_logs/%x-%j.err" \
           fir/job_fir_aggregate.sh "$PHASE" "${FINAL[@]}" 2>&1)
     echo "continuations still running (${WAIT[*]}): aggregation resubmitted as $nxt"
