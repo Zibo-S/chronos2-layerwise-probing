@@ -2341,3 +2341,12 @@ at `a646e06`, via an `srun` step; ledger `results/fir_submissions.tsv`).
 The Narval jobs were re-checked after submission: unchanged (state, limit, submit time, command,
 workdir, `gres/gpu:a100:1`). **Overlap rule:** if both clusters run the same phase, keep both
 trees separate; pick one complete set per phase, and record the cluster in the write-up.
+
+**Smoke gate released (2026-11-14 ~07:45 MST, user decision).** Fir's GPU queue was saturated:
+- ~4,070 other pending GPU jobs, ~2,900 of them with higher priority (314 on 3g.40gb);
+- start estimates slipping about 1 h per hour.
+
+The `afterok` dependency on the smoke (4019987) was cleared on all 17 chunk jobs, so they compete
+for GPUs now instead of after the smoke. Each chunk still runs its own model-free tests, plan and
+reproduction gates before any fit. The smoke stays queued as an early check; the aggregates still
+wait for their chunks.
