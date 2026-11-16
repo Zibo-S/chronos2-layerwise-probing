@@ -2350,3 +2350,39 @@ The `afterok` dependency on the smoke (4019987) was cleared on all 17 chunk jobs
 for GPUs now instead of after the smoke. Each chunk still runs its own model-free tests, plan and
 reproduction gates before any fit. The smoke stays queued as an early check; the aggregates still
 wait for their chunks.
+
+**Fir smoke result (job 4019987; ran 2026-11-15 15:57-16:01 MST on an H100 3g.40gb slice; 4 min).**
+The required part passed: torch 2.12.1 / CUDA 13.2 on the H100, and all four `--plan` runs. Both
+A100-reproduction checks failed:
+- **2f N = 1 fit reproduction: FAIL (exit 4)** on the first cell (target M5, source BOOM, L6).
+  - Same inputs: epoch-0 criterion equal to 1.1e-7 (tolerance 1e-6); same selected epoch (175).
+  - Selected decay 1 vs H3's 0. The three smallest decays end within 0.03% of each other, a
+    near tie that different rounding can flip.
+  - Selected val criterion differs by 1.3e-4 (tolerance 1e-4); BOOM's own test MASE 1.0332 vs
+    H3 1.0318 (0.13%; tolerance 0.01%). Single checkpoints of the val curves differ by up to
+    5-14%, mostly in the noisy later epochs.
+  - Reading: the same fit with different GPU rounding. An H100 cannot reproduce the A100 fits
+    at the pre-registered tolerances.
+- **2d one-batch identity:** Chronos-2 PASS (5.3e-6 of the layer std), TimesFM-3 PASS (4.0e-5),
+  **TiRex FAIL (0.103 of std; tolerance 1e-3).** TiRex's bf16 recurrence gives different
+  states on a different GPU, so its pooled states cannot be paired with the A100 native cells.
+
+**2e group B (job 4020011; 2026-11-15 18:56-19:40 MST): COMPLETED.**
+- 60/60 mask cells, 0 failed, for SG Carpark, Coastal T-S, BOOM, LOOP Seattle and
+  Electricity 15min.
+- Every dataset gate passed: full-mask states vs L12 at most 1.1e-5 of the std; physical full
+  model == unmodified.
+- The 15 prefix cells were reused from H3; V3 ok on every cell; weights unchanged.
+- Tables wait for the 2e aggregate, which also needs groups A and C.
+
+**Consequence on Fir (2026-11-15 23:18 MST).**
+- Held with `scontrol hold`, pending the user's decision: the four 2f chunks (4019997-4020000)
+  and 2d TiRex (4020008). Under the unchanged gates they can only stop at the gate; 2f and the
+  TiRex part of 2d stay with Narval (9253740, 9229962). Priority on Fir is ~99.9% fairshare (age
+  587 of 529,339), so holding or resubmitting costs no queue position.
+- Still queued, gates expected to pass: 2c (7 chunks), 2e A and C. Also 2d Chronos-2 and
+  TimesFM-3, whose native-refit preflight (1e-4 vs the A100 curve) has not been tried on an H100.
+- **Caveat for every Fir fit** (2c pooled adapters, 2e non-prefix adapters): these are H100 fits.
+  The smoke measured the cross-GPU fit difference at ~0.1% of test MASE, plus occasional flips
+  of near-tied decay choices. State it beside any Fir number; comparisons with the A100 H3
+  adapters carry this term.
