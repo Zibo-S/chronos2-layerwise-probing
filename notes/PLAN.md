@@ -2356,7 +2356,7 @@ The required part passed: torch 2.12.1 / CUDA 13.2 on the H100, and all four `--
 A100-reproduction checks failed:
 - **2f N = 1 fit reproduction: FAIL (exit 4)** on the first cell (target M5, source BOOM, L6).
   - Same inputs: epoch-0 criterion equal to 1.1e-7 (tolerance 1e-6); same selected epoch (175).
-  - Selected decay 1 vs H3's 0. The three smallest decays end within 0.03% of each other, a
+  - Selected decay 1 vs H3's 0. The three smallest decays end within 0.04% of each other, a
     near tie that different rounding can flip.
   - Selected val criterion differs by 1.3e-4 (tolerance 1e-4); BOOM's own test MASE 1.0332 vs
     H3 1.0318 (0.13%; tolerance 0.01%). Single checkpoints of the val curves differ by up to
