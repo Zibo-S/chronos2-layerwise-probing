@@ -43,7 +43,11 @@ MODEL_NAME = {"chronos2": "Chronos-2", "timesfm3": "TimesFM-3", "tirex": "TiRex"
 MACRO_MODEL = {"chronos2": "ChronosTwo", "timesfm3": "TimesFMThree", "tirex": "TiRex"}
 ARM_ORDER = (p2d.ARM_NATIVE, p2d.ARM_CONCAT, p2d.ARM_POOLED, p2d.ARM_NATIVE_MEAN)
 ARM_LABEL = {"native": "Architecture-aware (native)", "concat": "Native states, concatenated",
-             "pooled": "Content mean (generic)", "native_mean": "Native states, averaged"}
+             "pooled": "Content mean (generic)", "native_mean": "Native-state mean"}
+# The paper figure (pooled_curves_main) shows only the readouts the appendix interprets: the
+# concatenated-state control is left out there (its Chronos-2 fit fails, see notes/PLAN.md) but
+# stays in the per-model diagnostic figures and in every table.
+MAIN_FIGURE_ARMS = (p2d.ARM_NATIVE, p2d.ARM_POOLED, p2d.ARM_NATIVE_MEAN)
 ARM_SHORT = {"native": "Native", "concat": "Concat", "pooled": "Pooled",
              "native_mean": "Nat.\\,mean"}
 MACRO_ARM = {"native": "Native", "concat": "Concat", "pooled": "Pooled",
@@ -407,7 +411,12 @@ def _save(fig, out_dir: Path, stem: str) -> list[str]:
     return [str(p) for p in paths]
 
 
-def _panel(ax, cell, model, title, show_x=True, compact=False):
+def _paper_label(label: str) -> str:
+    """The paper calls depth 0 (the input embedding) L0, as make_recoverability_figures does."""
+    return "L0" if label == "Emb" else label
+
+
+def _panel(ax, cell, model, title, show_x=True, compact=False, arms=ARM_ORDER):
     spec = phase1.model_spec(model)
     if cell is None:
         ax.text(0.5, 0.5, "PENDING", transform=ax.transAxes, ha="center", va="center",
@@ -417,7 +426,7 @@ def _panel(ax, cell, model, title, show_x=True, compact=False):
         ax.set_title(title, pad=2)
         return
     x = np.arange(spec.n_depth_points)
-    for a in ARM_ORDER:
+    for a in arms:
         cv = curves_of(cell, a)
         if cv is None:
             continue
@@ -430,7 +439,8 @@ def _panel(ax, cell, model, title, show_x=True, compact=False):
                     ls="none", zorder=5)
     step = 4 if spec.n_depth_points > 14 else 3 if compact else 2
     ax.set_xticks(x[::step])
-    ax.set_xticklabels(spec.depth_labels[::step] if show_x else [], fontsize=6)
+    ax.set_xticklabels([_paper_label(lb) for lb in spec.depth_labels[::step]] if show_x else [],
+                       fontsize=6)
     ax.grid(axis="y", color="#E6E6E6", lw=0.5)
     ax.set_axisbelow(True)
     for sp_ in ("top", "right"):
@@ -438,9 +448,9 @@ def _panel(ax, cell, model, title, show_x=True, compact=False):
     ax.set_title(title, pad=2)
 
 
-def _legend_handles(models):
+def _legend_handles(models, arms=ARM_ORDER):
     from matplotlib.lines import Line2D
-    arms = [a for a in ARM_ORDER if any(a in _arms(m) for m in models)]
+    arms = [a for a in arms if any(a in _arms(m) for m in models)]
     h = [Line2D([], [], color=ARM_STYLE[a][0], ls=ARM_STYLE[a][1], marker=ARM_STYLE[a][2],
                 ms=3, lw=1.1, label=ARM_LABEL[a]) for a in arms]
     h.append(Line2D([], [], color="#555555", marker="o", ms=5, mfc="white", ls="none",
@@ -462,10 +472,12 @@ def figures(cells, models, tags, main_datasets, out_dir: Path) -> list[str]:
             for i, m in enumerate(models):
                 for j, t in enumerate(main):
                     _panel(axes[i, j], cells[(m, t)], m,
-                           registry.display_name(t) if i == 0 else "", show_x=True)
+                           registry.display_name(t) if i == 0 else "", show_x=True,
+                           arms=MAIN_FIGURE_ARMS)
                 axes[i, 0].set_ylabel(f"{MODEL_NAME[m]}\ntest loss (Q=9)")
             axes[-1, len(main) // 2].set_xlabel("Block depth", fontsize=7.5)
-            fig.legend(handles=_legend_handles(models), loc="outside lower center", ncol=3,
+            fig.legend(handles=_legend_handles(models, MAIN_FIGURE_ARMS),
+                       loc="outside lower center", ncol=2,
                        frameon=False, fontsize=7)
             written += _save(fig, out_dir, "pooled_curves_main")
         for m in models:
