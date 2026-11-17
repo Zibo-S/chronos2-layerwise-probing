@@ -1,0 +1,92 @@
+{
+  "protocol": "phase2d-pooled/v1",
+  "kind": "phase2d_pooled",
+  "model": "timesfm3",
+  "dataset": "monash_traffic",
+  "arms": [
+    "pooled"
+  ],
+  "C": 512,
+  "H": 64,
+  "quantile_set": "q9",
+  "quantiles": [
+    0.1,
+    0.2,
+    0.3,
+    0.4,
+    0.5,
+    0.6,
+    0.7,
+    0.8,
+    0.9
+  ],
+  "suite": "paper14",
+  "seed": 0,
+  "boot_b": 5000,
+  "tunnel_definition": "sustained_suffix_v1",
+  "tunnel_tol": 0.05,
+  "tunnel_tols": [
+    0.01,
+    0.02,
+    0.05,
+    0.1
+  ],
+  "probe_epochs": 300,
+  "probe_lr": 0.01,
+  "wd_grid": [
+    1e-05,
+    0.0001,
+    0.001,
+    0.01,
+    0.1,
+    0.3,
+    1.0,
+    3.0,
+    10.0,
+    30.0,
+    45.0,
+    65.0,
+    90.0
+  ],
+  "phase1_root": "results/three_model_phase1_q9_expanded",
+  "phase1_config_hash": "sha256:1bc1119c7873fe079295031c4544e6dea9817896ff8a6c8a949233e1834ab8b4",
+  "phase1_window_digest": "sha256:038eaf0f24540d708ec5b35b530b87723fc196518b80c2e441e2127aac813817",
+  "phase1_extraction": {
+    "checkpoint": "google/timesfm-3.0-pytorch",
+    "extract_batch_size": 64,
+    "feature_dtype": "float32",
+    "detrend": true,
+    "null_wd": 100.0,
+    "readout": "last_real_context_token"
+  },
+  "pooled_cache_version": "p2d-pooled-v1",
+  "pooling": {
+    "pass": "one full-context decode() pass (causal attention)",
+    "pooled_tokens": "tokens 0..15 (the 16 real context patches)",
+    "excluded_tokens": "the 2 horizon placeholder tokens (16, 17)",
+    "source": "new extraction; token 15 of the same pass checked against Phase 1"
+  },
+  "readout_params": {
+    "native": {
+      "model": "timesfm3",
+      "arm": "native",
+      "in_features": 1280,
+      "out_features": 576,
+      "n_params": 737856,
+      "head_applications_per_window": 1,
+      "train_rows_per_window": 1,
+      "description": "Linear(1280, 64*9)"
+    },
+    "pooled": {
+      "model": "timesfm3",
+      "arm": "pooled",
+      "in_features": 1280,
+      "out_features": 576,
+      "n_params": 737856,
+      "head_applications_per_window": 1,
+      "train_rows_per_window": 1,
+      "description": "Linear(1280, 64*9) on the mean of valid content tokens"
+    }
+  },
+  "config_hash": "sha256:d4cb9abffb606c46b4c6b5b695ff097f99df08fae9cc4983a1e115bc577215e3"
+}

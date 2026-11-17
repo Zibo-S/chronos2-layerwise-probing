@@ -1,0 +1,49 @@
+{
+  "window_digest": "sha256:adce7921407c90694f539e6d871e907e8a99b6430307b66e0d9f199bb906e5f0",
+  "native_reproduction": {
+    "max_rel_val_curve": 0.0,
+    "max_rel_test_curve": 0.0,
+    "rtol": 1e-06,
+    "entrances": {
+      "tol_0.01": "L11",
+      "tol_0.02": "L11",
+      "tol_0.05": "L9",
+      "tol_0.1": "L5"
+    },
+    "entrances_from_per_window_means": {
+      "tol_0.01": "L11",
+      "tol_0.02": "L11",
+      "tol_0.05": "L9",
+      "tol_0.1": "L5"
+    },
+    "per_window_entrances_identical": true,
+    "passed": true
+  },
+  "data": {
+    "tokens": {
+      "train": {
+        "n_windows": 1394,
+        "valid_tokens_per_window": 32,
+        "first_valid_token": 0,
+        "last_valid_token": 31,
+        "n_tokens": 37
+      },
+      "val": {
+        "n_windows": 262,
+        "valid_tokens_per_window": 32,
+        "first_valid_token": 0,
+        "last_valid_token": 31,
+        "n_tokens": 37
+      },
+      "test": {
+        "n_windows": 262,
+        "valid_tokens_per_window": 32,
+        "first_valid_token": 0,
+        "last_valid_token": 31,
+        "n_tokens": 37
+      }
+    },
+    "content_mean_equals_masked_mean": "every window has all 32 context patches fully observed, so the cached unmasked mean over [:32] IS the masked mean"
+  },
+  "row_alignment": "cluster ids equal per arm (asserted)"
+}

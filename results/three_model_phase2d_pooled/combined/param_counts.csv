@@ -1,0 +1,11 @@
+model,arm,in_features,out_features,n_params,head_applications_per_window,train_rows_per_window,description,ratio_to_native
+chronos2,native,768,144,110736,4,4,"ONE Linear(768, 9*16) shared across the K=4 native readout states",1.0
+chronos2,pooled,768,576,442944,1,1,"Linear(768, 64*9) on the mean of valid content tokens",4.0
+chronos2,concat,3072,576,1770048,1,1,"Linear(4*768, 64*9) on the K=4 native states concatenated",15.98439531859558
+chronos2,native_mean,768,576,442944,1,1,"Linear(768, 64*9) on the mean of the K=4 native readout states",4.0
+timesfm3,native,1280,576,737856,1,1,"Linear(1280, 64*9)",1.0
+timesfm3,pooled,1280,576,737856,1,1,"Linear(1280, 64*9) on the mean of valid content tokens",1.0
+tirex,native,512,288,147744,2,2,"ONE Linear(512, 9*32) shared across the K=2 native readout states",1.0
+tirex,pooled,512,576,295488,1,1,"Linear(512, 64*9) on the mean of valid content tokens",2.0
+tirex,concat,1024,576,590400,1,1,"Linear(2*512, 64*9) on the K=2 native states concatenated",3.996101364522417
+tirex,native_mean,512,576,295488,1,1,"Linear(512, 64*9) on the mean of the K=2 native readout states",2.0

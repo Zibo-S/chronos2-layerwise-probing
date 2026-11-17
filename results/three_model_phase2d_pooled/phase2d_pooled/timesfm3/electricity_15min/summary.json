@@ -1,0 +1,383 @@
+{
+  "schema": "phase2d_cell_summary/v1",
+  "protocol": "phase2d-pooled/v1",
+  "model": "timesfm3",
+  "dataset": "electricity_15min",
+  "display_name": "Electricity 15min",
+  "config_hash": "sha256:d0459aad1a7e0af8b6c0ab02094d0f52eba8f18b8fb1ba57593bffdea84e2fa2",
+  "arms": [
+    "native",
+    "pooled"
+  ],
+  "readout_params": {
+    "native": {
+      "model": "timesfm3",
+      "arm": "native",
+      "in_features": 1280,
+      "out_features": 576,
+      "n_params": 737856,
+      "head_applications_per_window": 1,
+      "train_rows_per_window": 1,
+      "description": "Linear(1280, 64*9)"
+    },
+    "pooled": {
+      "model": "timesfm3",
+      "arm": "pooled",
+      "in_features": 1280,
+      "out_features": 576,
+      "n_params": 737856,
+      "head_applications_per_window": 1,
+      "train_rows_per_window": 1,
+      "description": "Linear(1280, 64*9) on the mean of valid content tokens"
+    }
+  },
+  "pooling": {
+    "pass": "one full-context decode() pass (causal attention)",
+    "pooled_tokens": "tokens 0..15 (the 16 real context patches)",
+    "excluded_tokens": "the 2 horizon placeholder tokens (16, 17)",
+    "source": "new extraction; token 15 of the same pass checked against Phase 1"
+  },
+  "causality_note": "TimesFM-3 (causal attention) and TiRex (causal recurrence): content token j has seen only patches <= j, so the content mean mixes states conditioned on truncated history; only the last token has seen all 512 points. Chronos-2's encoder is bidirectional: every content token sees the whole context (and the forecast-slot placeholders, which carry no values).",
+  "decomposition": [
+    {
+      "step": "representation",
+      "from": "native",
+      "to": "pooled",
+      "what_changes": "TimesFM-3 only: same head and parameter count; token 15 -> mean of tokens 0..15"
+    }
+  ],
+  "tunnel_rule": {
+    "definition": "sustained_suffix_v1",
+    "headline_tolerance": 0.05,
+    "tolerances": [
+      0.01,
+      0.02,
+      0.05,
+      0.1
+    ],
+    "reference": "each arm's OWN final block (L20); validation only"
+  },
+  "per_arm": {
+    "native": {
+      "arm": "native",
+      "readout": "Linear(1280, H*Q) per representation point, reshaped horizon-major to (B, Q, 64)",
+      "params": {
+        "model": "timesfm3",
+        "arm": "native",
+        "in_features": 1280,
+        "out_features": 576,
+        "n_params": 737856,
+        "head_applications_per_window": 1,
+        "train_rows_per_window": 1,
+        "description": "Linear(1280, 64*9)"
+      },
+      "entrance": {
+        "tol_0.01": {
+          "label": "L11",
+          "depth_axis_index": 11,
+          "relative_depth": 0.55
+        },
+        "tol_0.02": {
+          "label": "L11",
+          "depth_axis_index": 11,
+          "relative_depth": 0.55
+        },
+        "tol_0.05": {
+          "label": "L1",
+          "depth_axis_index": 1,
+          "relative_depth": 0.05
+        },
+        "tol_0.1": {
+          "label": "L1",
+          "depth_axis_index": 1,
+          "relative_depth": 0.05
+        }
+      },
+      "headline_entrance": "L1",
+      "headline_depth_axis_index": 1,
+      "headline_relative_depth": 0.05,
+      "pre_final_entrance": true,
+      "final_block": {
+        "label": "L20",
+        "val_loss": 0.1678735315799713,
+        "test_loss": 0.2042963057756424,
+        "test_loss_ci": [
+          0.18496297988471866,
+          0.22673901591791223
+        ],
+        "test_mase": 1.3538897779470502,
+        "test_mase_ci": [
+          1.1965071845586424,
+          1.5281037711364358
+        ]
+      },
+      "at_entrance": {
+        "label": "L1",
+        "val_loss": 0.1623031347990036,
+        "test_loss": 0.2065628319978714,
+        "test_mase": 1.335715535962795
+      },
+      "val_argmin_point": "L18",
+      "test_argmin_point": "L18"
+    },
+    "pooled": {
+      "arm": "pooled",
+      "readout": "Linear(1280, 64*9) on the mean of valid content tokens",
+      "params": {
+        "model": "timesfm3",
+        "arm": "pooled",
+        "in_features": 1280,
+        "out_features": 576,
+        "n_params": 737856,
+        "head_applications_per_window": 1,
+        "train_rows_per_window": 1,
+        "description": "Linear(1280, 64*9) on the mean of valid content tokens"
+      },
+      "entrance": {
+        "tol_0.01": {
+          "label": "L1",
+          "depth_axis_index": 1,
+          "relative_depth": 0.05
+        },
+        "tol_0.02": {
+          "label": "L1",
+          "depth_axis_index": 1,
+          "relative_depth": 0.05
+        },
+        "tol_0.05": {
+          "label": "L1",
+          "depth_axis_index": 1,
+          "relative_depth": 0.05
+        },
+        "tol_0.1": {
+          "label": "L1",
+          "depth_axis_index": 1,
+          "relative_depth": 0.05
+        }
+      },
+      "headline_entrance": "L1",
+      "headline_depth_axis_index": 1,
+      "headline_relative_depth": 0.05,
+      "pre_final_entrance": true,
+      "final_block": {
+        "label": "L20",
+        "val_loss": 0.2674877345561981,
+        "test_loss": 0.3212438225746155,
+        "test_loss_ci": [
+          0.30220879061033823,
+          0.34353062374986537
+        ],
+        "test_mase": 2.091056022602299,
+        "test_mase_ci": [
+          1.9248493458973766,
+          2.2759868944933253
+        ],
+        "val_over_floor": 0.7425476218576497
+      },
+      "at_entrance": {
+        "label": "L1",
+        "val_loss": 0.23221604526042938,
+        "test_loss": 0.2701050937175751,
+        "test_mase": 1.752538400856212
+      },
+      "val_argmin_point": "L1",
+      "test_argmin_point": "L2",
+      "wd_at_grid_max_count": 0,
+      "constant_forecast_floor": {
+        "predictor": "per-step quantiles of the TRAIN targets (the pinball-optimal constant)",
+        "fit": "closed form \u2014 no optimizer, so no weight decay can reach or distort it",
+        "val_loss": 0.3602297370329158,
+        "test_loss": 0.34485760194654685
+      }
+    }
+  },
+  "final_block_comparisons": {
+    "native->pooled": {
+      "step": "representation",
+      "loss": {
+        "delta_abs": 0.11694751460929867,
+        "delta_abs_ci_lo": 0.10150980728230516,
+        "delta_abs_ci_hi": 0.13189675375030074,
+        "delta_rel": 0.5724406765977343,
+        "delta_rel_ci_lo": 0.46540067794390544,
+        "delta_rel_ci_hi": 0.687007013276305,
+        "direction": "to_worse"
+      },
+      "mase": {
+        "delta_abs": 0.7371662446552489,
+        "delta_abs_ci_lo": 0.6367958332571921,
+        "delta_abs_ci_hi": 0.836178896648449,
+        "delta_rel": 0.5444802499159418,
+        "delta_rel_ci_lo": 0.4425140229406862,
+        "delta_rel_ci_hi": 0.6580015290562393,
+        "direction": "to_worse"
+      }
+    }
+  },
+  "native_forecast": {
+    "loss": 0.17785848934993856,
+    "mase": 1.2037670286285254,
+    "mae": 83.30724663811398
+  },
+  "native_reproduction": {
+    "max_rel_val_curve": 1.200485610919344e-07,
+    "max_rel_test_curve": 6.832917498478253e-08,
+    "rtol": 1e-06,
+    "entrances": {
+      "tol_0.01": "L11",
+      "tol_0.02": "L11",
+      "tol_0.05": "L1",
+      "tol_0.1": "L1"
+    },
+    "entrances_from_per_window_means": {
+      "tol_0.01": "L11",
+      "tol_0.02": "L11",
+      "tol_0.05": "L1",
+      "tol_0.1": "L1"
+    },
+    "per_window_entrances_identical": true,
+    "passed": true
+  },
+  "depth_axis_labels": [
+    "Emb",
+    "L1",
+    "L2",
+    "L3",
+    "L4",
+    "L5",
+    "L6",
+    "L7",
+    "L8",
+    "L9",
+    "L10",
+    "L11",
+    "L12",
+    "L13",
+    "L14",
+    "L15",
+    "L16",
+    "L17",
+    "L18",
+    "L19",
+    "L20"
+  ],
+  "reference_label": "L20",
+  "n_test_windows": 262,
+  "n_test_clusters": 262,
+  "B": 5000,
+  "seed": 0,
+  "gates": {
+    "window_digest": "sha256:fcefaa9880cc530f7efd30129a626f145130206d89940eafd4694322ca9a7cd8",
+    "native_reproduction": {
+      "max_rel_val_curve": 1.200485610919344e-07,
+      "max_rel_test_curve": 6.832917498478253e-08,
+      "rtol": 1e-06,
+      "entrances": {
+        "tol_0.01": "L11",
+        "tol_0.02": "L11",
+        "tol_0.05": "L1",
+        "tol_0.1": "L1"
+      },
+      "entrances_from_per_window_means": {
+        "tol_0.01": "L11",
+        "tol_0.02": "L11",
+        "tol_0.05": "L1",
+        "tol_0.1": "L1"
+      },
+      "per_window_entrances_identical": true,
+      "passed": true
+    },
+    "data": {
+      "identity_token15": {
+        "train": {
+          "worst_rel_to_std": 0.0,
+          "all_bitwise": true,
+          "tol": 0.001
+        },
+        "val": {
+          "worst_rel_to_std": 0.0,
+          "all_bitwise": true,
+          "tol": 0.001
+        },
+        "test": {
+          "worst_rel_to_std": 0.0,
+          "all_bitwise": true,
+          "tol": 0.001
+        }
+      },
+      "revin": {
+        "train": {
+          "mu_max_rel": 0.0,
+          "sd_max_rel": 0.0
+        },
+        "val": {
+          "mu_max_rel": 0.0,
+          "sd_max_rel": 0.0
+        },
+        "test": {
+          "mu_max_rel": 0.0,
+          "sd_max_rel": 0.0
+        }
+      },
+      "tokens": {
+        "train": {
+          "n_windows": 1394,
+          "valid_tokens_per_window": 16,
+          "first_valid_token": 0,
+          "last_valid_token": 15,
+          "n_tokens": 18
+        },
+        "val": {
+          "n_windows": 262,
+          "valid_tokens_per_window": 16,
+          "first_valid_token": 0,
+          "last_valid_token": 15,
+          "n_tokens": 18
+        },
+        "test": {
+          "n_windows": 262,
+          "valid_tokens_per_window": 16,
+          "first_valid_token": 0,
+          "last_valid_token": 15,
+          "n_tokens": 18
+        }
+      },
+      "roundtrip": {
+        "train": 1.7054289714254593e-06,
+        "val": 1.3594650708754818e-06,
+        "test": 1.504875336491741e-06
+      }
+    },
+    "row_alignment": "cluster ids equal per arm (asserted)"
+  },
+  "provenance": {
+    "train": {
+      "phase1_cache": "/scratch/eserebri/chronos2/phase1_shared_cache/tfm3-last-token-q9-fp32-v1__paper14__electricity_15min__train__C512_H64",
+      "pooled_cache": "/scratch/eserebri/chronos2/phase2d_pooled_cache/p2d-pooled-v1__timesfm3__paper14__electricity_15min__train"
+    },
+    "val": {
+      "phase1_cache": "/scratch/eserebri/chronos2/phase1_shared_cache/tfm3-last-token-q9-fp32-v1__paper14__electricity_15min__val__C512_H64",
+      "pooled_cache": "/scratch/eserebri/chronos2/phase2d_pooled_cache/p2d-pooled-v1__timesfm3__paper14__electricity_15min__val"
+    },
+    "test": {
+      "phase1_cache": "/scratch/eserebri/chronos2/phase1_shared_cache/tfm3-last-token-q9-fp32-v1__paper14__electricity_15min__test__C512_H64",
+      "pooled_cache": "/scratch/eserebri/chronos2/phase2d_pooled_cache/p2d-pooled-v1__timesfm3__paper14__electricity_15min__test"
+    }
+  },
+  "probe_artifacts": {
+    "pooled": {
+      "probe_weights": "/scratch/eserebri/chronos2/phase2d_pooled_artifacts/timesfm3/electricity_15min/pooled__probe_weights.npz",
+      "predictions": "/scratch/eserebri/chronos2/phase2d_pooled_artifacts/timesfm3/electricity_15min/pooled__predictions.npz"
+    }
+  },
+  "phase1_cell": "/scratch/eserebri/repos/chronos2-layerwise-probing/results/three_model_phase1_q9_expanded/timesfm3/electricity_15min",
+  "timings": {
+    "load_extract_s": 18.961841821670532,
+    "fit_s": 73.51017546653748,
+    "per_arm_fit_s": {
+      "pooled": 73.5100109577179
+    },
+    "bootstrap_s": 0.4691135883331299,
+    "total_s": 93.19188094139099
+  }
+}

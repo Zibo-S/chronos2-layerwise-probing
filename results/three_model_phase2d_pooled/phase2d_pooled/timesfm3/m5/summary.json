@@ -1,0 +1,383 @@
+{
+  "schema": "phase2d_cell_summary/v1",
+  "protocol": "phase2d-pooled/v1",
+  "model": "timesfm3",
+  "dataset": "m5",
+  "display_name": "M5",
+  "config_hash": "sha256:a3db9d7128a9a092dae1ca8e6c640dc373d937dc36c415f67a0771b78c4f44c3",
+  "arms": [
+    "native",
+    "pooled"
+  ],
+  "readout_params": {
+    "native": {
+      "model": "timesfm3",
+      "arm": "native",
+      "in_features": 1280,
+      "out_features": 576,
+      "n_params": 737856,
+      "head_applications_per_window": 1,
+      "train_rows_per_window": 1,
+      "description": "Linear(1280, 64*9)"
+    },
+    "pooled": {
+      "model": "timesfm3",
+      "arm": "pooled",
+      "in_features": 1280,
+      "out_features": 576,
+      "n_params": 737856,
+      "head_applications_per_window": 1,
+      "train_rows_per_window": 1,
+      "description": "Linear(1280, 64*9) on the mean of valid content tokens"
+    }
+  },
+  "pooling": {
+    "pass": "one full-context decode() pass (causal attention)",
+    "pooled_tokens": "tokens 0..15 (the 16 real context patches)",
+    "excluded_tokens": "the 2 horizon placeholder tokens (16, 17)",
+    "source": "new extraction; token 15 of the same pass checked against Phase 1"
+  },
+  "causality_note": "TimesFM-3 (causal attention) and TiRex (causal recurrence): content token j has seen only patches <= j, so the content mean mixes states conditioned on truncated history; only the last token has seen all 512 points. Chronos-2's encoder is bidirectional: every content token sees the whole context (and the forecast-slot placeholders, which carry no values).",
+  "decomposition": [
+    {
+      "step": "representation",
+      "from": "native",
+      "to": "pooled",
+      "what_changes": "TimesFM-3 only: same head and parameter count; token 15 -> mean of tokens 0..15"
+    }
+  ],
+  "tunnel_rule": {
+    "definition": "sustained_suffix_v1",
+    "headline_tolerance": 0.05,
+    "tolerances": [
+      0.01,
+      0.02,
+      0.05,
+      0.1
+    ],
+    "reference": "each arm's OWN final block (L20); validation only"
+  },
+  "per_arm": {
+    "native": {
+      "arm": "native",
+      "readout": "Linear(1280, H*Q) per representation point, reshaped horizon-major to (B, Q, 64)",
+      "params": {
+        "model": "timesfm3",
+        "arm": "native",
+        "in_features": 1280,
+        "out_features": 576,
+        "n_params": 737856,
+        "head_applications_per_window": 1,
+        "train_rows_per_window": 1,
+        "description": "Linear(1280, 64*9)"
+      },
+      "entrance": {
+        "tol_0.01": {
+          "label": "L20",
+          "depth_axis_index": 20,
+          "relative_depth": 1.0
+        },
+        "tol_0.02": {
+          "label": "L1",
+          "depth_axis_index": 1,
+          "relative_depth": 0.05
+        },
+        "tol_0.05": {
+          "label": "Emb",
+          "depth_axis_index": 0,
+          "relative_depth": 0.0
+        },
+        "tol_0.1": {
+          "label": "Emb",
+          "depth_axis_index": 0,
+          "relative_depth": 0.0
+        }
+      },
+      "headline_entrance": "Emb",
+      "headline_depth_axis_index": 0,
+      "headline_relative_depth": 0.0,
+      "pre_final_entrance": true,
+      "final_block": {
+        "label": "L20",
+        "val_loss": 0.2773582935333252,
+        "test_loss": 0.2932572066783905,
+        "test_loss_ci": [
+          0.2778977035903834,
+          0.3097092167861788
+        ],
+        "test_mase": 1.0800363924399248,
+        "test_mase_ci": [
+          0.9773580630370728,
+          1.2030227193605598
+        ]
+      },
+      "at_entrance": {
+        "label": "Emb",
+        "val_loss": 0.2861891984939575,
+        "test_loss": 0.3018242120742798,
+        "test_mase": 1.1133023948014138
+      },
+      "val_argmin_point": "L20",
+      "test_argmin_point": "L16"
+    },
+    "pooled": {
+      "arm": "pooled",
+      "readout": "Linear(1280, 64*9) on the mean of valid content tokens",
+      "params": {
+        "model": "timesfm3",
+        "arm": "pooled",
+        "in_features": 1280,
+        "out_features": 576,
+        "n_params": 737856,
+        "head_applications_per_window": 1,
+        "train_rows_per_window": 1,
+        "description": "Linear(1280, 64*9) on the mean of valid content tokens"
+      },
+      "entrance": {
+        "tol_0.01": {
+          "label": "L20",
+          "depth_axis_index": 20,
+          "relative_depth": 1.0
+        },
+        "tol_0.02": {
+          "label": "Emb",
+          "depth_axis_index": 0,
+          "relative_depth": 0.0
+        },
+        "tol_0.05": {
+          "label": "Emb",
+          "depth_axis_index": 0,
+          "relative_depth": 0.0
+        },
+        "tol_0.1": {
+          "label": "Emb",
+          "depth_axis_index": 0,
+          "relative_depth": 0.0
+        }
+      },
+      "headline_entrance": "Emb",
+      "headline_depth_axis_index": 0,
+      "headline_relative_depth": 0.0,
+      "pre_final_entrance": true,
+      "final_block": {
+        "label": "L20",
+        "val_loss": 0.29048803448677063,
+        "test_loss": 0.3102656900882721,
+        "test_loss_ci": [
+          0.2937802415497544,
+          0.3281453596356943
+        ],
+        "test_mase": 1.1616365231318178,
+        "test_mase_ci": [
+          1.0476756709223611,
+          1.2930410594190667
+        ],
+        "val_over_floor": 1.0307605238642992
+      },
+      "at_entrance": {
+        "label": "Emb",
+        "val_loss": 0.2862446904182434,
+        "test_loss": 0.3065802752971649,
+        "test_mase": 1.1334765610068671
+      },
+      "val_argmin_point": "L1",
+      "test_argmin_point": "L1",
+      "wd_at_grid_max_count": 0,
+      "constant_forecast_floor": {
+        "predictor": "per-step quantiles of the TRAIN targets (the pinball-optimal constant)",
+        "fit": "closed form \u2014 no optimizer, so no weight decay can reach or distort it",
+        "val_loss": 0.2818191304006649,
+        "test_loss": 0.3028827649434559
+      }
+    }
+  },
+  "final_block_comparisons": {
+    "native->pooled": {
+      "step": "representation",
+      "loss": {
+        "delta_abs": 0.017008470314490876,
+        "delta_abs_ci_lo": 0.011800295175301971,
+        "delta_abs_ci_hi": 0.02292160847409133,
+        "delta_rel": 0.05799847229622368,
+        "delta_rel_ci_lo": 0.04033856424876411,
+        "delta_rel_ci_hi": 0.07770893554776366,
+        "direction": "to_worse"
+      },
+      "mase": {
+        "delta_abs": 0.08160013069189298,
+        "delta_abs_ci_lo": 0.05216828113140925,
+        "delta_abs_ci_hi": 0.1160396136952216,
+        "delta_rel": 0.07555313067511449,
+        "delta_rel_ci_lo": 0.048875299198415725,
+        "delta_rel_ci_hi": 0.10636714777858687,
+        "direction": "to_worse"
+      }
+    }
+  },
+  "native_forecast": {
+    "loss": 0.2667587627781171,
+    "mase": 0.9739977300024973,
+    "mae": 0.9608890120085574
+  },
+  "native_reproduction": {
+    "max_rel_val_curve": 1.3054020697733648e-07,
+    "max_rel_test_curve": 1.0265977690160355e-07,
+    "rtol": 1e-06,
+    "entrances": {
+      "tol_0.01": "L20",
+      "tol_0.02": "L1",
+      "tol_0.05": "Emb",
+      "tol_0.1": "Emb"
+    },
+    "entrances_from_per_window_means": {
+      "tol_0.01": "L20",
+      "tol_0.02": "L1",
+      "tol_0.05": "Emb",
+      "tol_0.1": "Emb"
+    },
+    "per_window_entrances_identical": true,
+    "passed": true
+  },
+  "depth_axis_labels": [
+    "Emb",
+    "L1",
+    "L2",
+    "L3",
+    "L4",
+    "L5",
+    "L6",
+    "L7",
+    "L8",
+    "L9",
+    "L10",
+    "L11",
+    "L12",
+    "L13",
+    "L14",
+    "L15",
+    "L16",
+    "L17",
+    "L18",
+    "L19",
+    "L20"
+  ],
+  "reference_label": "L20",
+  "n_test_windows": 262,
+  "n_test_clusters": 262,
+  "B": 5000,
+  "seed": 0,
+  "gates": {
+    "window_digest": "sha256:142420d448d06fa97a1bf901d416990660659747e740a4e426f99ade1ff9d2f8",
+    "native_reproduction": {
+      "max_rel_val_curve": 1.3054020697733648e-07,
+      "max_rel_test_curve": 1.0265977690160355e-07,
+      "rtol": 1e-06,
+      "entrances": {
+        "tol_0.01": "L20",
+        "tol_0.02": "L1",
+        "tol_0.05": "Emb",
+        "tol_0.1": "Emb"
+      },
+      "entrances_from_per_window_means": {
+        "tol_0.01": "L20",
+        "tol_0.02": "L1",
+        "tol_0.05": "Emb",
+        "tol_0.1": "Emb"
+      },
+      "per_window_entrances_identical": true,
+      "passed": true
+    },
+    "data": {
+      "identity_token15": {
+        "train": {
+          "worst_rel_to_std": 0.0,
+          "all_bitwise": true,
+          "tol": 0.001
+        },
+        "val": {
+          "worst_rel_to_std": 0.0,
+          "all_bitwise": true,
+          "tol": 0.001
+        },
+        "test": {
+          "worst_rel_to_std": 0.0,
+          "all_bitwise": true,
+          "tol": 0.001
+        }
+      },
+      "revin": {
+        "train": {
+          "mu_max_rel": 0.0,
+          "sd_max_rel": 0.0
+        },
+        "val": {
+          "mu_max_rel": 0.0,
+          "sd_max_rel": 0.0
+        },
+        "test": {
+          "mu_max_rel": 0.0,
+          "sd_max_rel": 0.0
+        }
+      },
+      "tokens": {
+        "train": {
+          "n_windows": 1394,
+          "valid_tokens_per_window": 16,
+          "first_valid_token": 0,
+          "last_valid_token": 15,
+          "n_tokens": 18
+        },
+        "val": {
+          "n_windows": 262,
+          "valid_tokens_per_window": 16,
+          "first_valid_token": 0,
+          "last_valid_token": 15,
+          "n_tokens": 18
+        },
+        "test": {
+          "n_windows": 262,
+          "valid_tokens_per_window": 16,
+          "first_valid_token": 0,
+          "last_valid_token": 15,
+          "n_tokens": 18
+        }
+      },
+      "roundtrip": {
+        "train": 1.6996884894776271e-06,
+        "val": 1.7334191625966945e-06,
+        "test": 8.993196690064998e-07
+      }
+    },
+    "row_alignment": "cluster ids equal per arm (asserted)"
+  },
+  "provenance": {
+    "train": {
+      "phase1_cache": "/scratch/eserebri/chronos2/phase1_shared_cache/tfm3-last-token-q9-fp32-v1__paper14__m5__train__C512_H64",
+      "pooled_cache": "/scratch/eserebri/chronos2/phase2d_pooled_cache/p2d-pooled-v1__timesfm3__paper14__m5__train"
+    },
+    "val": {
+      "phase1_cache": "/scratch/eserebri/chronos2/phase1_shared_cache/tfm3-last-token-q9-fp32-v1__paper14__m5__val__C512_H64",
+      "pooled_cache": "/scratch/eserebri/chronos2/phase2d_pooled_cache/p2d-pooled-v1__timesfm3__paper14__m5__val"
+    },
+    "test": {
+      "phase1_cache": "/scratch/eserebri/chronos2/phase1_shared_cache/tfm3-last-token-q9-fp32-v1__paper14__m5__test__C512_H64",
+      "pooled_cache": "/scratch/eserebri/chronos2/phase2d_pooled_cache/p2d-pooled-v1__timesfm3__paper14__m5__test"
+    }
+  },
+  "probe_artifacts": {
+    "pooled": {
+      "probe_weights": "/scratch/eserebri/chronos2/phase2d_pooled_artifacts/timesfm3/m5/pooled__probe_weights.npz",
+      "predictions": "/scratch/eserebri/chronos2/phase2d_pooled_artifacts/timesfm3/m5/pooled__predictions.npz"
+    }
+  },
+  "phase1_cell": "/scratch/eserebri/repos/chronos2-layerwise-probing/results/three_model_phase1_q9_expanded/timesfm3/m5",
+  "timings": {
+    "load_extract_s": 24.728206396102905,
+    "fit_s": 73.76582312583923,
+    "per_arm_fit_s": {
+      "pooled": 73.76566624641418
+    },
+    "bootstrap_s": 0.4602530002593994,
+    "total_s": 99.50309109687805
+  }
+}

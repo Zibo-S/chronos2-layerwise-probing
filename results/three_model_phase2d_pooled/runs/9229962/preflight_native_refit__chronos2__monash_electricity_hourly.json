@@ -1,0 +1,50 @@
+{
+  "model": "chronos2",
+  "dataset": "monash_electricity_hourly",
+  "val_curve_max_rel_diff": 0.0,
+  "test_curve_max_rel_diff": 0.0,
+  "entrances_refit": {
+    "tol_0.01": "L11",
+    "tol_0.02": "L11",
+    "tol_0.05": "L9",
+    "tol_0.1": "L5"
+  },
+  "entrances_committed": {
+    "tol_0.01": "L11",
+    "tol_0.02": "L11",
+    "tol_0.05": "L9",
+    "tol_0.1": "L5"
+  },
+  "wd_identical_points": 14,
+  "n_points": 14,
+  "status": "pass",
+  "criterion": "val curve within 1e-4 relative AND identical entrances at all tols",
+  "data_gates": {
+    "tokens": {
+      "train": {
+        "n_windows": 1394,
+        "valid_tokens_per_window": 32,
+        "first_valid_token": 0,
+        "last_valid_token": 31,
+        "n_tokens": 37
+      },
+      "val": {
+        "n_windows": 262,
+        "valid_tokens_per_window": 32,
+        "first_valid_token": 0,
+        "last_valid_token": 31,
+        "n_tokens": 37
+      },
+      "test": {
+        "n_windows": 262,
+        "valid_tokens_per_window": 32,
+        "first_valid_token": 0,
+        "last_valid_token": 31,
+        "n_tokens": 37
+      }
+    },
+    "content_mean_equals_masked_mean": "every window has all 32 context patches fully observed, so the cached unmasked mean over [:32] IS the masked mean"
+  },
+  "seconds": 50.7,
+  "role": "production preflight gate: on FAIL none of this model's cells are run (the other models continue; the job exits non-zero)"
+}

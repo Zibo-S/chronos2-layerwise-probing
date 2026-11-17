@@ -1,0 +1,80 @@
+{
+  "schema": "phase2d_run_manifest/v1",
+  "protocol": "phase2d-pooled/v1",
+  "command_line": "/scratch/eserebri/repos/chronos2-layerwise-probing/experiments/run_phase2d_pooled.py --device cuda --one-batch-checks chronos2 timesfm3 tirex --refit-native-preflight",
+  "started": "2026-11-16T02:03:20",
+  "models": [
+    "chronos2",
+    "timesfm3",
+    "tirex"
+  ],
+  "datasets": [
+    "m4_hourly",
+    "monash_electricity_hourly",
+    "uber_tlc_hourly",
+    "wind_farms_hourly",
+    "sg_carpark",
+    "coastal_ts",
+    "boom_hourly",
+    "LOOP_SEATTLE_5T",
+    "electricity_15min",
+    "SZ_TAXI_15T",
+    "monash_london_smart_meters",
+    "m5",
+    "wiki_daily_100k",
+    "monash_traffic"
+  ],
+  "git": {
+    "commit": "affd819584aa3e5cc452b7cb6e7265cca431b3bb",
+    "branch": "rebuttal",
+    "dirty": true,
+    "dirty_files": [
+      ".venv",
+      "results/three_model_phase2_lodo/",
+      "results/three_model_phase2d_pooled/",
+      "results/three_model_phase2e_noncontig/"
+    ]
+  },
+  "environment": {
+    "timestamp_utc": "2026-11-16T07:03:20+00:00",
+    "hostname": "ng30705",
+    "platform": "Linux-5.14.0-687.61.1.el9_8.x86_64-x86_64-AMD_EPYC_7413_24-Core_Processor-with-glibc2.37",
+    "python": "3.11.5",
+    "torch": "2.12.1",
+    "numpy": "1.26.4",
+    "sklearn": "1.7.1+computecanada",
+    "timesfm": "3.0.2",
+    "tirex-ts": "1.4.2",
+    "chronos": "2.3.1",
+    "datasets": "5.0.0+computecanada",
+    "gpu": "NVIDIA A100-SXM4-40GB",
+    "cuda": "13.2",
+    "device_requested": "cuda",
+    "slurm_job_id": "9229962",
+    "slurm_nodelist": "ng30705",
+    "cpus_per_task": "4",
+    "omp_num_threads": "4",
+    "hf_home": "/scratch/eserebri/chronos2/hf_cache",
+    "command_line": "/scratch/eserebri/repos/chronos2-layerwise-probing/experiments/run_phase2d_pooled.py --device cuda --one-batch-checks chronos2 timesfm3 tirex --refit-native-preflight",
+    "git": {
+      "commit": "affd819584aa3e5cc452b7cb6e7265cca431b3bb",
+      "branch": "rebuttal",
+      "dirty": true,
+      "dirty_files": [
+        ".venv",
+        "results/three_model_phase2_lodo/",
+        "results/three_model_phase2d_pooled/",
+        "results/three_model_phase2e_noncontig/"
+      ]
+    }
+  },
+  "paths": {
+    "output_root": "/scratch/eserebri/repos/chronos2-layerwise-probing/results/three_model_phase2d_pooled",
+    "phase1_root": "/scratch/eserebri/repos/chronos2-layerwise-probing/results/three_model_phase1_q9_expanded",
+    "window_cache": "/scratch/eserebri/chronos2/phase1_shared_windows",
+    "phase1_cache_root": "/scratch/eserebri/chronos2/phase1_shared_cache",
+    "chronos2_cache_dir": "None",
+    "pooled_cache_root": "/scratch/eserebri/chronos2/phase2d_pooled_cache",
+    "artifact_root": "/scratch/eserebri/chronos2/phase2d_pooled_artifacts"
+  }
+}

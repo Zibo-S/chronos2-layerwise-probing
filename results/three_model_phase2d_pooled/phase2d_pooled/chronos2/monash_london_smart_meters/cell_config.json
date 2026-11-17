@@ -1,0 +1,111 @@
+{
+  "protocol": "phase2d-pooled/v1",
+  "kind": "phase2d_pooled",
+  "model": "chronos2",
+  "dataset": "monash_london_smart_meters",
+  "arms": [
+    "pooled",
+    "concat",
+    "native_mean"
+  ],
+  "C": 512,
+  "H": 64,
+  "quantile_set": "q9",
+  "quantiles": [
+    0.1,
+    0.2,
+    0.3,
+    0.4,
+    0.5,
+    0.6,
+    0.7,
+    0.8,
+    0.9
+  ],
+  "suite": "paper14",
+  "seed": 0,
+  "boot_b": 5000,
+  "tunnel_definition": "sustained_suffix_v1",
+  "tunnel_tol": 0.05,
+  "tunnel_tols": [
+    0.01,
+    0.02,
+    0.05,
+    0.1
+  ],
+  "probe_epochs": 300,
+  "probe_lr": 0.01,
+  "wd_grid": [
+    1e-05,
+    0.0001,
+    0.001,
+    0.01,
+    0.1,
+    0.3,
+    1.0,
+    3.0,
+    10.0,
+    30.0,
+    45.0,
+    65.0,
+    90.0
+  ],
+  "phase1_root": "results/three_model_phase1_q9_expanded",
+  "phase1_config_hash": "sha256:da001bf8dc857b11866ec36d41d01767cfa8ee2f00fb0d3d1394b87d8129c77d",
+  "phase1_window_digest": "sha256:747ea91cc2a53a2802bba2efe6f85650a600028fb92f5b722ae614dc005c51c9",
+  "phase1_extraction": {
+    "checkpoint": "amazon/chronos-2",
+    "extract_batch_size": 128,
+    "readout": "forecast_slots_K4"
+  },
+  "pooled_cache_version": "p2d-pooled-v1",
+  "pooling": {
+    "pass": "the Phase-1 num_output_patches=4 encoder pass (bidirectional)",
+    "pooled_tokens": "context patches 0..31 (all fully observed)",
+    "excluded_tokens": "REG token (32) and the 4 forecast slots (33..36)",
+    "source": "Phase-1 K4 cache content_L* (mean over [:ncp]); no new extraction"
+  },
+  "readout_params": {
+    "native": {
+      "model": "chronos2",
+      "arm": "native",
+      "in_features": 768,
+      "out_features": 144,
+      "n_params": 110736,
+      "head_applications_per_window": 4,
+      "train_rows_per_window": 4,
+      "description": "ONE Linear(768, 9*16) shared across the K=4 native readout states"
+    },
+    "pooled": {
+      "model": "chronos2",
+      "arm": "pooled",
+      "in_features": 768,
+      "out_features": 576,
+      "n_params": 442944,
+      "head_applications_per_window": 1,
+      "train_rows_per_window": 1,
+      "description": "Linear(768, 64*9) on the mean of valid content tokens"
+    },
+    "concat": {
+      "model": "chronos2",
+      "arm": "concat",
+      "in_features": 3072,
+      "out_features": 576,
+      "n_params": 1770048,
+      "head_applications_per_window": 1,
+      "train_rows_per_window": 1,
+      "description": "Linear(4*768, 64*9) on the K=4 native states concatenated"
+    },
+    "native_mean": {
+      "model": "chronos2",
+      "arm": "native_mean",
+      "in_features": 768,
+      "out_features": 576,
+      "n_params": 442944,
+      "head_applications_per_window": 1,
+      "train_rows_per_window": 1,
+      "description": "Linear(768, 64*9) on the mean of the K=4 native readout states"
+    }
+  },
+  "config_hash": "sha256:af35635ae5f1a0a066cf4891b84860c753142fdd77a29ddbb3fdef11ca923eec"
+}
