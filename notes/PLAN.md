@@ -2599,4 +2599,43 @@ information, so native Emb sits at the constant-forecast floor by construction.
 
 **Verified 2026-11-18 (timesfm 3.0.2 source, `timesfm_2p5_torch.py` forward/decode):** the input embedding is `tokenizer = ResidualBlock` applied to each patch separately (`[normed patch, mask]`), and patch i is normalized with running mean/std over patches 0..i. Nothing mixes patches before `stacked_xf`. So the TimesFM-3 L0 state at token 15 is computed from the last 32 context values alone, normalized by the whole context's mean and std. This closes the open item behind the 96qN Q3 answer.
 
-**Rebuttal status 2026-11-18:** final reply drafts for every slot (incl. the 2g updates to 2p99 Q2/Q3 and 96qN Q1/Q3) were delivered in the session; the paper (`three_models_paper/main.tex`) has NOT been revised for 2c / 2e / 2f / 2g (user's instruction: no rewrite before the conclusions are reviewed). Paper-ready tables/figures for 2c / 2e / 2f exist only in the Narval scratch clone (`three_models_paper/figures/{lodo,source_scaling,noncontig}/`, untracked).
+**Rebuttal status 2026-11-18 (morning, superseded below):** reply drafts delivered; paper not yet revised.
+
+---
+
+# REBUTTAL REVISION (2026-11-18): answers, paper, appendices, physical check
+
+**Results committed.** `a945b1e` (from the Narval clone): 2c / 2e / 2f / 2g result trees, the 2g driver and job,
+`three_models_paper/figures/{lodo,noncontig,source_scaling}/`. Not committed: 2f raw `forecasts.npz` (61 MB,
+`.gitignore`; on scratch and in the staged archive). `ea4896f`: snapshot of the uncommitted working tree the
+submission was built from (author text of main.tex, V3 mean-rule tables, restyled figures).
+
+**Deliverables.**
+- `three_models_paper/rebuttal_answers.md`: ready-to-paste answers (2p99 Q1-Q3 + weaknesses, 96qN Q1-Q3 +
+  weaknesses, dHTD W1, Q1, Q2 = user's text unchanged, optional general comment).
+- `three_models_paper/rebuttal_main_changes.md`: every main.tex change as exact OLD -> NEW (36 items).
+- New appendices, tables inline: `appendices/{content_mean_readouts (moved verbatim), native_reference_tunnel
+  (B.1.6), timesfm3_zero_anchor (B.3.1), entrance_cut_rule (B.4.1), lodo_transfer (B.4.2), source_diversity
+  (B.4.3), noncontiguous_blocks (B.4.4), heldout_pairs (B.4.5)}.tex`.
+- Revised figures (originals kept): `figures/truncation/{h3_main_electricity_rev, h4_frontier_rev,
+  h3_depth_timesfm3_rev}.pdf` from `experiments/make_rebuttal_figures.py`.
+- Every rebuttal number: `experiments/make_rebuttal_numbers.py` -> `results/rebuttal_numbers/`.
+
+**Decisions taken in the revision.**
+- TimesFM-3 main-text results use the zero-anchored closed form; disclosed as introduced after the
+  identity-anchored test results; both fits reported (B.3.1, Table 16/17, dotted line in Fig. 11).
+- 96qN Q1 definitions (checked): DIRECT substitution of the full model into Eq. 4 (final-block readout stays in
+  the suffix) -> readout tunnel in 6/42 pairs at 5% (= exactly the 6 pairs whose final-block readout is within 5%
+  of the full model), 15/42 at 10%, 2 (1 pre-final) at 2%. The earlier draft's "8/42" was the H3
+  `compatibility_tunnel` variant, whose curve REPLACES the final-block readout by the full model (truncation
+  depths only); it adds Chronos-2 Wiki Daily and TiRex M5. Aligned pathway: both definitions coincide.
+- ICLR 2027 template: 9 pages for the initial submission, 10 for rebuttal/camera ready; the revised main text
+  ends at the top of page 10. `\clearpage` before B.1.6, B.3.1 and B.4.1 keeps floats next to their sections.
+- AI use statement extended to the review period (analysis of the TimesFM-3 fits, implementation, drafting of
+  the new appendices and main-text revisions); the "not used" sentence is scoped to the submitted version.
+
+**TimesFM-3 physical check (Phase 2g).** `experiments/run_phase2g_physical_check.py`, `job_phase2g_physical_check.sh`
+(CPU). Jobs 9761535 (all 14, roster order), 9762989 and 9762990 (disjoint subsets, to finish in time). Refits the
+zero adapter with the 2g code (same kappa required), splices it into a truncated public-API model, compares
+physical vs offline mean test MASE (V3 rule 1e-4). Output `results/three_model_phase2g_timesfm3_zero_ridge/physical/`.
+First dataset (M4): all 7 depths pass, physical vs offline <= 2.1e-6, offline == committed 2g, native 6.3e-8.

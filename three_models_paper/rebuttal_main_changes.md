@@ -97,7 +97,7 @@ Because the tunnel is referenced to the final-block readout, it does not measure
 
 ## Section 4.3, first paragraph: TimesFM-3: aligned pathway now beats the readout; the original fit overfit
 
-**Why.** Phase 2g: with the closed-form adapter shrunk toward zero instead of toward the hard cut, aligned TimesFM-3 outperforms the supervised readout at the depths of Table 3, so the statement that the readout stays closer to the full model is withdrawn. The original +48% to +70% is attributed to overfitting and kept in Appendix B.3.1.
+**Why.** Phase 2g: with the closed-form adapter shrunk toward zero instead of toward the hard cut, aligned TimesFM-3 outperforms the supervised readout at the depths of Table 2, so the statement that the readout stays closer to the full model is withdrawn. The original +48% to +70% is attributed to overfitting and kept in Appendix B.3.1.
 
 **OLD**
 
@@ -108,7 +108,7 @@ Using the hard cut and label-free affine adapter introduced in Section~\ref{sec:
 **NEW**
 
 ```latex
-Using the hard cut and label-free affine adapter introduced in Section~\ref{sec:adapter}, Figure~\ref{fig:h3_main} shows a clear separation between forecast recoverability and native-pathway compatibility. On Electricity, the hard cut never stays within 5\% of the full model before the final block, while the affine adapter closes a median 73\%, over 99\%, and 82\% of the hard-cut gap across intermediate depths for Chronos-2, TimesFM-3, and TiRex, respectively; the particularly large value for TimesFM-3 reflects its extremely poor hard-cut baseline. For all three models, the aligned pathway outperforms both the hard cut and the supervised readout $q_\ell$ used in Section~\ref{sec:results_recoverability} at every depth reported in Table~\ref{tab:h3_depth}. For TimesFM-3, this requires regularizing its closed-form adapter toward zero rather than toward the hard cut: anchored at the hard cut, which is 35 to 160 times worse than the full model, the adapter overfits its training windows and degrades by $+48\%$ to $+70\%$ at 25\% to 75\% of depth (Appendix~\ref{sec:app_timesfm3_ridge}). A nonlinear bottleneck adapter changes little relative to the affine adapter for Chronos-2 and TiRex, with a median difference of only $-0.2$ percentage points in test MASE, whereas it performs substantially worse for TimesFM-3 (Appendix~\ref{app:compatibility}).
+Using the hard cut and label-free affine adapter introduced in Section~\ref{sec:adapter}, Figure~\ref{fig:h3_main} shows a clear separation between forecast recoverability and native-pathway compatibility. On Electricity, the hard cut never stays within 5\% of the full model before the final block, while the affine adapter closes a median 73\%, over 99\%, and 82\% of the hard-cut gap across intermediate depths for Chronos-2, TimesFM-3, and TiRex, respectively; the particularly large value for TimesFM-3 reflects its extremely poor hard-cut baseline. For all three models, the aligned pathway outperforms both the hard cut and the supervised readout $q_\ell$ used in Section~\ref{sec:results_recoverability} at every depth reported in Table~\ref{tab:h3_depth}. For TimesFM-3, this requires regularizing its closed-form adapter toward zero rather than toward the hard cut: anchored at the hard cut, which is 35 to 160 times worse than the full model from L0 to L17, the adapter overfits its training windows and degrades by $+48\%$ to $+70\%$ at 25\% to 75\% of depth (Appendix~\ref{sec:app_timesfm3_ridge}). A nonlinear bottleneck adapter changes little relative to the affine adapter for Chronos-2 and TiRex, with a median difference of only $-0.2$ percentage points in test MASE, whereas it performs substantially worse for TimesFM-3 (Appendix~\ref{app:compatibility}).
 ```
 
 ## Section 4.3, second paragraph: TimesFM-3: size of the remaining gap
@@ -127,7 +127,7 @@ We conclude that \textit{recoverability precedes native-pathway compatibility in
 We conclude that \textit{recoverability precedes native-pathway compatibility in TSFMs}, and that lightweight alignment substantially improves compatibility across all three architectures. The extent of recovery is architecture-dependent: for Chronos-2 and TiRex, a depth-specific affine map can bring intermediate states close to native performance several blocks before the final one, while for TimesFM-3 the aligned pathway stays about 10\% above the full model from L1 to L14 and comes within 5\% of it on most datasets only at L18.
 ```
 
-## Figure 4 (fig:h3_main): Regenerated TimesFM-3 panel and caption
+## Figure 3 (fig:h3_main): Regenerated TimesFM-3 panel and caption
 
 **Why.** New figure file with the zero-anchored TimesFM-3 adapter (Chronos-2 and TiRex panels unchanged); the caption names the adapter. The original file is kept.
 
@@ -145,7 +145,7 @@ We conclude that \textit{recoverability precedes native-pathway compatibility in
   \caption{\textbf{Native-pathway compatibility across depth on Electricity.} Test MASE increase over the full model for the hard cut, affine-aligned pathway, and supervised probe reference. Shading marks the forecasting tunnel; bands show 95\% cluster-bootstrap intervals. The y-axis is linear to $+20\%$ and log-scaled above; triangles mark clipped values. The TimesFM-3 adapter is regularized toward zero (Appendix~\ref{sec:app_timesfm3_ridge}). Complete results are in Appendix~\ref{app:compatibility}.}
 ```
 
-## Table 3 (tab:h3_depth), caption: Which TimesFM-3 adapter; original values given
+## Table 2 (tab:h3_depth), caption: Which TimesFM-3 adapter; original values given
 
 **Why.** Transparency about the post hoc change: the caption reports the identity-anchored values that the table previously showed.
 
@@ -161,7 +161,7 @@ We conclude that \textit{recoverability precedes native-pathway compatibility in
 \caption{\textbf{Native-pathway compatibility across depth.} Median test MASE increase over the full model across 14 datasets at 25\%, 50\%, and 75\% of network depth, corresponding to L3/L6/L9 for Chronos-2 and TiRex and L5/L10/L15 for TimesFM-3. $\times$ denotes ratios to the full-model MASE. TimesFM-3 uses the zero-anchored adapter; anchored at the hard cut it gives $+69.8\%$, $+67.3\%$, and $+47.9\%$ (Appendix~\ref{sec:app_timesfm3_ridge}).}
 ```
 
-## Table 3 (tab:h3_depth), TimesFM-3 aligned row: TimesFM-3 aligned at 25 / 50 / 75% of depth
+## Table 2 (tab:h3_depth), TimesFM-3 aligned row: TimesFM-3 aligned at 25 / 50 / 75% of depth
 
 **Why.** Corrected values (Phase 2g, zero anchor). Hard cut and readout columns unchanged.
 
@@ -227,7 +227,7 @@ Because inference speed depends only on the cut depth, we compare datasets at th
 Because inference speed depends only on the cut depth, we compare datasets at the same cut according to whether that depth lies inside or before their validation-selected tunnel. Despite being defined only from layerwise readouts, without evaluating a truncated model, the tunnel stratifies truncation performance in this post hoc comparison. After L4, aligned Chronos-2 incurs a median $+2.2\%$ MASE increase on datasets for which L4 lies inside the tunnel, compared with $+14.2\%$ when it lies before the tunnel; after L6, the corresponding TiRex increases are $+4.4\%$ and $+12.3\%$. Truncation is cheaper inside the tunnel at every depth where both groups contain at least two datasets, for all three models (Table~\ref{tab:h4_tunnel_strata}), although some groups contain only two datasets and datasets whose tunnel begins early may be easier to truncate for other reasons. For TimesFM-3, the aligned pathway remains about 10\% above the full model inside the tunnel from L1 to L14, even though its tunnel begins at a median 5\% of depth, so early recoverability alone does not ensure native-pathway compatibility. Cutting each dataset at its own tunnel entrance, a rule we fixed before computing the truncation results, keeps the aligned model within 5\% of the full model on 7 of 14 datasets for Chronos-2 and 5 of 12 for TiRex, and roughly halves the worst case of a single fixed cut at a similar speed (Appendix~\ref{sec:app_entrance_rule}). Thus, the forecasting tunnel identifies datasets that better tolerate a given cut, even though its entrance need not define the best truncation depth.
 ```
 
-## Table 4 (tab:h4_operating_points), caption: Which TimesFM-3 adapter
+## Table 3 (tab:h4_operating_points), caption: Which TimesFM-3 adapter
 
 **Why.** The TimesFM-3 operating points now use the zero-anchored adapter, with offline accuracy.
 
@@ -243,7 +243,7 @@ Median test MASE increase across 14 datasets and end-to-end speedup at batch siz
 Median test MASE increase across 14 datasets and end-to-end speedup at batch size 1. For TimesFM-3 at L19, the adapter overhead slightly exceeds the saving from removing one block. TimesFM-3 uses the zero-anchored adapter, whose accuracy is computed offline (Appendix~\ref{sec:app_timesfm3_ridge}). Full layer-by-layer results are reported in Appendix~\ref{app:truncation_results}.}
 ```
 
-## Table 4 (tab:h4_operating_points), TimesFM-3 row: TimesFM-3 operating points
+## Table 3 (tab:h4_operating_points), TimesFM-3 row: TimesFM-3 operating points
 
 **Why.** Accuracy at L19 / L10 / L0 with the corrected adapter; speedups unchanged (same adapter shape).
 
@@ -263,7 +263,7 @@ Median test MASE increase across 14 datasets and end-to-end speedup at batch siz
 & L0 & $+24.3\%$ & $1.38\times$ \\
 ```
 
-## Figure 5 (fig:h4_frontier): Regenerated TimesFM-3 frontier and caption
+## Figure 4 (fig:h4_frontier): Regenerated TimesFM-3 frontier and caption
 
 **Why.** New figure file; only the TimesFM-3 aligned curve changes. The original file is kept.
 
@@ -310,7 +310,7 @@ Our readouts and adapters are deliberately simple, making our estimates of recov
 **NEW**
 
 ```latex
-Our readouts and adapters are deliberately simple, making our estimates of recoverability and compatibility conservative with respect to more expressive mappings. For TimesFM-3, the affine adapter still leaves a gap of about 10\% to the full model at intermediate depths, fails on BOOM and Wind Farms, where none of our affine fits reproduces the full model's forecasts on validation windows, and is evaluated offline (Appendix~\ref{sec:app_timesfm3_ridge}); richer alignment, for example over the full token sequence, may close more of the gap. Adapters are fitted per dataset on unlabeled windows. An adapter fitted on other datasets transfers well enough for mild truncation, but not for aggressive truncation, and fails on LOOP Seattle (Appendices~\ref{sec:app_lodo} and~\ref{sec:app_source_diversity}), so a single truncated model at each depth for all datasets remains limited to mild truncation. We also truncate contiguous prefixes only; for Chronos-2 at mild compression, skipping interior blocks while keeping the final ones is better (Appendix~\ref{sec:app_noncontig}). With 14 datasets, we can establish an association between forecast recoverability and truncation tolerance but not determine how reliably it generalizes or supports cut-depth selection. Larger benchmarks such as GIFT-Eval \citep{aksu2024giftevalbenchmarkgeneraltime} and fev-bench \citep{shchur2026fevbenchrealisticbenchmarktime} could test whether the forecasting tunnel can serve as a reliable indicator of truncation tolerance and guide cut-depth selection. Several datasets in our study are documented pretraining data for at least one model (Appendix~\ref{app:provenance}), so frozen-backbone experiments cannot fully separate generalizable structure from effects of pretraining exposure; extending the analysis to fev-bench, which is held out from the pretraining of Chronos-2 and TimesFM-3, would provide a cleaner test. Finally, we study univariate forecasting at a single context length and horizon, with speed measured on one GPU type; multivariate and covariate-aware forecasting, other horizons and context lengths, and additional hardware remain important directions for future work.
+Our readouts and adapters are deliberately simple, making our estimates of recoverability and compatibility conservative with respect to more expressive mappings. For TimesFM-3, the affine adapter still leaves a gap of about 10\% to the full model at intermediate depths, remains far from it on BOOM and Wind Farms, where none of our affine fits reproduces the full model's forecasts on validation windows, and is evaluated offline (Appendix~\ref{sec:app_timesfm3_ridge}); richer alignment, for example over the full token sequence, may close more of the gap. Adapters are fitted per dataset on unlabeled windows. An adapter fitted on other datasets transfers well enough for mild truncation, but not for aggressive truncation, and fails on LOOP Seattle (Appendices~\ref{sec:app_lodo} and~\ref{sec:app_source_diversity}), so a single truncated model at each depth for all datasets remains limited to mild truncation. We also truncate contiguous prefixes only; for Chronos-2 at mild compression, skipping interior blocks while keeping the final ones is better (Appendix~\ref{sec:app_noncontig}). With 14 datasets, we can establish an association between forecast recoverability and truncation tolerance but not determine how reliably it generalizes or supports cut-depth selection. Larger benchmarks such as GIFT-Eval \citep{aksu2024giftevalbenchmarkgeneraltime} and fev-bench \citep{shchur2026fevbenchrealisticbenchmarktime} could test whether the forecasting tunnel can serve as a reliable indicator of truncation tolerance and guide cut-depth selection. Several datasets in our study are documented pretraining data for at least one model (Appendix~\ref{app:provenance}), so frozen-backbone experiments cannot fully separate generalizable structure from effects of pretraining exposure; extending the analysis to fev-bench, which is held out from the pretraining of Chronos-2 and TimesFM-3, would provide a cleaner test. Finally, we study univariate forecasting at a single context length and horizon, with speed measured on one GPU type; multivariate and covariate-aware forecasting, other horizons and context lengths, and additional hardware remain important directions for future work.
 ```
 
 ## AI use statement: AI assistance during the review period
@@ -330,7 +330,7 @@ We have not used generative AI tools to generate research ideas, conduct the lit
 ```latex
 In this work, we used generative AI tools for writing assistance, such as improving word choice, correcting grammar, and improving the flow and transitions between sentences. Generative AI tools also assisted in drafting the Appendix sections describing the latency protocol and compute accounting; the underlying experimental procedures, measurements, and reported values were determined and verified by the authors, and all generated text was reviewed and revised by the authors. We also used generative AI tools for coding, with their behavior constrained by author-written instruction files. All AI-generated code was reviewed and debugged by the authors and validated through tests written both by the authors and with AI assistance. Additionally, generative AI tools were used to implement plotting and table-generation code for the paper, under the authors' review. Generative AI tools were also used to assist in writing scripts for collecting latency and compute information, such as device metadata, runtime records, and speedup measurements; all such code was reviewed by the authors. During the review period, generative AI tools assisted in analyzing the fits of the original TimesFM-3 adapter, in implementing and running the additional experiments, and in drafting the appendices added in response to the reviews (Appendices~\ref{sec:app_native_reference}, \ref{sec:app_timesfm3_ridge}, and~\ref{sec:app_entrance_rule} to~\ref{sec:app_heldout_pairs}) and the corresponding revisions of the main text; all such text was reviewed and revised by the authors.
 
-We have not used generative AI tools to generate research ideas, conduct the literature review, design methods, select time-series foundation models or datasets, design experiments, or draft sections of the main paper as originally submitted. We take responsibility for the final content of this work, including text, claims, or artifacts produced with the aid of generative AI.
+For the originally submitted version, we have not used generative AI tools to generate research ideas, conduct the literature review, design methods, select time-series foundation models or datasets, design experiments, or draft sections of the main paper. We take responsibility for the final content of this work, including text, claims, or artifacts produced with the aid of generative AI.
 ```
 
 ## Reproducibility statement: Order of analysis disclosed
@@ -520,7 +520,7 @@ ran on CPUs.
 
 ## Appendix B.1.5 (content-mean readouts): Moved to its own file, unchanged
 
-**Why.** The whole subsubsection (text, Tables 13 and 14 in the old numbering, the figure, all labels) moved verbatim to appendices/content_mean_readouts.tex; diff-checked identical. The new Appendix B.1.6 follows it.
+**Why.** The whole subsubsection (text, Tables 11 and 12 of the pre-revision build, Figure 8, all labels) moved verbatim to appendices/content_mean_readouts.tex; diff-checked identical. The new Appendix B.1.6 follows it.
 
 **OLD**
 
@@ -537,6 +537,7 @@ ran on CPUs.
 ```latex
 \input{appendices/content_mean_readouts}
 
+\clearpage
 \input{appendices/native_reference_tunnel}
 ```
 
@@ -617,7 +618,7 @@ $+82\%$ up to L17 (Appendix~\ref{sec:app_timesfm3_ridge}).
 
 ## Appendix B.3, new subsection: B.3.1 Regularization of the TimesFM-3 adapter
 
-**Why.** Inserted after the TiRex depth figure.
+**Why.** Inserted after the TiRex depth figure. The \clearpage (also before B.1.6 and B.4.1) flushes queued floats so that each table and figure appears next to its own section; it changes page breaks only.
 
 **OLD**
 
@@ -628,6 +629,7 @@ $+82\%$ up to L17 (Appendix~\ref{sec:app_timesfm3_ridge}).
 **NEW**
 
 ```latex
+\clearpage
 \input{appendices/timesfm3_zero_anchor}
 ```
 
@@ -860,6 +862,7 @@ TimesFM-3 & L0 & 4 / 10 & $+16.5\%$ & $+29.5\%$ \\
 **NEW**
 
 ```latex
+\clearpage
 \input{appendices/entrance_cut_rule}
 
 \input{appendices/lodo_transfer}
