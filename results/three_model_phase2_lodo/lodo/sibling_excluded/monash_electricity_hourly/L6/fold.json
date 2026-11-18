@@ -1,0 +1,37 @@
+{
+  "variant": "sibling_excluded",
+  "target": "monash_electricity_hourly",
+  "depth": 6,
+  "label": "L6",
+  "sources": [
+    "m4_hourly",
+    "uber_tlc_hourly",
+    "wind_farms_hourly",
+    "sg_carpark",
+    "coastal_ts",
+    "boom_hourly",
+    "LOOP_SEATTLE_5T",
+    "SZ_TAXI_15T",
+    "monash_london_smart_meters",
+    "m5",
+    "wiki_daily_100k",
+    "monash_traffic"
+  ],
+  "excluded": [
+    "monash_electricity_hourly",
+    "electricity_15min"
+  ],
+  "n_sources": 12,
+  "series_siblings_of_target": [
+    "electricity_15min"
+  ],
+  "target_series_in_adapter_training": false,
+  "n_train_rows": 16728,
+  "n_val_rows": 3008,
+  "equal_train_counts": true,
+  "chronos2_pretraining_provenance": {
+    "status": "listed",
+    "scope": "exact",
+    "source": "notes/help.tex tab:provenance"
+  }
+}

@@ -1,0 +1,179 @@
+{
+  "model_level": {
+    "mask": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6
+    ],
+    "M1_trace": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6
+    ],
+    "M1_passed": true,
+    "M2_passed": true,
+    "M3_passed": true,
+    "M4": {
+      "bitwise": false,
+      "max_abs": 0.0001451040822075811,
+      "max_scaled": 0.0035593350235463353,
+      "atol": 0.0077028857629081685,
+      "rtol": 0.0001,
+      "n": 8,
+      "passed": true
+    },
+    "M4_passed": true,
+    "passed": true
+  },
+  "dataset_gates": "gates/monash_london_smart_meters.json",
+  "prefix_states_vs_phase1_cache": {
+    "train": {
+      "bitwise": true,
+      "max_abs": 0.0,
+      "max_abs_over_std": 0.0,
+      "ref_std": 0.07102893788290968,
+      "tol": 0.001,
+      "passed": true
+    },
+    "val": {
+      "bitwise": true,
+      "max_abs": 0.0,
+      "max_abs_over_std": 0.0,
+      "ref_std": 0.07092750688622233,
+      "tol": 0.001,
+      "passed": true
+    },
+    "test": {
+      "bitwise": true,
+      "max_abs": 0.0,
+      "max_abs_over_std": 0.0,
+      "ref_std": 0.07112172435260282,
+      "tol": 0.001,
+      "passed": true
+    }
+  },
+  "scorer_on_cached_states_vs_h3": {
+    "hard": {
+      "mean_ours": 0.9049584582606737,
+      "mean_ref": 0.9049584582606737,
+      "mean_rel_diff": 0.0,
+      "window_max_abs_diff": 0.0,
+      "bitwise": true,
+      "rtol": 1e-06,
+      "passed": true
+    },
+    "noa": {
+      "mean_ours": 0.8122175508503754,
+      "mean_ref": 0.8122175508503754,
+      "mean_rel_diff": 0.0,
+      "window_max_abs_diff": 0.0,
+      "bitwise": true,
+      "rtol": 1e-06,
+      "passed": true
+    }
+  },
+  "identity_adapter_equals_hard_offline_bitwise": true,
+  "V3_hard": {
+    "rule": "mean test MASE agrees to rtol (V3, option A)",
+    "rtol": 0.0001,
+    "mase_mean_physical": 0.9049584578812319,
+    "mase_mean_offline": 0.9049584582606737,
+    "mase_mean_rel_diff": 4.192919662122889e-10,
+    "elementwise": {
+      "bitwise": false,
+      "max_abs": 3.2006517569627135e-07,
+      "max_scaled": 0.0012783321461694534,
+      "atol": 9.049584582606737e-05,
+      "rtol": 0.0001,
+      "n": 262,
+      "passed": true
+    },
+    "elementwise_passed": true,
+    "passed": true
+  },
+  "V3_noa": {
+    "rule": "mean test MASE agrees to rtol (V3, option A)",
+    "rtol": 0.0001,
+    "mase_mean_physical": 0.8122175528376396,
+    "mase_mean_offline": 0.8122175508503754,
+    "mase_mean_rel_diff": 2.4467142331178747e-09,
+    "elementwise": {
+      "bitwise": false,
+      "max_abs": 3.886038788536439e-07,
+      "max_scaled": 0.0018795169219844052,
+      "atol": 8.122175508503755e-05,
+      "rtol": 0.0001,
+      "n": 262,
+      "passed": true
+    },
+    "elementwise_passed": true,
+    "passed": true
+  },
+  "reextracted_vs_h3": {
+    "hard": {
+      "mean_ours": 0.9049584582606737,
+      "mean_ref": 0.9049584582606737,
+      "mean_rel_diff": 0.0,
+      "window_max_abs_diff": 0.0,
+      "bitwise": true,
+      "rtol": 0.0001,
+      "passed": true
+    },
+    "noa": {
+      "mean_ours": 0.8122175508503754,
+      "mean_ref": 0.8122175508503754,
+      "mean_rel_diff": 0.0,
+      "window_max_abs_diff": 0.0,
+      "bitwise": true,
+      "rtol": 0.0001,
+      "passed": true
+    }
+  },
+  "physical_prefix_vs_h3_offline": {
+    "hard": {
+      "rule": "mean test MASE agrees to rtol (V3, option A)",
+      "rtol": 0.0001,
+      "mase_mean_physical": 0.9049584578812319,
+      "mase_mean_offline": 0.9049584582606737,
+      "mase_mean_rel_diff": 4.192919662122889e-10,
+      "elementwise": {
+        "bitwise": false,
+        "max_abs": 3.2006517569627135e-07,
+        "max_scaled": 0.0012783321461694534,
+        "atol": 9.049584582606737e-05,
+        "rtol": 0.0001,
+        "n": 262,
+        "passed": true
+      },
+      "elementwise_passed": true,
+      "passed": true
+    },
+    "noa": {
+      "rule": "mean test MASE agrees to rtol (V3, option A)",
+      "rtol": 0.0001,
+      "mase_mean_physical": 0.8122175528376396,
+      "mase_mean_offline": 0.8122175508503754,
+      "mase_mean_rel_diff": 2.4467142331178747e-09,
+      "elementwise": {
+        "bitwise": false,
+        "max_abs": 3.886038788536439e-07,
+        "max_scaled": 0.0018795169219844052,
+        "atol": 8.122175508503755e-05,
+        "rtol": 0.0001,
+        "n": 262,
+        "passed": true
+      },
+      "elementwise_passed": true,
+      "passed": true
+    }
+  },
+  "physical_prefix_vs_committed_h4_physical": {
+    "note": "no committed physical H4 result for Chronos-2 at L6 on monash_london_smart_meters"
+  }
+}

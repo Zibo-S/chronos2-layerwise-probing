@@ -1,0 +1,90 @@
+{
+  "native_gate_vs_phase1": {
+    "available": true,
+    "rtol": 0.0001,
+    "test_loss_mean_ours": 0.13211265499952413,
+    "test_loss_mean_phase1": 0.1321126546467235,
+    "test_loss_mean_rel_diff": 2.67045290243623e-09,
+    "test_loss_window_max_abs_diff": 5.960464477539063e-08,
+    "test_mase_mean_ours": 0.7762674162058316,
+    "test_mase_mean_phase1": 0.7762674154725767,
+    "test_mase_mean_rel_diff": 9.445905967795554e-10,
+    "test_mase_window_max_abs_diff": 2.793649656607222e-07,
+    "test_mase_window_max_rel_diff": 6.52430366818258e-06,
+    "passed": true
+  },
+  "native_vs_h3": {
+    "mean_ours": 0.7762674162058316,
+    "mean_ref": 0.7762674162058316,
+    "mean_rel_diff": 0.0,
+    "window_max_abs_diff": 0.0,
+    "bitwise": true,
+    "rtol": 1e-06,
+    "passed": true
+  },
+  "hard_vs_h3": {
+    "mean_ours": 0.9049584582606737,
+    "mean_ref": 0.9049584582606737,
+    "mean_rel_diff": 0.0,
+    "window_max_abs_diff": 0.0,
+    "bitwise": true,
+    "rtol": 1e-06,
+    "passed": true
+  },
+  "specific_vs_h3": {
+    "mean_ours": 0.8122175508503754,
+    "mean_ref": 0.8122175508503754,
+    "mean_rel_diff": 0.0,
+    "window_max_abs_diff": 0.0,
+    "bitwise": true,
+    "rtol": 1e-06,
+    "passed": true
+  },
+  "test_rows_vs_h3": {
+    "passed": true
+  },
+  "identity_adapter_equals_hard_cut": {
+    "passed": true
+  },
+  "target_isolation": {
+    "passed": true,
+    "target": "monash_london_smart_meters",
+    "sources": [
+      "monash_traffic"
+    ],
+    "excluded": [
+      "m4_hourly",
+      "monash_electricity_hourly",
+      "uber_tlc_hourly",
+      "wind_farms_hourly",
+      "sg_carpark",
+      "coastal_ts",
+      "boom_hourly",
+      "LOOP_SEATTLE_5T",
+      "electricity_15min",
+      "SZ_TAXI_15T",
+      "monash_london_smart_meters",
+      "m5",
+      "wiki_daily_100k"
+    ],
+    "target_fingerprints": {
+      "train": "sha256:5dd8a4aafec32ed08e9efe2dd94e81379baf38314f5e96645dcfe9a96b9049b1",
+      "val": "sha256:28071e4de2ec3452965fefdfb7302fb21a0cd5a35600309e0611ec00f7158beb"
+    },
+    "source_fingerprints": {
+      "monash_traffic": {
+        "train": "sha256:de9e6ebeda8fb7e140fb9fbbb5b0dc3c5743afbb8190f07e52a302a21e307281",
+        "val": "sha256:9f464f4c9b0f9e9be819f7039c179af4ac04cbbe72ad5f71157271417e3f8c84"
+      }
+    },
+    "note": "the pooled tensors are built from `sources` only; the target's train/val fingerprints match no source block"
+  },
+  "equal_train_counts": {
+    "passed": true,
+    "counts": {
+      "monash_traffic": 1394
+    },
+    "note": "informational: the criterion weighs sources equally whatever the counts"
+  },
+  "all_passed": true
+}

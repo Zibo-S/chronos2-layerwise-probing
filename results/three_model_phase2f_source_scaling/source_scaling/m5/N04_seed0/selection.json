@@ -1,0 +1,97 @@
+{
+  "schema": "phase2f_selection/v1",
+  "protocol": "phase2f/source-scaling-v1",
+  "target": "m5",
+  "depth": 6,
+  "label": "L6",
+  "n_sources": 4,
+  "order_seed": 0,
+  "cell_id": "N04_seed0",
+  "selection_order": [
+    "boom_hourly",
+    "electricity_15min",
+    "sg_carpark",
+    "monash_traffic"
+  ],
+  "sources_fit_order": [
+    "sg_carpark",
+    "boom_hourly",
+    "electricity_15min",
+    "monash_traffic"
+  ],
+  "pool": [
+    "m4_hourly",
+    "monash_electricity_hourly",
+    "uber_tlc_hourly",
+    "wind_farms_hourly",
+    "sg_carpark",
+    "coastal_ts",
+    "boom_hourly",
+    "LOOP_SEATTLE_5T",
+    "electricity_15min",
+    "SZ_TAXI_15T",
+    "monash_london_smart_meters",
+    "wiki_daily_100k",
+    "monash_traffic"
+  ],
+  "excluded": [
+    "m4_hourly",
+    "monash_electricity_hourly",
+    "uber_tlc_hourly",
+    "wind_farms_hourly",
+    "coastal_ts",
+    "LOOP_SEATTLE_5T",
+    "SZ_TAXI_15T",
+    "monash_london_smart_meters",
+    "m5",
+    "wiki_daily_100k"
+  ],
+  "n_families": 4,
+  "series_family_members": [
+    "electricity_15min"
+  ],
+  "both_series_siblings": false,
+  "shared_across_seeds": null,
+  "order_rule": "phase2f/source-order/v1",
+  "order_draw": 2,
+  "target_rationale": {
+    "frequency": "1D",
+    "seasonal_period": 7,
+    "domain_family": "retail",
+    "provenance": "held_out",
+    "signal": "daily retail unit sales: intermittent low counts",
+    "why": "daily slot; held out from Chronos-2 pretraining (Benchmark II, fev-bench); preferred to Wiki Daily (listed) by R4"
+  },
+  "training_work": {
+    "n_train_windows": 5576,
+    "n_val_windows": 1232,
+    "n_train_slot_states": 22304,
+    "n_train_windows_per_source": {
+      "sg_carpark": 1394,
+      "boom_hourly": 1394,
+      "electricity_15min": 1394,
+      "monash_traffic": 1394
+    },
+    "n_val_windows_per_source": {
+      "sg_carpark": 354,
+      "boom_hourly": 354,
+      "electricity_15min": 262,
+      "monash_traffic": 262
+    },
+    "steps_planned": 9000,
+    "steps_completed": 9000,
+    "window_passes": 50184000,
+    "fit_seconds": 225.2,
+    "cuda_max_memory_allocated_gb": 1.65
+  },
+  "fit_reproduction": null,
+  "phase2c_crosscheck": null,
+  "timings": {
+    "fit_s": 225.2,
+    "eval_s": 0.3,
+    "cell_total_s": 225.6,
+    "cuda_max_memory_allocated_gb": 1.65
+  },
+  "job": "9253740",
+  "target_labels_used": "final evaluation of the frozen adapter only (test split, read once); the fit reads source states and the full model's own outputs"
+}

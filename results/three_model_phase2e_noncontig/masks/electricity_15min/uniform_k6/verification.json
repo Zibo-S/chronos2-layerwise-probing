@@ -1,0 +1,72 @@
+{
+  "model_level": {
+    "mask": [
+      1,
+      3,
+      5,
+      8,
+      10,
+      12
+    ],
+    "M1_trace": [
+      1,
+      3,
+      5,
+      8,
+      10,
+      12
+    ],
+    "M1_passed": true,
+    "M2_passed": true,
+    "M3_passed": true,
+    "M4": {
+      "bitwise": false,
+      "max_abs": 0.00018941545363304613,
+      "max_scaled": 0.003998847384928908,
+      "atol": 0.009727503359548298,
+      "rtol": 0.0001,
+      "n": 8,
+      "passed": true
+    },
+    "M4_passed": true,
+    "passed": true
+  },
+  "dataset_gates": "gates/electricity_15min.json",
+  "identity_adapter_equals_hard_offline_bitwise": true,
+  "V3_hard": {
+    "rule": "mean test MASE agrees to rtol (V3, option A)",
+    "rtol": 0.0001,
+    "mase_mean_physical": 1.4878085335206943,
+    "mase_mean_offline": 1.4878085266856151,
+    "mase_mean_rel_diff": 4.594058339312692e-09,
+    "elementwise": {
+      "bitwise": false,
+      "max_abs": 1.947521169665123e-06,
+      "max_scaled": 0.006405894685422579,
+      "atol": 0.0001487808526685615,
+      "rtol": 0.0001,
+      "n": 262,
+      "passed": true
+    },
+    "elementwise_passed": true,
+    "passed": true
+  },
+  "V3_noa": {
+    "rule": "mean test MASE agrees to rtol (V3, option A)",
+    "rtol": 0.0001,
+    "mase_mean_physical": 1.3046422606773622,
+    "mase_mean_offline": 1.3046422663746151,
+    "mase_mean_rel_diff": 4.366908108466005e-09,
+    "elementwise": {
+      "bitwise": false,
+      "max_abs": 3.0594302575792653e-06,
+      "max_scaled": 0.009564171481819485,
+      "atol": 0.00013046422663746151,
+      "rtol": 0.0001,
+      "n": 262,
+      "passed": true
+    },
+    "elementwise_passed": true,
+    "passed": true
+  }
+}

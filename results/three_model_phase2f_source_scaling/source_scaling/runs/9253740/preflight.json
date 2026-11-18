@@ -1,0 +1,287 @@
+{
+  "schema": "phase2f_preflight/v1",
+  "protocol": "phase2f/source-scaling-v1",
+  "gates": [
+    "native_gate_vs_phase1",
+    "native_vs_h3",
+    "hard_vs_h3",
+    "specific_vs_h3",
+    "test_rows_vs_h3",
+    "identity_adapter_equals_hard_cut",
+    "specific_adapter_sha256"
+  ],
+  "n_targets": 4,
+  "n_failed": 0,
+  "failed": [],
+  "seconds": 0.7,
+  "targets": [
+    {
+      "target": "boom_hourly",
+      "depth": 6,
+      "label": "L6",
+      "gates": {
+        "native_gate_vs_phase1": {
+          "available": true,
+          "rtol": 0.0001,
+          "test_loss_mean_ours": 0.10620243691311133,
+          "test_loss_mean_phase1": 0.1062024807498105,
+          "test_loss_mean_rel_diff": 4.12765303126929e-07,
+          "test_loss_window_max_abs_diff": 1.2018514098599553e-05,
+          "test_mase_mean_ours": 0.9436376998286659,
+          "test_mase_mean_phase1": 0.9436372748392822,
+          "test_mase_mean_rel_diff": 4.50373671130512e-07,
+          "test_mase_window_max_abs_diff": 0.00040385489939894284,
+          "test_mase_window_max_rel_diff": 0.0475444646353415,
+          "passed": true
+        },
+        "native_vs_h3": {
+          "mean_ours": 0.9436376998286659,
+          "mean_ref": 0.9436376998286659,
+          "mean_rel_diff": 0.0,
+          "window_max_abs_diff": 0.0,
+          "bitwise": true,
+          "rtol": 1e-06,
+          "passed": true
+        },
+        "hard_vs_h3": {
+          "mean_ours": 1.3350959913010891,
+          "mean_ref": 1.3350959913010891,
+          "mean_rel_diff": 0.0,
+          "window_max_abs_diff": 0.0,
+          "bitwise": true,
+          "rtol": 1e-06,
+          "passed": true
+        },
+        "specific_vs_h3": {
+          "mean_ours": 1.0317942441190682,
+          "mean_ref": 1.0317942441190682,
+          "mean_rel_diff": 0.0,
+          "window_max_abs_diff": 0.0,
+          "bitwise": true,
+          "rtol": 1e-06,
+          "passed": true
+        },
+        "test_rows_vs_h3": {
+          "passed": true
+        },
+        "identity_adapter_equals_hard_cut": {
+          "passed": true
+        }
+      },
+      "failed": [],
+      "all_passed": true,
+      "mean_test_mase": {
+        "native": 0.9436376998286659,
+        "hard": 1.3350959913010891,
+        "specific": 1.0317942441190682
+      },
+      "specific_adapter": {
+        "path": "/scratch/eserebri/chronos2_phase2/adapters/chronos2/boom_hourly/noa__L6.npz",
+        "sha256": "sha256:4e6fb3777fd8099b5b7cfaf9806204db68abb8df605395db9325f30293b5e154",
+        "expected_sha256": "sha256:4e6fb3777fd8099b5b7cfaf9806204db68abb8df605395db9325f30293b5e154",
+        "passed": true
+      }
+    },
+    {
+      "target": "LOOP_SEATTLE_5T",
+      "depth": 6,
+      "label": "L6",
+      "gates": {
+        "native_gate_vs_phase1": {
+          "available": true,
+          "rtol": 0.0001,
+          "test_loss_mean_ours": 0.18841546930315842,
+          "test_loss_mean_phase1": 0.18841547164923816,
+          "test_loss_mean_rel_diff": 1.245163004186459e-08,
+          "test_loss_window_max_abs_diff": 3.5762786865234375e-07,
+          "test_mase_mean_ours": 1.2865068356498144,
+          "test_mase_mean_phase1": 1.2865068302940506,
+          "test_mase_mean_rel_diff": 4.163027903398133e-09,
+          "test_mase_window_max_abs_diff": 1.6725320099997276e-06,
+          "test_mase_window_max_rel_diff": 2.4575920395099354e-06,
+          "passed": true
+        },
+        "native_vs_h3": {
+          "mean_ours": 1.2865068356498144,
+          "mean_ref": 1.2865068356498144,
+          "mean_rel_diff": 0.0,
+          "window_max_abs_diff": 0.0,
+          "bitwise": true,
+          "rtol": 1e-06,
+          "passed": true
+        },
+        "hard_vs_h3": {
+          "mean_ours": 1.420302716061475,
+          "mean_ref": 1.420302716061475,
+          "mean_rel_diff": 0.0,
+          "window_max_abs_diff": 0.0,
+          "bitwise": true,
+          "rtol": 1e-06,
+          "passed": true
+        },
+        "specific_vs_h3": {
+          "mean_ours": 1.2404573804238141,
+          "mean_ref": 1.2404573804238141,
+          "mean_rel_diff": 0.0,
+          "window_max_abs_diff": 0.0,
+          "bitwise": true,
+          "rtol": 1e-06,
+          "passed": true
+        },
+        "test_rows_vs_h3": {
+          "passed": true
+        },
+        "identity_adapter_equals_hard_cut": {
+          "passed": true
+        }
+      },
+      "failed": [],
+      "all_passed": true,
+      "mean_test_mase": {
+        "native": 1.2865068356498144,
+        "hard": 1.420302716061475,
+        "specific": 1.2404573804238141
+      },
+      "specific_adapter": {
+        "path": "/scratch/eserebri/chronos2_phase2/adapters/chronos2/LOOP_SEATTLE_5T/noa__L6.npz",
+        "sha256": "sha256:f3fe6c2d475b55abbb081da86f9568ee47c3cd7a70f27513ca020ddfbec328a5",
+        "expected_sha256": "sha256:f3fe6c2d475b55abbb081da86f9568ee47c3cd7a70f27513ca020ddfbec328a5",
+        "passed": true
+      }
+    },
+    {
+      "target": "monash_london_smart_meters",
+      "depth": 6,
+      "label": "L6",
+      "gates": {
+        "native_gate_vs_phase1": {
+          "available": true,
+          "rtol": 0.0001,
+          "test_loss_mean_ours": 0.13211265499952413,
+          "test_loss_mean_phase1": 0.1321126546467235,
+          "test_loss_mean_rel_diff": 2.67045290243623e-09,
+          "test_loss_window_max_abs_diff": 5.960464477539063e-08,
+          "test_mase_mean_ours": 0.7762674162058316,
+          "test_mase_mean_phase1": 0.7762674154725767,
+          "test_mase_mean_rel_diff": 9.445905967795554e-10,
+          "test_mase_window_max_abs_diff": 2.793649656607222e-07,
+          "test_mase_window_max_rel_diff": 6.52430366818258e-06,
+          "passed": true
+        },
+        "native_vs_h3": {
+          "mean_ours": 0.7762674162058316,
+          "mean_ref": 0.7762674162058316,
+          "mean_rel_diff": 0.0,
+          "window_max_abs_diff": 0.0,
+          "bitwise": true,
+          "rtol": 1e-06,
+          "passed": true
+        },
+        "hard_vs_h3": {
+          "mean_ours": 0.9049584582606737,
+          "mean_ref": 0.9049584582606737,
+          "mean_rel_diff": 0.0,
+          "window_max_abs_diff": 0.0,
+          "bitwise": true,
+          "rtol": 1e-06,
+          "passed": true
+        },
+        "specific_vs_h3": {
+          "mean_ours": 0.8122175508503754,
+          "mean_ref": 0.8122175508503754,
+          "mean_rel_diff": 0.0,
+          "window_max_abs_diff": 0.0,
+          "bitwise": true,
+          "rtol": 1e-06,
+          "passed": true
+        },
+        "test_rows_vs_h3": {
+          "passed": true
+        },
+        "identity_adapter_equals_hard_cut": {
+          "passed": true
+        }
+      },
+      "failed": [],
+      "all_passed": true,
+      "mean_test_mase": {
+        "native": 0.7762674162058316,
+        "hard": 0.9049584582606737,
+        "specific": 0.8122175508503754
+      },
+      "specific_adapter": {
+        "path": "/scratch/eserebri/chronos2_phase2/adapters/chronos2/monash_london_smart_meters/noa__L6.npz",
+        "sha256": "sha256:6cb63b2da46a3f6b961df08133541a1d3fd4482442ac684aede99d09f4fad888",
+        "expected_sha256": "sha256:6cb63b2da46a3f6b961df08133541a1d3fd4482442ac684aede99d09f4fad888",
+        "passed": true
+      }
+    },
+    {
+      "target": "m5",
+      "depth": 6,
+      "label": "L6",
+      "gates": {
+        "native_gate_vs_phase1": {
+          "available": true,
+          "rtol": 0.0001,
+          "test_loss_mean_ours": 0.19601279724289783,
+          "test_loss_mean_phase1": 0.19601279744018182,
+          "test_loss_mean_rel_diff": 1.006485276842258e-09,
+          "test_loss_window_max_abs_diff": 5.960464477539063e-08,
+          "test_mase_mean_ours": 0.9809678103319266,
+          "test_mase_mean_phase1": 0.9809678116775947,
+          "test_mase_mean_rel_diff": 1.371776032261886e-09,
+          "test_mase_window_max_abs_diff": 2.1832762575613174e-07,
+          "test_mase_window_max_rel_diff": 5.633196660121026e-06,
+          "passed": true
+        },
+        "native_vs_h3": {
+          "mean_ours": 0.9809678103319266,
+          "mean_ref": 0.9809678103319266,
+          "mean_rel_diff": 0.0,
+          "window_max_abs_diff": 0.0,
+          "bitwise": true,
+          "rtol": 1e-06,
+          "passed": true
+        },
+        "hard_vs_h3": {
+          "mean_ours": 1.0868905074885469,
+          "mean_ref": 1.0868905074885469,
+          "mean_rel_diff": 0.0,
+          "window_max_abs_diff": 0.0,
+          "bitwise": true,
+          "rtol": 1e-06,
+          "passed": true
+        },
+        "specific_vs_h3": {
+          "mean_ours": 1.0030444123442817,
+          "mean_ref": 1.0030444123442817,
+          "mean_rel_diff": 0.0,
+          "window_max_abs_diff": 0.0,
+          "bitwise": true,
+          "rtol": 1e-06,
+          "passed": true
+        },
+        "test_rows_vs_h3": {
+          "passed": true
+        },
+        "identity_adapter_equals_hard_cut": {
+          "passed": true
+        }
+      },
+      "failed": [],
+      "all_passed": true,
+      "mean_test_mase": {
+        "native": 0.9809678103319266,
+        "hard": 1.0868905074885469,
+        "specific": 1.0030444123442817
+      },
+      "specific_adapter": {
+        "path": "/scratch/eserebri/chronos2_phase2/adapters/chronos2/m5/noa__L6.npz",
+        "sha256": "sha256:81e20088f71d7dacd09fb39c682fa327ef00ea8b8fac558e6c360d539e757a88",
+        "expected_sha256": "sha256:81e20088f71d7dacd09fb39c682fa327ef00ea8b8fac558e6c360d539e757a88",
+        "passed": true
+      }
+    }
+  ]
+}

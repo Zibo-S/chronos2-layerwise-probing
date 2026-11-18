@@ -1,0 +1,91 @@
+{
+  "protocol": "phase2c/lodo-v1",
+  "kind": "lodo",
+  "model": "chronos2",
+  "objective": "noa_equal_weight_mse/v1",
+  "variant": "sibling_excluded",
+  "target": "monash_london_smart_meters",
+  "depth": 6,
+  "depth_label": "L6",
+  "sources": [
+    "m4_hourly",
+    "wind_farms_hourly",
+    "sg_carpark",
+    "wiki_daily_100k"
+  ],
+  "excluded": [
+    "monash_electricity_hourly",
+    "uber_tlc_hourly",
+    "coastal_ts",
+    "boom_hourly",
+    "LOOP_SEATTLE_5T",
+    "electricity_15min",
+    "SZ_TAXI_15T",
+    "monash_london_smart_meters",
+    "m5",
+    "monash_traffic"
+  ],
+  "dependencies": {
+    "m4_hourly": {
+      "phase1_fit_hash": "sha256:308f4c10caa52d3e31b478ad1da8d7bd9300c4db94623089e00c931e185775e1",
+      "window_digest": "sha256:6394d28b53bf6a76d61c3b0cfb788a44d7dd3b948988788e482e0ee96d96af72"
+    },
+    "wind_farms_hourly": {
+      "phase1_fit_hash": "sha256:a6a34b3ca80e72512f4cb08aac037ce499213584333c7dfbd24f8faf6c8d829e",
+      "window_digest": "sha256:f6062120f4117747776f95a53f8b676b54dc69cae7a735322957d065057355eb"
+    },
+    "sg_carpark": {
+      "phase1_fit_hash": "sha256:ba272e7922bae18c0a3c48d9088156ba2e51ba82c2ce416d790dea1f28cf8f0f",
+      "window_digest": "sha256:35b23be3a09bce394ac99c123e96a55d405e15f08cdf8d7f906e70059fa9f3a3"
+    },
+    "wiki_daily_100k": {
+      "phase1_fit_hash": "sha256:7b7e562c88b967330a341aa87935a6628004685de61ff8feff9254126188ca44",
+      "window_digest": "sha256:f730a8cdde3e477f890d0411f4843bc0087f6ac91ddcb0f7a812786e5def0a6c"
+    },
+    "monash_london_smart_meters": {
+      "phase1_fit_hash": "sha256:7166a15336061b954c5bddcc3e0ef551cd3e5ff12fab65e440ee1466775e40a8",
+      "window_digest": "sha256:747ea91cc2a53a2802bba2efe6f85650a600028fb92f5b722ae614dc005c51c9"
+    }
+  },
+  "h3_reference_config_hash": "sha256:7e0e8b642493ce4b867d6dd48abb6b889dc9dada31555aacaf213fc6ee4d086b",
+  "epochs": 1500,
+  "lr": 0.001,
+  "wd_grid": [
+    0.0,
+    0.1,
+    1.0,
+    10.0,
+    30.0,
+    100.0
+  ],
+  "eval_every": 25,
+  "seed": 0,
+  "native_gate_rtol": 0.0001,
+  "h3_repro_rtol": 1e-06,
+  "quantiles": [
+    0.1,
+    0.2,
+    0.3,
+    0.4,
+    0.5,
+    0.6,
+    0.7,
+    0.8,
+    0.9
+  ],
+  "boot_b": 5000,
+  "boot_seed": 0,
+  "phase2f_protocol": "phase2f/source-scaling-v1",
+  "phase2f_kind": "source_scaling",
+  "n_sources": 4,
+  "order_seed": 1,
+  "order_rule": "phase2f/source-order/v1",
+  "selection_order": [
+    "m4_hourly",
+    "sg_carpark",
+    "wiki_daily_100k",
+    "wind_farms_hourly"
+  ],
+  "cell_id": "N04_seed1",
+  "config_hash": "sha256:34bd148a1dc555df9a4f23185340c48b9f323db6fd0b65bf7b1815a31efdf09c"
+}

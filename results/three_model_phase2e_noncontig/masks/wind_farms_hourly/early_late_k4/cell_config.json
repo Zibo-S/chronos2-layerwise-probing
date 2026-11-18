@@ -1,0 +1,53 @@
+{
+  "protocol": "phase2e/noncontig-v1",
+  "kind": "masks",
+  "model": "chronos2",
+  "dataset": "wind_farms_hourly",
+  "strategy": "early_late",
+  "budget": 4,
+  "mask": [
+    1,
+    2,
+    11,
+    12
+  ],
+  "mask_table_digest": "sha256:b40f495f3e849947f65ad0375896fd72a5a59aadea7fc8354416c6ba0c938b25",
+  "prefix_policy": "H3 reuse after gates; refit if the state gate fails",
+  "phase1_fit_hash": "sha256:a6a34b3ca80e72512f4cb08aac037ce499213584333c7dfbd24f8faf6c8d829e",
+  "window_digest": "sha256:f6062120f4117747776f95a53f8b676b54dc69cae7a735322957d065057355eb",
+  "h3_config_hash": "sha256:dfd3ac1a193f9009977c825c9752613b4ab1ac86c4f96e3b5e544810fba02fb9",
+  "checkpoint": "amazon/chronos-2",
+  "extract_batch_size": 128,
+  "K": 4,
+  "epochs": 1500,
+  "lr": 0.001,
+  "wd_grid": [
+    0.0,
+    0.1,
+    1.0,
+    10.0,
+    30.0,
+    100.0
+  ],
+  "eval_every": 25,
+  "seed": 0,
+  "noa_adapter": "affine",
+  "native_gate_rtol": 0.0001,
+  "quantiles": [
+    0.1,
+    0.2,
+    0.3,
+    0.4,
+    0.5,
+    0.6,
+    0.7,
+    0.8,
+    0.9
+  ],
+  "boot_b": 5000,
+  "boot_seed": 0,
+  "state_gate_tol": 0.001,
+  "h3_repro_rtol": 1e-06,
+  "v3_mean_rtol": 0.0001,
+  "config_hash": "sha256:8bf676b60dd803440293301a2d8fd85e16b346870e0025708d1c7587d5b6c10a"
+}

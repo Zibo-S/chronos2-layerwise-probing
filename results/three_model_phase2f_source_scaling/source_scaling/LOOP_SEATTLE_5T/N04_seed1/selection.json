@@ -1,0 +1,95 @@
+{
+  "schema": "phase2f_selection/v1",
+  "protocol": "phase2f/source-scaling-v1",
+  "target": "LOOP_SEATTLE_5T",
+  "depth": 6,
+  "label": "L6",
+  "n_sources": 4,
+  "order_seed": 1,
+  "cell_id": "N04_seed1",
+  "selection_order": [
+    "wind_farms_hourly",
+    "m5",
+    "monash_traffic",
+    "uber_tlc_hourly"
+  ],
+  "sources_fit_order": [
+    "uber_tlc_hourly",
+    "wind_farms_hourly",
+    "m5",
+    "monash_traffic"
+  ],
+  "pool": [
+    "m4_hourly",
+    "monash_electricity_hourly",
+    "uber_tlc_hourly",
+    "wind_farms_hourly",
+    "sg_carpark",
+    "coastal_ts",
+    "boom_hourly",
+    "electricity_15min",
+    "SZ_TAXI_15T",
+    "monash_london_smart_meters",
+    "m5",
+    "wiki_daily_100k",
+    "monash_traffic"
+  ],
+  "excluded": [
+    "m4_hourly",
+    "monash_electricity_hourly",
+    "sg_carpark",
+    "coastal_ts",
+    "boom_hourly",
+    "LOOP_SEATTLE_5T",
+    "electricity_15min",
+    "SZ_TAXI_15T",
+    "monash_london_smart_meters",
+    "wiki_daily_100k"
+  ],
+  "n_families": 4,
+  "series_family_members": [],
+  "both_series_siblings": false,
+  "shared_across_seeds": null,
+  "order_rule": "phase2f/source-order/v1",
+  "order_draw": 1,
+  "target_rationale": {
+    "frequency": "5min",
+    "seasonal_period": 288,
+    "domain_family": "transport",
+    "provenance": "held_out",
+    "signal": "freeway loop-detector speeds: smooth, strongly daily-periodic",
+    "why": "the only 5-minute dataset; held out from Chronos-2 pretraining (fev-bench)"
+  },
+  "training_work": {
+    "n_train_windows": 5576,
+    "n_val_windows": 1048,
+    "n_train_slot_states": 22304,
+    "n_train_windows_per_source": {
+      "uber_tlc_hourly": 1394,
+      "wind_farms_hourly": 1394,
+      "m5": 1394,
+      "monash_traffic": 1394
+    },
+    "n_val_windows_per_source": {
+      "uber_tlc_hourly": 262,
+      "wind_farms_hourly": 262,
+      "m5": 262,
+      "monash_traffic": 262
+    },
+    "steps_planned": 9000,
+    "steps_completed": 9000,
+    "window_passes": 50184000,
+    "fit_seconds": 225.0,
+    "cuda_max_memory_allocated_gb": 1.65
+  },
+  "fit_reproduction": null,
+  "phase2c_crosscheck": null,
+  "timings": {
+    "fit_s": 225.0,
+    "eval_s": 0.3,
+    "cell_total_s": 225.4,
+    "cuda_max_memory_allocated_gb": 1.65
+  },
+  "job": "9253740",
+  "target_labels_used": "final evaluation of the frozen adapter only (test split, read once); the fit reads source states and the full model's own outputs"
+}

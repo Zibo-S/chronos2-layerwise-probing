@@ -1,0 +1,76 @@
+{
+  "protocol": "phase2c/lodo-v1",
+  "kind": "lodo",
+  "model": "chronos2",
+  "objective": "noa_equal_weight_mse/v1",
+  "variant": "sibling_excluded",
+  "target": "monash_london_smart_meters",
+  "depth": 6,
+  "depth_label": "L6",
+  "sources": [
+    "wind_farms_hourly"
+  ],
+  "excluded": [
+    "m4_hourly",
+    "monash_electricity_hourly",
+    "uber_tlc_hourly",
+    "sg_carpark",
+    "coastal_ts",
+    "boom_hourly",
+    "LOOP_SEATTLE_5T",
+    "electricity_15min",
+    "SZ_TAXI_15T",
+    "monash_london_smart_meters",
+    "m5",
+    "wiki_daily_100k",
+    "monash_traffic"
+  ],
+  "dependencies": {
+    "wind_farms_hourly": {
+      "phase1_fit_hash": "sha256:a6a34b3ca80e72512f4cb08aac037ce499213584333c7dfbd24f8faf6c8d829e",
+      "window_digest": "sha256:f6062120f4117747776f95a53f8b676b54dc69cae7a735322957d065057355eb"
+    },
+    "monash_london_smart_meters": {
+      "phase1_fit_hash": "sha256:7166a15336061b954c5bddcc3e0ef551cd3e5ff12fab65e440ee1466775e40a8",
+      "window_digest": "sha256:747ea91cc2a53a2802bba2efe6f85650a600028fb92f5b722ae614dc005c51c9"
+    }
+  },
+  "h3_reference_config_hash": "sha256:7e0e8b642493ce4b867d6dd48abb6b889dc9dada31555aacaf213fc6ee4d086b",
+  "epochs": 1500,
+  "lr": 0.001,
+  "wd_grid": [
+    0.0,
+    0.1,
+    1.0,
+    10.0,
+    30.0,
+    100.0
+  ],
+  "eval_every": 25,
+  "seed": 0,
+  "native_gate_rtol": 0.0001,
+  "h3_repro_rtol": 1e-06,
+  "quantiles": [
+    0.1,
+    0.2,
+    0.3,
+    0.4,
+    0.5,
+    0.6,
+    0.7,
+    0.8,
+    0.9
+  ],
+  "boot_b": 5000,
+  "boot_seed": 0,
+  "phase2f_protocol": "phase2f/source-scaling-v1",
+  "phase2f_kind": "source_scaling",
+  "n_sources": 1,
+  "order_seed": 0,
+  "order_rule": "phase2f/source-order/v1",
+  "selection_order": [
+    "wind_farms_hourly"
+  ],
+  "cell_id": "N01_seed0",
+  "config_hash": "sha256:42f26f708cf3615137ebf3710b40a43ad7387edd48d4f299616b8a3c9e3df7f6"
+}

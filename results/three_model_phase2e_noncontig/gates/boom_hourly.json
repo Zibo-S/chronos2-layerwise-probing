@@ -1,0 +1,72 @@
+{
+  "native_gate_vs_phase1": {
+    "available": true,
+    "rtol": 0.0001,
+    "test_loss_mean_ours": 0.10620243691311133,
+    "test_loss_mean_phase1": 0.1062024807498105,
+    "test_loss_mean_rel_diff": 4.12765303126929e-07,
+    "test_loss_window_max_abs_diff": 1.2018514098599553e-05,
+    "test_mase_mean_ours": 0.9436376998286659,
+    "test_mase_mean_phase1": 0.9436372748392822,
+    "test_mase_mean_rel_diff": 4.50373671130512e-07,
+    "test_mase_window_max_abs_diff": 0.00040385489939894284,
+    "test_mase_window_max_rel_diff": 0.0475444646353415,
+    "passed": true
+  },
+  "native_vs_h3": {
+    "mean_ours": 0.9436376998286659,
+    "mean_ref": 0.9436376998286659,
+    "mean_rel_diff": 0.0,
+    "window_max_abs_diff": 0.0,
+    "bitwise": true,
+    "rtol": 1e-06,
+    "passed": true
+  },
+  "teacher_sha256": "sha256:2054c35eb7a4e8f69588c7e5490c51d0345610cb5c56e0ee84c5ebf0f417468f",
+  "full_mask_states_vs_phase1_L12": {
+    "train": {
+      "bitwise": true,
+      "max_abs": 0.0,
+      "max_abs_over_std": 0.0,
+      "ref_std": 1.3206413445081022,
+      "tol": 0.001,
+      "passed": true
+    },
+    "val": {
+      "bitwise": true,
+      "max_abs": 0.0,
+      "max_abs_over_std": 0.0,
+      "ref_std": 1.4787105102928924,
+      "tol": 0.001,
+      "passed": true
+    },
+    "test": {
+      "bitwise": true,
+      "max_abs": 0.0,
+      "max_abs_over_std": 0.0,
+      "ref_std": 1.475649927818462,
+      "tol": 0.001,
+      "passed": true
+    }
+  },
+  "full_mask_physical_equals_unmodified_bitwise": true,
+  "full_mask_physical_vs_offline_native": {
+    "rule": "mean test MASE agrees to rtol (V3, option A)",
+    "rtol": 0.0001,
+    "mase_mean_physical": 0.9436372748392822,
+    "mase_mean_offline": 0.9436376998286659,
+    "mase_mean_rel_diff": 4.503734682941597e-07,
+    "elementwise": {
+      "bitwise": false,
+      "max_abs": 0.00040385489939894284,
+      "max_scaled": 4.192672251278096,
+      "atol": 9.436376998286659e-05,
+      "rtol": 0.0001,
+      "n": 354,
+      "passed": false
+    },
+    "elementwise_passed": false,
+    "passed": true
+  },
+  "all_passed": true
+}

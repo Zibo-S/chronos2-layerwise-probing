@@ -1,0 +1,53 @@
+{
+  "protocol": "phase2e/noncontig-v1",
+  "kind": "masks",
+  "model": "chronos2",
+  "dataset": "SZ_TAXI_15T",
+  "strategy": "middle",
+  "budget": 4,
+  "mask": [
+    4,
+    5,
+    6,
+    7
+  ],
+  "mask_table_digest": "sha256:b40f495f3e849947f65ad0375896fd72a5a59aadea7fc8354416c6ba0c938b25",
+  "prefix_policy": "H3 reuse after gates; refit if the state gate fails",
+  "phase1_fit_hash": "sha256:e0c3d72cf0a5120dce7a898b8335625905db91ef8fb87d08f49f6bab6d8f249d",
+  "window_digest": "sha256:e7dbdeae77a6f2f9bf621e96a9045afd29159a36f6c5035f6f4f34ed880cda77",
+  "h3_config_hash": "sha256:f7a5ed077a651277a576efae1cedf0aaedba0e1cee0a3105678afc24a5cfc08f",
+  "checkpoint": "amazon/chronos-2",
+  "extract_batch_size": 128,
+  "K": 4,
+  "epochs": 1500,
+  "lr": 0.001,
+  "wd_grid": [
+    0.0,
+    0.1,
+    1.0,
+    10.0,
+    30.0,
+    100.0
+  ],
+  "eval_every": 25,
+  "seed": 0,
+  "noa_adapter": "affine",
+  "native_gate_rtol": 0.0001,
+  "quantiles": [
+    0.1,
+    0.2,
+    0.3,
+    0.4,
+    0.5,
+    0.6,
+    0.7,
+    0.8,
+    0.9
+  ],
+  "boot_b": 5000,
+  "boot_seed": 0,
+  "state_gate_tol": 0.001,
+  "h3_repro_rtol": 1e-06,
+  "v3_mean_rtol": 0.0001,
+  "config_hash": "sha256:8ac2e23b9e087477c8e9c1e3d1c931e62e8b45092c70b7af8be553debaf51a90"
+}

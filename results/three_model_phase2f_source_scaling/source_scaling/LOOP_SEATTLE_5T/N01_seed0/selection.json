@@ -1,0 +1,131 @@
+{
+  "schema": "phase2f_selection/v1",
+  "protocol": "phase2f/source-scaling-v1",
+  "target": "LOOP_SEATTLE_5T",
+  "depth": 6,
+  "label": "L6",
+  "n_sources": 1,
+  "order_seed": 0,
+  "cell_id": "N01_seed0",
+  "selection_order": [
+    "m5"
+  ],
+  "sources_fit_order": [
+    "m5"
+  ],
+  "pool": [
+    "m4_hourly",
+    "monash_electricity_hourly",
+    "uber_tlc_hourly",
+    "wind_farms_hourly",
+    "sg_carpark",
+    "coastal_ts",
+    "boom_hourly",
+    "electricity_15min",
+    "SZ_TAXI_15T",
+    "monash_london_smart_meters",
+    "m5",
+    "wiki_daily_100k",
+    "monash_traffic"
+  ],
+  "excluded": [
+    "m4_hourly",
+    "monash_electricity_hourly",
+    "uber_tlc_hourly",
+    "wind_farms_hourly",
+    "sg_carpark",
+    "coastal_ts",
+    "boom_hourly",
+    "LOOP_SEATTLE_5T",
+    "electricity_15min",
+    "SZ_TAXI_15T",
+    "monash_london_smart_meters",
+    "wiki_daily_100k",
+    "monash_traffic"
+  ],
+  "n_families": 1,
+  "series_family_members": [],
+  "both_series_siblings": false,
+  "shared_across_seeds": null,
+  "order_rule": "phase2f/source-order/v1",
+  "order_draw": 1,
+  "target_rationale": {
+    "frequency": "5min",
+    "seasonal_period": 288,
+    "domain_family": "transport",
+    "provenance": "held_out",
+    "signal": "freeway loop-detector speeds: smooth, strongly daily-periodic",
+    "why": "the only 5-minute dataset; held out from Chronos-2 pretraining (fev-bench)"
+  },
+  "training_work": {
+    "n_train_windows": 1394,
+    "n_val_windows": 262,
+    "n_train_slot_states": 5576,
+    "n_train_windows_per_source": {
+      "m5": 1394
+    },
+    "n_val_windows_per_source": {
+      "m5": 262
+    },
+    "steps_planned": 9000,
+    "steps_completed": 9000,
+    "window_passes": 12546000,
+    "fit_seconds": 60.3,
+    "cuda_max_memory_allocated_gb": 0.84
+  },
+  "fit_reproduction": {
+    "source": "m5",
+    "label": "L6",
+    "passed": true,
+    "bitwise_adapter": true,
+    "adapter_sha256": "sha256:81e20088f71d7dacd09fb39c682fa327ef00ea8b8fac558e6c360d539e757a88",
+    "h3_adapter_sha256": "sha256:81e20088f71d7dacd09fb39c682fa327ef00ea8b8fac558e6c360d539e757a88",
+    "val_curve_points_compared": 366,
+    "val_curve_max_rel_diff": 0.0,
+    "checks": {
+      "hard_cut_val": {
+        "ours": 0.19692739844322205,
+        "h3": 0.19692739844322205,
+        "rel_diff": 0.0,
+        "rtol": 1e-06,
+        "passed": true
+      },
+      "selected_wd": {
+        "ours": 1.0,
+        "h3": 1.0,
+        "passed": true
+      },
+      "selected_epoch": {
+        "ours": 450,
+        "h3": 450,
+        "passed": true
+      },
+      "selected_val": {
+        "ours": 0.024848727509379387,
+        "h3": 0.024848727509379387,
+        "rel_diff": 0.0,
+        "rtol": 0.0001,
+        "passed": true
+      },
+      "source_test_mase_vs_h3": {
+        "mean_ours": 1.0030444123442817,
+        "mean_ref": 1.0030444123442817,
+        "mean_rel_diff": 0.0,
+        "window_max_abs_diff": 0.0,
+        "bitwise": true,
+        "rtol": 0.0001,
+        "passed": true
+      }
+    },
+    "rule": "N = 1 pooled fit vs the committed H3 NOA fit of its source: same epoch-0 criterion (1e-6), same selected (wd, epoch), selected val criterion and the source's own test MASE to 1e-4"
+  },
+  "phase2c_crosscheck": null,
+  "timings": {
+    "fit_s": 60.3,
+    "eval_s": 0.3,
+    "cell_total_s": 60.6,
+    "cuda_max_memory_allocated_gb": 0.84
+  },
+  "job": "9253740",
+  "target_labels_used": "final evaluation of the frozen adapter only (test split, read once); the fit reads source states and the full model's own outputs"
+}

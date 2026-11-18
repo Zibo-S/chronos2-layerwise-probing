@@ -1,0 +1,78 @@
+{
+  "model_level": {
+    "mask": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      9,
+      10,
+      11,
+      12
+    ],
+    "M1_trace": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      9,
+      10,
+      11,
+      12
+    ],
+    "M1_passed": true,
+    "M2_passed": true,
+    "M3_passed": true,
+    "M4": {
+      "bitwise": false,
+      "max_abs": 0.00012540325599275093,
+      "max_scaled": 0.0032648531813312107,
+      "atol": 0.008878019135522176,
+      "rtol": 0.0001,
+      "n": 8,
+      "passed": true
+    },
+    "M4_passed": true,
+    "passed": true
+  },
+  "dataset_gates": "gates/monash_london_smart_meters.json",
+  "identity_adapter_equals_hard_offline_bitwise": true,
+  "V3_hard": {
+    "rule": "mean test MASE agrees to rtol (V3, option A)",
+    "rtol": 0.0001,
+    "mase_mean_physical": 0.8111350594061383,
+    "mase_mean_offline": 0.8111350632187823,
+    "mase_mean_rel_diff": 4.7003811710192225e-09,
+    "elementwise": {
+      "bitwise": false,
+      "max_abs": 2.677441777176881e-07,
+      "max_scaled": 0.0022508959329738468,
+      "atol": 8.111350632187823e-05,
+      "rtol": 0.0001,
+      "n": 262,
+      "passed": true
+    },
+    "elementwise_passed": true,
+    "passed": true
+  },
+  "V3_noa": {
+    "rule": "mean test MASE agrees to rtol (V3, option A)",
+    "rtol": 0.0001,
+    "mase_mean_physical": 0.7931756440330442,
+    "mase_mean_offline": 0.7931756428840034,
+    "mase_mean_rel_diff": 1.4486586442038381e-09,
+    "elementwise": {
+      "bitwise": false,
+      "max_abs": 3.0740180156918484e-07,
+      "max_scaled": 0.0014651456497016386,
+      "atol": 7.931756428840035e-05,
+      "rtol": 0.0001,
+      "n": 262,
+      "passed": true
+    },
+    "elementwise_passed": true,
+    "passed": true
+  }
+}

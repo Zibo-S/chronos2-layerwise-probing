@@ -1,0 +1,72 @@
+{
+  "native_gate_vs_phase1": {
+    "available": true,
+    "rtol": 0.0001,
+    "test_loss_mean_ours": 0.18841546930315842,
+    "test_loss_mean_phase1": 0.18841547164923816,
+    "test_loss_mean_rel_diff": 1.245163004186459e-08,
+    "test_loss_window_max_abs_diff": 3.5762786865234375e-07,
+    "test_mase_mean_ours": 1.2865068356498144,
+    "test_mase_mean_phase1": 1.2865068302940506,
+    "test_mase_mean_rel_diff": 4.163027903398133e-09,
+    "test_mase_window_max_abs_diff": 1.6725320099997276e-06,
+    "test_mase_window_max_rel_diff": 2.4575920395099354e-06,
+    "passed": true
+  },
+  "native_vs_h3": {
+    "mean_ours": 1.2865068356498144,
+    "mean_ref": 1.2865068356498144,
+    "mean_rel_diff": 0.0,
+    "window_max_abs_diff": 0.0,
+    "bitwise": true,
+    "rtol": 1e-06,
+    "passed": true
+  },
+  "teacher_sha256": "sha256:5b02bbb48eeff02dcd3c174d186cfe47edcc8f6ebc56064b2c9ac9b7dd3a4c90",
+  "full_mask_states_vs_phase1_L12": {
+    "train": {
+      "bitwise": true,
+      "max_abs": 0.0,
+      "max_abs_over_std": 0.0,
+      "ref_std": 0.905340469142781,
+      "tol": 0.001,
+      "passed": true
+    },
+    "val": {
+      "bitwise": true,
+      "max_abs": 0.0,
+      "max_abs_over_std": 0.0,
+      "ref_std": 0.8943949720795811,
+      "tol": 0.001,
+      "passed": true
+    },
+    "test": {
+      "bitwise": true,
+      "max_abs": 0.0,
+      "max_abs_over_std": 0.0,
+      "ref_std": 0.8386277864804141,
+      "tol": 0.001,
+      "passed": true
+    }
+  },
+  "full_mask_physical_equals_unmodified_bitwise": true,
+  "full_mask_physical_vs_offline_native": {
+    "rule": "mean test MASE agrees to rtol (V3, option A)",
+    "rtol": 0.0001,
+    "mase_mean_physical": 1.2865068302940506,
+    "mase_mean_offline": 1.2865068356498144,
+    "mase_mean_rel_diff": 4.163027886067332e-09,
+    "elementwise": {
+      "bitwise": false,
+      "max_abs": 1.6725320099997276e-06,
+      "max_scaled": 0.0056891334466239556,
+      "atol": 0.00012865068356498146,
+      "rtol": 0.0001,
+      "n": 262,
+      "passed": true
+    },
+    "elementwise_passed": true,
+    "passed": true
+  },
+  "all_passed": true
+}

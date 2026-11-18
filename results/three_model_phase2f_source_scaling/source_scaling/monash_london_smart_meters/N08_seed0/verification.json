@@ -1,0 +1,125 @@
+{
+  "native_gate_vs_phase1": {
+    "available": true,
+    "rtol": 0.0001,
+    "test_loss_mean_ours": 0.13211265499952413,
+    "test_loss_mean_phase1": 0.1321126546467235,
+    "test_loss_mean_rel_diff": 2.67045290243623e-09,
+    "test_loss_window_max_abs_diff": 5.960464477539063e-08,
+    "test_mase_mean_ours": 0.7762674162058316,
+    "test_mase_mean_phase1": 0.7762674154725767,
+    "test_mase_mean_rel_diff": 9.445905967795554e-10,
+    "test_mase_window_max_abs_diff": 2.793649656607222e-07,
+    "test_mase_window_max_rel_diff": 6.52430366818258e-06,
+    "passed": true
+  },
+  "native_vs_h3": {
+    "mean_ours": 0.7762674162058316,
+    "mean_ref": 0.7762674162058316,
+    "mean_rel_diff": 0.0,
+    "window_max_abs_diff": 0.0,
+    "bitwise": true,
+    "rtol": 1e-06,
+    "passed": true
+  },
+  "hard_vs_h3": {
+    "mean_ours": 0.9049584582606737,
+    "mean_ref": 0.9049584582606737,
+    "mean_rel_diff": 0.0,
+    "window_max_abs_diff": 0.0,
+    "bitwise": true,
+    "rtol": 1e-06,
+    "passed": true
+  },
+  "specific_vs_h3": {
+    "mean_ours": 0.8122175508503754,
+    "mean_ref": 0.8122175508503754,
+    "mean_rel_diff": 0.0,
+    "window_max_abs_diff": 0.0,
+    "bitwise": true,
+    "rtol": 1e-06,
+    "passed": true
+  },
+  "test_rows_vs_h3": {
+    "passed": true
+  },
+  "identity_adapter_equals_hard_cut": {
+    "passed": true
+  },
+  "target_isolation": {
+    "passed": true,
+    "target": "monash_london_smart_meters",
+    "sources": [
+      "uber_tlc_hourly",
+      "wind_farms_hourly",
+      "sg_carpark",
+      "coastal_ts",
+      "boom_hourly",
+      "SZ_TAXI_15T",
+      "wiki_daily_100k",
+      "monash_traffic"
+    ],
+    "excluded": [
+      "m4_hourly",
+      "monash_electricity_hourly",
+      "LOOP_SEATTLE_5T",
+      "electricity_15min",
+      "monash_london_smart_meters",
+      "m5"
+    ],
+    "target_fingerprints": {
+      "train": "sha256:5dd8a4aafec32ed08e9efe2dd94e81379baf38314f5e96645dcfe9a96b9049b1",
+      "val": "sha256:28071e4de2ec3452965fefdfb7302fb21a0cd5a35600309e0611ec00f7158beb"
+    },
+    "source_fingerprints": {
+      "uber_tlc_hourly": {
+        "train": "sha256:8eae6cc74e44e6513904c5c1b6714cad9d756057e0fcea7ed9c2ec2472d4b349",
+        "val": "sha256:1d1a41f29d4afb14e4d7146cc2926dc250de687685fa1b1b76d7b62f735d0d5e"
+      },
+      "wind_farms_hourly": {
+        "train": "sha256:410cb98108d5070763dbf1005327930fdb1cfec3a8deed86869eef4b4580e5f1",
+        "val": "sha256:d95c575974437ab75cff8cda19f7f9880a6ad4b8a31a724812db1e39911a2d88"
+      },
+      "sg_carpark": {
+        "train": "sha256:ba1ad356dd75089aa130862dd333007f9d0257ca8298b976b87faf2e71c9a991",
+        "val": "sha256:07ba811ad7a41678a03439f7474093256c83e17610e30e242e748040a4e19f20"
+      },
+      "coastal_ts": {
+        "train": "sha256:43741b20434e64782bec1f21587048dd16d0fe76e82008b6f18eb6204e856ef9",
+        "val": "sha256:6dcdcf80b64bb35ff4f3746e8bd0943855781dc47873b717836b480115c1c445"
+      },
+      "boom_hourly": {
+        "train": "sha256:992209e9f5c4112a0714d1210d4955ea6753601581fd068bfaa864d2e9a0bf55",
+        "val": "sha256:6ceb8d686e08c3b654d63f66fff67f1db9f340921bb07fec2c272f33c054070f"
+      },
+      "SZ_TAXI_15T": {
+        "train": "sha256:9b5042d3593d36b1b7d28733311065f065884b3b49ecfe8584ddb10b2123e7fa",
+        "val": "sha256:ce0f4dc48ed19d804db30dc05d9049cfaccc6d4e6f7d09cfb13541e34e24edb8"
+      },
+      "wiki_daily_100k": {
+        "train": "sha256:2056ac4d7af9942a5dd7c0392fdce6789334d31eb7686605c0d97625cb205f7a",
+        "val": "sha256:9e08272bb0187929092f76040ade657ad5b6df287c488a7f079eaf7d40e70b71"
+      },
+      "monash_traffic": {
+        "train": "sha256:de9e6ebeda8fb7e140fb9fbbb5b0dc3c5743afbb8190f07e52a302a21e307281",
+        "val": "sha256:9f464f4c9b0f9e9be819f7039c179af4ac04cbbe72ad5f71157271417e3f8c84"
+      }
+    },
+    "note": "the pooled tensors are built from `sources` only; the target's train/val fingerprints match no source block"
+  },
+  "equal_train_counts": {
+    "passed": true,
+    "counts": {
+      "uber_tlc_hourly": 1394,
+      "wind_farms_hourly": 1394,
+      "sg_carpark": 1394,
+      "coastal_ts": 1394,
+      "boom_hourly": 1394,
+      "SZ_TAXI_15T": 1394,
+      "wiki_daily_100k": 1394,
+      "monash_traffic": 1394
+    },
+    "note": "informational: the criterion weighs sources equally whatever the counts"
+  },
+  "all_passed": true
+}

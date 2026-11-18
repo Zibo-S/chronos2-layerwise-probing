@@ -1,0 +1,1388 @@
+{
+  "schema": "phase2f_design/v1",
+  "protocol": "phase2f/source-scaling-v1",
+  "phase2c_protocol": "phase2c/lodo-v1",
+  "depth": 6,
+  "label": "L6",
+  "n_grid": [
+    1,
+    4,
+    8,
+    13
+  ],
+  "order_seeds": [
+    0,
+    1,
+    2
+  ],
+  "order_rule": "phase2f/source-order/v1",
+  "targets": [
+    "LOOP_SEATTLE_5T",
+    "monash_london_smart_meters",
+    "boom_hourly",
+    "m5"
+  ],
+  "target_selection": {
+    "rule": "Applied to dataset metadata only (sampling frequency, domain family, Chronos-2 pretraining provenance, number of test series), never to any transfer or truncation result. R1: no Electricity dataset (series siblings), so every target's source pool is all 13 other datasets, as in the Phase 2c main protocol. R2: the test split reaches the full 262-series budget (excludes SZ Taxi, 156 series, and Coastal T-S, 24), so every target has comparable statistical power. R3: four distinct sampling frequencies, all three provenance groups (held out / not listed / listed), four distinct domain families. R4: ties go to more targets held out from Chronos-2 pretraining (the strictest zero-shot case: unseen by the backbone and by the adapter), then to roster order.",
+    "excluded_R1_series_siblings": [
+      "monash_electricity_hourly",
+      "electricity_15min"
+    ],
+    "excluded_R2_test_series_below_budget": {
+      "coastal_ts": 24,
+      "SZ_TAXI_15T": 156
+    },
+    "admissible_sets": [
+      [
+        "boom_hourly",
+        "LOOP_SEATTLE_5T",
+        "monash_london_smart_meters",
+        "m5"
+      ],
+      [
+        "boom_hourly",
+        "LOOP_SEATTLE_5T",
+        "monash_london_smart_meters",
+        "wiki_daily_100k"
+      ]
+    ],
+    "selected": [
+      "boom_hourly",
+      "LOOP_SEATTLE_5T",
+      "monash_london_smart_meters",
+      "m5"
+    ]
+  },
+  "target_rationale": {
+    "LOOP_SEATTLE_5T": {
+      "frequency": "5min",
+      "seasonal_period": 288,
+      "domain_family": "transport",
+      "provenance": "held_out",
+      "signal": "freeway loop-detector speeds: smooth, strongly daily-periodic",
+      "why": "the only 5-minute dataset; held out from Chronos-2 pretraining (fev-bench)"
+    },
+    "monash_london_smart_meters": {
+      "frequency": "30min",
+      "seasonal_period": 48,
+      "domain_family": "energy",
+      "provenance": "listed",
+      "signal": "single-household electricity use: noisy and spiky",
+      "why": "the only 30-minute dataset; documented pretraining data; same domain family as the two Electricity sources (a near-domain target)"
+    },
+    "boom_hourly": {
+      "frequency": "1H",
+      "seasonal_period": 24,
+      "domain_family": "cloud",
+      "provenance": "not_listed",
+      "signal": "cloud observability metrics: the lowest dynamic range in the roster, many flat stretches (Phase-1 yield screen: 12% constant future windows)",
+      "why": "the hourly slot must be 'not listed' (only hourly datasets are), and SG Carpark would repeat Loop Seattle's transport family"
+    },
+    "m5": {
+      "frequency": "1D",
+      "seasonal_period": 7,
+      "domain_family": "retail",
+      "provenance": "held_out",
+      "signal": "daily retail unit sales: intermittent low counts",
+      "why": "daily slot; held out from Chronos-2 pretraining (Benchmark II, fev-bench); preferred to Wiki Daily (listed) by R4"
+    }
+  },
+  "orders": {
+    "LOOP_SEATTLE_5T": [
+      {
+        "seed": 0,
+        "order": [
+          "m5",
+          "boom_hourly",
+          "electricity_15min",
+          "sg_carpark",
+          "wiki_daily_100k",
+          "wind_farms_hourly",
+          "monash_traffic",
+          "uber_tlc_hourly",
+          "monash_electricity_hourly",
+          "coastal_ts",
+          "m4_hourly",
+          "SZ_TAXI_15T",
+          "monash_london_smart_meters"
+        ],
+        "draw": 1,
+        "rule": "phase2f/source-order/v1",
+        "restrictions": {
+          "family_distinct_within_first": 8,
+          "first_source_distinct_across_seeds": true
+        }
+      },
+      {
+        "seed": 1,
+        "order": [
+          "wind_farms_hourly",
+          "m5",
+          "monash_traffic",
+          "uber_tlc_hourly",
+          "electricity_15min",
+          "coastal_ts",
+          "m4_hourly",
+          "boom_hourly",
+          "SZ_TAXI_15T",
+          "monash_london_smart_meters",
+          "sg_carpark",
+          "monash_electricity_hourly",
+          "wiki_daily_100k"
+        ],
+        "draw": 1,
+        "rule": "phase2f/source-order/v1",
+        "restrictions": {
+          "family_distinct_within_first": 8,
+          "first_source_distinct_across_seeds": true
+        }
+      },
+      {
+        "seed": 2,
+        "order": [
+          "boom_hourly",
+          "coastal_ts",
+          "m4_hourly",
+          "wiki_daily_100k",
+          "SZ_TAXI_15T",
+          "m5",
+          "wind_farms_hourly",
+          "sg_carpark",
+          "uber_tlc_hourly",
+          "electricity_15min",
+          "monash_traffic",
+          "monash_electricity_hourly",
+          "monash_london_smart_meters"
+        ],
+        "draw": 2,
+        "rule": "phase2f/source-order/v1",
+        "restrictions": {
+          "family_distinct_within_first": 8,
+          "first_source_distinct_across_seeds": true
+        }
+      }
+    ],
+    "monash_london_smart_meters": [
+      {
+        "seed": 0,
+        "order": [
+          "wind_farms_hourly",
+          "boom_hourly",
+          "coastal_ts",
+          "sg_carpark",
+          "SZ_TAXI_15T",
+          "wiki_daily_100k",
+          "monash_traffic",
+          "uber_tlc_hourly",
+          "LOOP_SEATTLE_5T",
+          "monash_electricity_hourly",
+          "m5",
+          "electricity_15min",
+          "m4_hourly"
+        ],
+        "draw": 2,
+        "rule": "phase2f/source-order/v1",
+        "restrictions": {
+          "family_distinct_within_first": 8,
+          "first_source_distinct_across_seeds": true
+        }
+      },
+      {
+        "seed": 1,
+        "order": [
+          "m4_hourly",
+          "sg_carpark",
+          "wiki_daily_100k",
+          "wind_farms_hourly",
+          "SZ_TAXI_15T",
+          "m5",
+          "LOOP_SEATTLE_5T",
+          "coastal_ts",
+          "electricity_15min",
+          "monash_electricity_hourly",
+          "uber_tlc_hourly",
+          "boom_hourly",
+          "monash_traffic"
+        ],
+        "draw": 1,
+        "rule": "phase2f/source-order/v1",
+        "restrictions": {
+          "family_distinct_within_first": 8,
+          "first_source_distinct_across_seeds": true
+        }
+      },
+      {
+        "seed": 2,
+        "order": [
+          "monash_traffic",
+          "wind_farms_hourly",
+          "coastal_ts",
+          "m4_hourly",
+          "uber_tlc_hourly",
+          "LOOP_SEATTLE_5T",
+          "electricity_15min",
+          "SZ_TAXI_15T",
+          "wiki_daily_100k",
+          "monash_electricity_hourly",
+          "boom_hourly",
+          "sg_carpark",
+          "m5"
+        ],
+        "draw": 2,
+        "rule": "phase2f/source-order/v1",
+        "restrictions": {
+          "family_distinct_within_first": 8,
+          "first_source_distinct_across_seeds": true
+        }
+      }
+    ],
+    "boom_hourly": [
+      {
+        "seed": 0,
+        "order": [
+          "m4_hourly",
+          "wiki_daily_100k",
+          "uber_tlc_hourly",
+          "monash_electricity_hourly",
+          "m5",
+          "SZ_TAXI_15T",
+          "sg_carpark",
+          "wind_farms_hourly",
+          "monash_london_smart_meters",
+          "coastal_ts",
+          "monash_traffic",
+          "LOOP_SEATTLE_5T",
+          "electricity_15min"
+        ],
+        "draw": 1,
+        "rule": "phase2f/source-order/v1",
+        "restrictions": {
+          "family_distinct_within_first": 8,
+          "first_source_distinct_across_seeds": true
+        }
+      },
+      {
+        "seed": 1,
+        "order": [
+          "electricity_15min",
+          "wiki_daily_100k",
+          "m4_hourly",
+          "monash_london_smart_meters",
+          "uber_tlc_hourly",
+          "coastal_ts",
+          "sg_carpark",
+          "wind_farms_hourly",
+          "SZ_TAXI_15T",
+          "monash_traffic",
+          "monash_electricity_hourly",
+          "LOOP_SEATTLE_5T",
+          "m5"
+        ],
+        "draw": 1,
+        "rule": "phase2f/source-order/v1",
+        "restrictions": {
+          "family_distinct_within_first": 8,
+          "first_source_distinct_across_seeds": true
+        }
+      },
+      {
+        "seed": 2,
+        "order": [
+          "wind_farms_hourly",
+          "m5",
+          "LOOP_SEATTLE_5T",
+          "monash_electricity_hourly",
+          "sg_carpark",
+          "m4_hourly",
+          "SZ_TAXI_15T",
+          "monash_london_smart_meters",
+          "uber_tlc_hourly",
+          "electricity_15min",
+          "monash_traffic",
+          "wiki_daily_100k",
+          "coastal_ts"
+        ],
+        "draw": 3,
+        "rule": "phase2f/source-order/v1",
+        "restrictions": {
+          "family_distinct_within_first": 8,
+          "first_source_distinct_across_seeds": true
+        }
+      }
+    ],
+    "m5": [
+      {
+        "seed": 0,
+        "order": [
+          "boom_hourly",
+          "electricity_15min",
+          "sg_carpark",
+          "monash_traffic",
+          "SZ_TAXI_15T",
+          "wiki_daily_100k",
+          "m4_hourly",
+          "monash_london_smart_meters",
+          "wind_farms_hourly",
+          "LOOP_SEATTLE_5T",
+          "coastal_ts",
+          "monash_electricity_hourly",
+          "uber_tlc_hourly"
+        ],
+        "draw": 2,
+        "rule": "phase2f/source-order/v1",
+        "restrictions": {
+          "family_distinct_within_first": 8,
+          "first_source_distinct_across_seeds": true
+        }
+      },
+      {
+        "seed": 1,
+        "order": [
+          "monash_london_smart_meters",
+          "uber_tlc_hourly",
+          "coastal_ts",
+          "monash_electricity_hourly",
+          "LOOP_SEATTLE_5T",
+          "SZ_TAXI_15T",
+          "wiki_daily_100k",
+          "monash_traffic",
+          "m4_hourly",
+          "electricity_15min",
+          "wind_farms_hourly",
+          "boom_hourly",
+          "sg_carpark"
+        ],
+        "draw": 2,
+        "rule": "phase2f/source-order/v1",
+        "restrictions": {
+          "family_distinct_within_first": 8,
+          "first_source_distinct_across_seeds": true
+        }
+      },
+      {
+        "seed": 2,
+        "order": [
+          "wiki_daily_100k",
+          "boom_hourly",
+          "sg_carpark",
+          "LOOP_SEATTLE_5T",
+          "monash_traffic",
+          "m4_hourly",
+          "coastal_ts",
+          "monash_london_smart_meters",
+          "wind_farms_hourly",
+          "monash_electricity_hourly",
+          "uber_tlc_hourly",
+          "electricity_15min",
+          "SZ_TAXI_15T"
+        ],
+        "draw": 1,
+        "rule": "phase2f/source-order/v1",
+        "restrictions": {
+          "family_distinct_within_first": 8,
+          "first_source_distinct_across_seeds": true
+        }
+      }
+    ]
+  },
+  "cells": [
+    {
+      "target": "LOOP_SEATTLE_5T",
+      "cell_id": "N01_seed0",
+      "n_sources": 1,
+      "order_seed": 0,
+      "selection_order": [
+        "m5"
+      ],
+      "sources": [
+        "m5"
+      ],
+      "n_families": 1,
+      "series_family_members": [],
+      "shared_across_seeds": null
+    },
+    {
+      "target": "LOOP_SEATTLE_5T",
+      "cell_id": "N01_seed1",
+      "n_sources": 1,
+      "order_seed": 1,
+      "selection_order": [
+        "wind_farms_hourly"
+      ],
+      "sources": [
+        "wind_farms_hourly"
+      ],
+      "n_families": 1,
+      "series_family_members": [],
+      "shared_across_seeds": null
+    },
+    {
+      "target": "LOOP_SEATTLE_5T",
+      "cell_id": "N01_seed2",
+      "n_sources": 1,
+      "order_seed": 2,
+      "selection_order": [
+        "boom_hourly"
+      ],
+      "sources": [
+        "boom_hourly"
+      ],
+      "n_families": 1,
+      "series_family_members": [],
+      "shared_across_seeds": null
+    },
+    {
+      "target": "LOOP_SEATTLE_5T",
+      "cell_id": "N04_seed0",
+      "n_sources": 4,
+      "order_seed": 0,
+      "selection_order": [
+        "m5",
+        "boom_hourly",
+        "electricity_15min",
+        "sg_carpark"
+      ],
+      "sources": [
+        "sg_carpark",
+        "boom_hourly",
+        "electricity_15min",
+        "m5"
+      ],
+      "n_families": 4,
+      "series_family_members": [
+        "electricity_15min"
+      ],
+      "shared_across_seeds": null
+    },
+    {
+      "target": "LOOP_SEATTLE_5T",
+      "cell_id": "N04_seed1",
+      "n_sources": 4,
+      "order_seed": 1,
+      "selection_order": [
+        "wind_farms_hourly",
+        "m5",
+        "monash_traffic",
+        "uber_tlc_hourly"
+      ],
+      "sources": [
+        "uber_tlc_hourly",
+        "wind_farms_hourly",
+        "m5",
+        "monash_traffic"
+      ],
+      "n_families": 4,
+      "series_family_members": [],
+      "shared_across_seeds": null
+    },
+    {
+      "target": "LOOP_SEATTLE_5T",
+      "cell_id": "N04_seed2",
+      "n_sources": 4,
+      "order_seed": 2,
+      "selection_order": [
+        "boom_hourly",
+        "coastal_ts",
+        "m4_hourly",
+        "wiki_daily_100k"
+      ],
+      "sources": [
+        "m4_hourly",
+        "coastal_ts",
+        "boom_hourly",
+        "wiki_daily_100k"
+      ],
+      "n_families": 4,
+      "series_family_members": [],
+      "shared_across_seeds": null
+    },
+    {
+      "target": "LOOP_SEATTLE_5T",
+      "cell_id": "N08_seed0",
+      "n_sources": 8,
+      "order_seed": 0,
+      "selection_order": [
+        "m5",
+        "boom_hourly",
+        "electricity_15min",
+        "sg_carpark",
+        "wiki_daily_100k",
+        "wind_farms_hourly",
+        "monash_traffic",
+        "uber_tlc_hourly"
+      ],
+      "sources": [
+        "uber_tlc_hourly",
+        "wind_farms_hourly",
+        "sg_carpark",
+        "boom_hourly",
+        "electricity_15min",
+        "m5",
+        "wiki_daily_100k",
+        "monash_traffic"
+      ],
+      "n_families": 8,
+      "series_family_members": [
+        "electricity_15min"
+      ],
+      "shared_across_seeds": null
+    },
+    {
+      "target": "LOOP_SEATTLE_5T",
+      "cell_id": "N08_seed1",
+      "n_sources": 8,
+      "order_seed": 1,
+      "selection_order": [
+        "wind_farms_hourly",
+        "m5",
+        "monash_traffic",
+        "uber_tlc_hourly",
+        "electricity_15min",
+        "coastal_ts",
+        "m4_hourly",
+        "boom_hourly"
+      ],
+      "sources": [
+        "m4_hourly",
+        "uber_tlc_hourly",
+        "wind_farms_hourly",
+        "coastal_ts",
+        "boom_hourly",
+        "electricity_15min",
+        "m5",
+        "monash_traffic"
+      ],
+      "n_families": 8,
+      "series_family_members": [
+        "electricity_15min"
+      ],
+      "shared_across_seeds": null
+    },
+    {
+      "target": "LOOP_SEATTLE_5T",
+      "cell_id": "N08_seed2",
+      "n_sources": 8,
+      "order_seed": 2,
+      "selection_order": [
+        "boom_hourly",
+        "coastal_ts",
+        "m4_hourly",
+        "wiki_daily_100k",
+        "SZ_TAXI_15T",
+        "m5",
+        "wind_farms_hourly",
+        "sg_carpark"
+      ],
+      "sources": [
+        "m4_hourly",
+        "wind_farms_hourly",
+        "sg_carpark",
+        "coastal_ts",
+        "boom_hourly",
+        "SZ_TAXI_15T",
+        "m5",
+        "wiki_daily_100k"
+      ],
+      "n_families": 8,
+      "series_family_members": [],
+      "shared_across_seeds": null
+    },
+    {
+      "target": "LOOP_SEATTLE_5T",
+      "cell_id": "N13_all",
+      "n_sources": 13,
+      "order_seed": null,
+      "selection_order": [
+        "m4_hourly",
+        "monash_electricity_hourly",
+        "uber_tlc_hourly",
+        "wind_farms_hourly",
+        "sg_carpark",
+        "coastal_ts",
+        "boom_hourly",
+        "electricity_15min",
+        "SZ_TAXI_15T",
+        "monash_london_smart_meters",
+        "m5",
+        "wiki_daily_100k",
+        "monash_traffic"
+      ],
+      "sources": [
+        "m4_hourly",
+        "monash_electricity_hourly",
+        "uber_tlc_hourly",
+        "wind_farms_hourly",
+        "sg_carpark",
+        "coastal_ts",
+        "boom_hourly",
+        "electricity_15min",
+        "SZ_TAXI_15T",
+        "monash_london_smart_meters",
+        "m5",
+        "wiki_daily_100k",
+        "monash_traffic"
+      ],
+      "n_families": 12,
+      "series_family_members": [
+        "monash_electricity_hourly",
+        "electricity_15min"
+      ],
+      "shared_across_seeds": [
+        0,
+        1,
+        2
+      ]
+    },
+    {
+      "target": "monash_london_smart_meters",
+      "cell_id": "N01_seed0",
+      "n_sources": 1,
+      "order_seed": 0,
+      "selection_order": [
+        "wind_farms_hourly"
+      ],
+      "sources": [
+        "wind_farms_hourly"
+      ],
+      "n_families": 1,
+      "series_family_members": [],
+      "shared_across_seeds": null
+    },
+    {
+      "target": "monash_london_smart_meters",
+      "cell_id": "N01_seed1",
+      "n_sources": 1,
+      "order_seed": 1,
+      "selection_order": [
+        "m4_hourly"
+      ],
+      "sources": [
+        "m4_hourly"
+      ],
+      "n_families": 1,
+      "series_family_members": [],
+      "shared_across_seeds": null
+    },
+    {
+      "target": "monash_london_smart_meters",
+      "cell_id": "N01_seed2",
+      "n_sources": 1,
+      "order_seed": 2,
+      "selection_order": [
+        "monash_traffic"
+      ],
+      "sources": [
+        "monash_traffic"
+      ],
+      "n_families": 1,
+      "series_family_members": [],
+      "shared_across_seeds": null
+    },
+    {
+      "target": "monash_london_smart_meters",
+      "cell_id": "N04_seed0",
+      "n_sources": 4,
+      "order_seed": 0,
+      "selection_order": [
+        "wind_farms_hourly",
+        "boom_hourly",
+        "coastal_ts",
+        "sg_carpark"
+      ],
+      "sources": [
+        "wind_farms_hourly",
+        "sg_carpark",
+        "coastal_ts",
+        "boom_hourly"
+      ],
+      "n_families": 4,
+      "series_family_members": [],
+      "shared_across_seeds": null
+    },
+    {
+      "target": "monash_london_smart_meters",
+      "cell_id": "N04_seed1",
+      "n_sources": 4,
+      "order_seed": 1,
+      "selection_order": [
+        "m4_hourly",
+        "sg_carpark",
+        "wiki_daily_100k",
+        "wind_farms_hourly"
+      ],
+      "sources": [
+        "m4_hourly",
+        "wind_farms_hourly",
+        "sg_carpark",
+        "wiki_daily_100k"
+      ],
+      "n_families": 4,
+      "series_family_members": [],
+      "shared_across_seeds": null
+    },
+    {
+      "target": "monash_london_smart_meters",
+      "cell_id": "N04_seed2",
+      "n_sources": 4,
+      "order_seed": 2,
+      "selection_order": [
+        "monash_traffic",
+        "wind_farms_hourly",
+        "coastal_ts",
+        "m4_hourly"
+      ],
+      "sources": [
+        "m4_hourly",
+        "wind_farms_hourly",
+        "coastal_ts",
+        "monash_traffic"
+      ],
+      "n_families": 4,
+      "series_family_members": [],
+      "shared_across_seeds": null
+    },
+    {
+      "target": "monash_london_smart_meters",
+      "cell_id": "N08_seed0",
+      "n_sources": 8,
+      "order_seed": 0,
+      "selection_order": [
+        "wind_farms_hourly",
+        "boom_hourly",
+        "coastal_ts",
+        "sg_carpark",
+        "SZ_TAXI_15T",
+        "wiki_daily_100k",
+        "monash_traffic",
+        "uber_tlc_hourly"
+      ],
+      "sources": [
+        "uber_tlc_hourly",
+        "wind_farms_hourly",
+        "sg_carpark",
+        "coastal_ts",
+        "boom_hourly",
+        "SZ_TAXI_15T",
+        "wiki_daily_100k",
+        "monash_traffic"
+      ],
+      "n_families": 8,
+      "series_family_members": [],
+      "shared_across_seeds": null
+    },
+    {
+      "target": "monash_london_smart_meters",
+      "cell_id": "N08_seed1",
+      "n_sources": 8,
+      "order_seed": 1,
+      "selection_order": [
+        "m4_hourly",
+        "sg_carpark",
+        "wiki_daily_100k",
+        "wind_farms_hourly",
+        "SZ_TAXI_15T",
+        "m5",
+        "LOOP_SEATTLE_5T",
+        "coastal_ts"
+      ],
+      "sources": [
+        "m4_hourly",
+        "wind_farms_hourly",
+        "sg_carpark",
+        "coastal_ts",
+        "LOOP_SEATTLE_5T",
+        "SZ_TAXI_15T",
+        "m5",
+        "wiki_daily_100k"
+      ],
+      "n_families": 8,
+      "series_family_members": [],
+      "shared_across_seeds": null
+    },
+    {
+      "target": "monash_london_smart_meters",
+      "cell_id": "N08_seed2",
+      "n_sources": 8,
+      "order_seed": 2,
+      "selection_order": [
+        "monash_traffic",
+        "wind_farms_hourly",
+        "coastal_ts",
+        "m4_hourly",
+        "uber_tlc_hourly",
+        "LOOP_SEATTLE_5T",
+        "electricity_15min",
+        "SZ_TAXI_15T"
+      ],
+      "sources": [
+        "m4_hourly",
+        "uber_tlc_hourly",
+        "wind_farms_hourly",
+        "coastal_ts",
+        "LOOP_SEATTLE_5T",
+        "electricity_15min",
+        "SZ_TAXI_15T",
+        "monash_traffic"
+      ],
+      "n_families": 8,
+      "series_family_members": [
+        "electricity_15min"
+      ],
+      "shared_across_seeds": null
+    },
+    {
+      "target": "monash_london_smart_meters",
+      "cell_id": "N13_all",
+      "n_sources": 13,
+      "order_seed": null,
+      "selection_order": [
+        "m4_hourly",
+        "monash_electricity_hourly",
+        "uber_tlc_hourly",
+        "wind_farms_hourly",
+        "sg_carpark",
+        "coastal_ts",
+        "boom_hourly",
+        "LOOP_SEATTLE_5T",
+        "electricity_15min",
+        "SZ_TAXI_15T",
+        "m5",
+        "wiki_daily_100k",
+        "monash_traffic"
+      ],
+      "sources": [
+        "m4_hourly",
+        "monash_electricity_hourly",
+        "uber_tlc_hourly",
+        "wind_farms_hourly",
+        "sg_carpark",
+        "coastal_ts",
+        "boom_hourly",
+        "LOOP_SEATTLE_5T",
+        "electricity_15min",
+        "SZ_TAXI_15T",
+        "m5",
+        "wiki_daily_100k",
+        "monash_traffic"
+      ],
+      "n_families": 12,
+      "series_family_members": [
+        "monash_electricity_hourly",
+        "electricity_15min"
+      ],
+      "shared_across_seeds": [
+        0,
+        1,
+        2
+      ]
+    },
+    {
+      "target": "boom_hourly",
+      "cell_id": "N01_seed0",
+      "n_sources": 1,
+      "order_seed": 0,
+      "selection_order": [
+        "m4_hourly"
+      ],
+      "sources": [
+        "m4_hourly"
+      ],
+      "n_families": 1,
+      "series_family_members": [],
+      "shared_across_seeds": null
+    },
+    {
+      "target": "boom_hourly",
+      "cell_id": "N01_seed1",
+      "n_sources": 1,
+      "order_seed": 1,
+      "selection_order": [
+        "electricity_15min"
+      ],
+      "sources": [
+        "electricity_15min"
+      ],
+      "n_families": 1,
+      "series_family_members": [
+        "electricity_15min"
+      ],
+      "shared_across_seeds": null
+    },
+    {
+      "target": "boom_hourly",
+      "cell_id": "N01_seed2",
+      "n_sources": 1,
+      "order_seed": 2,
+      "selection_order": [
+        "wind_farms_hourly"
+      ],
+      "sources": [
+        "wind_farms_hourly"
+      ],
+      "n_families": 1,
+      "series_family_members": [],
+      "shared_across_seeds": null
+    },
+    {
+      "target": "boom_hourly",
+      "cell_id": "N04_seed0",
+      "n_sources": 4,
+      "order_seed": 0,
+      "selection_order": [
+        "m4_hourly",
+        "wiki_daily_100k",
+        "uber_tlc_hourly",
+        "monash_electricity_hourly"
+      ],
+      "sources": [
+        "m4_hourly",
+        "monash_electricity_hourly",
+        "uber_tlc_hourly",
+        "wiki_daily_100k"
+      ],
+      "n_families": 4,
+      "series_family_members": [
+        "monash_electricity_hourly"
+      ],
+      "shared_across_seeds": null
+    },
+    {
+      "target": "boom_hourly",
+      "cell_id": "N04_seed1",
+      "n_sources": 4,
+      "order_seed": 1,
+      "selection_order": [
+        "electricity_15min",
+        "wiki_daily_100k",
+        "m4_hourly",
+        "monash_london_smart_meters"
+      ],
+      "sources": [
+        "m4_hourly",
+        "electricity_15min",
+        "monash_london_smart_meters",
+        "wiki_daily_100k"
+      ],
+      "n_families": 4,
+      "series_family_members": [
+        "electricity_15min"
+      ],
+      "shared_across_seeds": null
+    },
+    {
+      "target": "boom_hourly",
+      "cell_id": "N04_seed2",
+      "n_sources": 4,
+      "order_seed": 2,
+      "selection_order": [
+        "wind_farms_hourly",
+        "m5",
+        "LOOP_SEATTLE_5T",
+        "monash_electricity_hourly"
+      ],
+      "sources": [
+        "monash_electricity_hourly",
+        "wind_farms_hourly",
+        "LOOP_SEATTLE_5T",
+        "m5"
+      ],
+      "n_families": 4,
+      "series_family_members": [
+        "monash_electricity_hourly"
+      ],
+      "shared_across_seeds": null
+    },
+    {
+      "target": "boom_hourly",
+      "cell_id": "N08_seed0",
+      "n_sources": 8,
+      "order_seed": 0,
+      "selection_order": [
+        "m4_hourly",
+        "wiki_daily_100k",
+        "uber_tlc_hourly",
+        "monash_electricity_hourly",
+        "m5",
+        "SZ_TAXI_15T",
+        "sg_carpark",
+        "wind_farms_hourly"
+      ],
+      "sources": [
+        "m4_hourly",
+        "monash_electricity_hourly",
+        "uber_tlc_hourly",
+        "wind_farms_hourly",
+        "sg_carpark",
+        "SZ_TAXI_15T",
+        "m5",
+        "wiki_daily_100k"
+      ],
+      "n_families": 8,
+      "series_family_members": [
+        "monash_electricity_hourly"
+      ],
+      "shared_across_seeds": null
+    },
+    {
+      "target": "boom_hourly",
+      "cell_id": "N08_seed1",
+      "n_sources": 8,
+      "order_seed": 1,
+      "selection_order": [
+        "electricity_15min",
+        "wiki_daily_100k",
+        "m4_hourly",
+        "monash_london_smart_meters",
+        "uber_tlc_hourly",
+        "coastal_ts",
+        "sg_carpark",
+        "wind_farms_hourly"
+      ],
+      "sources": [
+        "m4_hourly",
+        "uber_tlc_hourly",
+        "wind_farms_hourly",
+        "sg_carpark",
+        "coastal_ts",
+        "electricity_15min",
+        "monash_london_smart_meters",
+        "wiki_daily_100k"
+      ],
+      "n_families": 8,
+      "series_family_members": [
+        "electricity_15min"
+      ],
+      "shared_across_seeds": null
+    },
+    {
+      "target": "boom_hourly",
+      "cell_id": "N08_seed2",
+      "n_sources": 8,
+      "order_seed": 2,
+      "selection_order": [
+        "wind_farms_hourly",
+        "m5",
+        "LOOP_SEATTLE_5T",
+        "monash_electricity_hourly",
+        "sg_carpark",
+        "m4_hourly",
+        "SZ_TAXI_15T",
+        "monash_london_smart_meters"
+      ],
+      "sources": [
+        "m4_hourly",
+        "monash_electricity_hourly",
+        "wind_farms_hourly",
+        "sg_carpark",
+        "LOOP_SEATTLE_5T",
+        "SZ_TAXI_15T",
+        "monash_london_smart_meters",
+        "m5"
+      ],
+      "n_families": 8,
+      "series_family_members": [
+        "monash_electricity_hourly"
+      ],
+      "shared_across_seeds": null
+    },
+    {
+      "target": "boom_hourly",
+      "cell_id": "N13_all",
+      "n_sources": 13,
+      "order_seed": null,
+      "selection_order": [
+        "m4_hourly",
+        "monash_electricity_hourly",
+        "uber_tlc_hourly",
+        "wind_farms_hourly",
+        "sg_carpark",
+        "coastal_ts",
+        "LOOP_SEATTLE_5T",
+        "electricity_15min",
+        "SZ_TAXI_15T",
+        "monash_london_smart_meters",
+        "m5",
+        "wiki_daily_100k",
+        "monash_traffic"
+      ],
+      "sources": [
+        "m4_hourly",
+        "monash_electricity_hourly",
+        "uber_tlc_hourly",
+        "wind_farms_hourly",
+        "sg_carpark",
+        "coastal_ts",
+        "LOOP_SEATTLE_5T",
+        "electricity_15min",
+        "SZ_TAXI_15T",
+        "monash_london_smart_meters",
+        "m5",
+        "wiki_daily_100k",
+        "monash_traffic"
+      ],
+      "n_families": 12,
+      "series_family_members": [
+        "monash_electricity_hourly",
+        "electricity_15min"
+      ],
+      "shared_across_seeds": [
+        0,
+        1,
+        2
+      ]
+    },
+    {
+      "target": "m5",
+      "cell_id": "N01_seed0",
+      "n_sources": 1,
+      "order_seed": 0,
+      "selection_order": [
+        "boom_hourly"
+      ],
+      "sources": [
+        "boom_hourly"
+      ],
+      "n_families": 1,
+      "series_family_members": [],
+      "shared_across_seeds": null
+    },
+    {
+      "target": "m5",
+      "cell_id": "N01_seed1",
+      "n_sources": 1,
+      "order_seed": 1,
+      "selection_order": [
+        "monash_london_smart_meters"
+      ],
+      "sources": [
+        "monash_london_smart_meters"
+      ],
+      "n_families": 1,
+      "series_family_members": [],
+      "shared_across_seeds": null
+    },
+    {
+      "target": "m5",
+      "cell_id": "N01_seed2",
+      "n_sources": 1,
+      "order_seed": 2,
+      "selection_order": [
+        "wiki_daily_100k"
+      ],
+      "sources": [
+        "wiki_daily_100k"
+      ],
+      "n_families": 1,
+      "series_family_members": [],
+      "shared_across_seeds": null
+    },
+    {
+      "target": "m5",
+      "cell_id": "N04_seed0",
+      "n_sources": 4,
+      "order_seed": 0,
+      "selection_order": [
+        "boom_hourly",
+        "electricity_15min",
+        "sg_carpark",
+        "monash_traffic"
+      ],
+      "sources": [
+        "sg_carpark",
+        "boom_hourly",
+        "electricity_15min",
+        "monash_traffic"
+      ],
+      "n_families": 4,
+      "series_family_members": [
+        "electricity_15min"
+      ],
+      "shared_across_seeds": null
+    },
+    {
+      "target": "m5",
+      "cell_id": "N04_seed1",
+      "n_sources": 4,
+      "order_seed": 1,
+      "selection_order": [
+        "monash_london_smart_meters",
+        "uber_tlc_hourly",
+        "coastal_ts",
+        "monash_electricity_hourly"
+      ],
+      "sources": [
+        "monash_electricity_hourly",
+        "uber_tlc_hourly",
+        "coastal_ts",
+        "monash_london_smart_meters"
+      ],
+      "n_families": 4,
+      "series_family_members": [
+        "monash_electricity_hourly"
+      ],
+      "shared_across_seeds": null
+    },
+    {
+      "target": "m5",
+      "cell_id": "N04_seed2",
+      "n_sources": 4,
+      "order_seed": 2,
+      "selection_order": [
+        "wiki_daily_100k",
+        "boom_hourly",
+        "sg_carpark",
+        "LOOP_SEATTLE_5T"
+      ],
+      "sources": [
+        "sg_carpark",
+        "boom_hourly",
+        "LOOP_SEATTLE_5T",
+        "wiki_daily_100k"
+      ],
+      "n_families": 4,
+      "series_family_members": [],
+      "shared_across_seeds": null
+    },
+    {
+      "target": "m5",
+      "cell_id": "N08_seed0",
+      "n_sources": 8,
+      "order_seed": 0,
+      "selection_order": [
+        "boom_hourly",
+        "electricity_15min",
+        "sg_carpark",
+        "monash_traffic",
+        "SZ_TAXI_15T",
+        "wiki_daily_100k",
+        "m4_hourly",
+        "monash_london_smart_meters"
+      ],
+      "sources": [
+        "m4_hourly",
+        "sg_carpark",
+        "boom_hourly",
+        "electricity_15min",
+        "SZ_TAXI_15T",
+        "monash_london_smart_meters",
+        "wiki_daily_100k",
+        "monash_traffic"
+      ],
+      "n_families": 8,
+      "series_family_members": [
+        "electricity_15min"
+      ],
+      "shared_across_seeds": null
+    },
+    {
+      "target": "m5",
+      "cell_id": "N08_seed1",
+      "n_sources": 8,
+      "order_seed": 1,
+      "selection_order": [
+        "monash_london_smart_meters",
+        "uber_tlc_hourly",
+        "coastal_ts",
+        "monash_electricity_hourly",
+        "LOOP_SEATTLE_5T",
+        "SZ_TAXI_15T",
+        "wiki_daily_100k",
+        "monash_traffic"
+      ],
+      "sources": [
+        "monash_electricity_hourly",
+        "uber_tlc_hourly",
+        "coastal_ts",
+        "LOOP_SEATTLE_5T",
+        "SZ_TAXI_15T",
+        "monash_london_smart_meters",
+        "wiki_daily_100k",
+        "monash_traffic"
+      ],
+      "n_families": 8,
+      "series_family_members": [
+        "monash_electricity_hourly"
+      ],
+      "shared_across_seeds": null
+    },
+    {
+      "target": "m5",
+      "cell_id": "N08_seed2",
+      "n_sources": 8,
+      "order_seed": 2,
+      "selection_order": [
+        "wiki_daily_100k",
+        "boom_hourly",
+        "sg_carpark",
+        "LOOP_SEATTLE_5T",
+        "monash_traffic",
+        "m4_hourly",
+        "coastal_ts",
+        "monash_london_smart_meters"
+      ],
+      "sources": [
+        "m4_hourly",
+        "sg_carpark",
+        "coastal_ts",
+        "boom_hourly",
+        "LOOP_SEATTLE_5T",
+        "monash_london_smart_meters",
+        "wiki_daily_100k",
+        "monash_traffic"
+      ],
+      "n_families": 8,
+      "series_family_members": [],
+      "shared_across_seeds": null
+    },
+    {
+      "target": "m5",
+      "cell_id": "N13_all",
+      "n_sources": 13,
+      "order_seed": null,
+      "selection_order": [
+        "m4_hourly",
+        "monash_electricity_hourly",
+        "uber_tlc_hourly",
+        "wind_farms_hourly",
+        "sg_carpark",
+        "coastal_ts",
+        "boom_hourly",
+        "LOOP_SEATTLE_5T",
+        "electricity_15min",
+        "SZ_TAXI_15T",
+        "monash_london_smart_meters",
+        "wiki_daily_100k",
+        "monash_traffic"
+      ],
+      "sources": [
+        "m4_hourly",
+        "monash_electricity_hourly",
+        "uber_tlc_hourly",
+        "wind_farms_hourly",
+        "sg_carpark",
+        "coastal_ts",
+        "boom_hourly",
+        "LOOP_SEATTLE_5T",
+        "electricity_15min",
+        "SZ_TAXI_15T",
+        "monash_london_smart_meters",
+        "wiki_daily_100k",
+        "monash_traffic"
+      ],
+      "n_families": 12,
+      "series_family_members": [
+        "monash_electricity_hourly",
+        "electricity_15min"
+      ],
+      "shared_across_seeds": [
+        0,
+        1,
+        2
+      ]
+    }
+  ],
+  "notes": {
+    "series_families": "Electricity hourly and Electricity 15-minute share meters: the N = 13 pool holds 12 dataset families",
+    "data_volume": "each source contributes its full 1,394 training windows: a larger N also means more training data and more optimization work per step"
+  }
+}

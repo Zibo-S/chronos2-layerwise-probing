@@ -1,0 +1,175 @@
+{
+  "model_level": {
+    "mask": [
+      1,
+      2,
+      3,
+      4
+    ],
+    "M1_trace": [
+      1,
+      2,
+      3,
+      4
+    ],
+    "M1_passed": true,
+    "M2_passed": true,
+    "M3_passed": true,
+    "M4": {
+      "bitwise": false,
+      "max_abs": 8.923816074002389e-05,
+      "max_scaled": 0.002862860685964607,
+      "atol": 0.007456444972614719,
+      "rtol": 0.0001,
+      "n": 8,
+      "passed": true
+    },
+    "M4_passed": true,
+    "passed": true
+  },
+  "dataset_gates": "gates/electricity_15min.json",
+  "prefix_states_vs_phase1_cache": {
+    "train": {
+      "bitwise": true,
+      "max_abs": 0.0,
+      "max_abs_over_std": 0.0,
+      "ref_std": 0.06091104745955333,
+      "tol": 0.001,
+      "passed": true
+    },
+    "val": {
+      "bitwise": true,
+      "max_abs": 0.0,
+      "max_abs_over_std": 0.0,
+      "ref_std": 0.06006652772330968,
+      "tol": 0.001,
+      "passed": true
+    },
+    "test": {
+      "bitwise": true,
+      "max_abs": 0.0,
+      "max_abs_over_std": 0.0,
+      "ref_std": 0.06071537271954073,
+      "tol": 0.001,
+      "passed": true
+    }
+  },
+  "scorer_on_cached_states_vs_h3": {
+    "hard": {
+      "mean_ours": 1.8871615478726709,
+      "mean_ref": 1.8871615478726709,
+      "mean_rel_diff": 0.0,
+      "window_max_abs_diff": 0.0,
+      "bitwise": true,
+      "rtol": 1e-06,
+      "passed": true
+    },
+    "noa": {
+      "mean_ours": 1.258441067887885,
+      "mean_ref": 1.258441067887885,
+      "mean_rel_diff": 0.0,
+      "window_max_abs_diff": 0.0,
+      "bitwise": true,
+      "rtol": 1e-06,
+      "passed": true
+    }
+  },
+  "identity_adapter_equals_hard_offline_bitwise": true,
+  "V3_hard": {
+    "rule": "mean test MASE agrees to rtol (V3, option A)",
+    "rtol": 0.0001,
+    "mase_mean_physical": 1.8871615295343191,
+    "mase_mean_offline": 1.8871615478726709,
+    "mase_mean_rel_diff": 9.717425488409286e-09,
+    "elementwise": {
+      "bitwise": false,
+      "max_abs": 1.8119895095480842e-06,
+      "max_scaled": 0.006500426586487905,
+      "atol": 0.00018871615478726708,
+      "rtol": 0.0001,
+      "n": 262,
+      "passed": true
+    },
+    "elementwise_passed": true,
+    "passed": true
+  },
+  "V3_noa": {
+    "rule": "mean test MASE agrees to rtol (V3, option A)",
+    "rtol": 0.0001,
+    "mase_mean_physical": 1.2584410855886392,
+    "mase_mean_offline": 1.258441067887885,
+    "mase_mean_rel_diff": 1.4065620272090666e-08,
+    "elementwise": {
+      "bitwise": false,
+      "max_abs": 1.7583729734482745e-06,
+      "max_scaled": 0.004969529637727544,
+      "atol": 0.00012584410678878852,
+      "rtol": 0.0001,
+      "n": 262,
+      "passed": true
+    },
+    "elementwise_passed": true,
+    "passed": true
+  },
+  "reextracted_vs_h3": {
+    "hard": {
+      "mean_ours": 1.8871615478726709,
+      "mean_ref": 1.8871615478726709,
+      "mean_rel_diff": 0.0,
+      "window_max_abs_diff": 0.0,
+      "bitwise": true,
+      "rtol": 0.0001,
+      "passed": true
+    },
+    "noa": {
+      "mean_ours": 1.258441067887885,
+      "mean_ref": 1.258441067887885,
+      "mean_rel_diff": 0.0,
+      "window_max_abs_diff": 0.0,
+      "bitwise": true,
+      "rtol": 0.0001,
+      "passed": true
+    }
+  },
+  "physical_prefix_vs_h3_offline": {
+    "hard": {
+      "rule": "mean test MASE agrees to rtol (V3, option A)",
+      "rtol": 0.0001,
+      "mase_mean_physical": 1.8871615295343191,
+      "mase_mean_offline": 1.8871615478726709,
+      "mase_mean_rel_diff": 9.717425488409286e-09,
+      "elementwise": {
+        "bitwise": false,
+        "max_abs": 1.8119895095480842e-06,
+        "max_scaled": 0.006500426586487905,
+        "atol": 0.00018871615478726708,
+        "rtol": 0.0001,
+        "n": 262,
+        "passed": true
+      },
+      "elementwise_passed": true,
+      "passed": true
+    },
+    "noa": {
+      "rule": "mean test MASE agrees to rtol (V3, option A)",
+      "rtol": 0.0001,
+      "mase_mean_physical": 1.2584410855886392,
+      "mase_mean_offline": 1.258441067887885,
+      "mase_mean_rel_diff": 1.4065620272090666e-08,
+      "elementwise": {
+        "bitwise": false,
+        "max_abs": 1.7583729734482745e-06,
+        "max_scaled": 0.004969529637727544,
+        "atol": 0.00012584410678878852,
+        "rtol": 0.0001,
+        "n": 262,
+        "passed": true
+      },
+      "elementwise_passed": true,
+      "passed": true
+    }
+  },
+  "physical_prefix_vs_committed_h4_physical": {
+    "note": "no committed physical H4 result for Chronos-2 at L4 on electricity_15min"
+  }
+}

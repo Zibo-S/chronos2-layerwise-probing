@@ -1,0 +1,111 @@
+{
+  "protocol": "phase2c/lodo-v1",
+  "kind": "lodo",
+  "model": "chronos2",
+  "objective": "noa_equal_weight_mse/v1",
+  "variant": "sibling_excluded",
+  "target": "monash_electricity_hourly",
+  "depth": 6,
+  "depth_label": "L6",
+  "sources": [
+    "m4_hourly",
+    "uber_tlc_hourly",
+    "wind_farms_hourly",
+    "sg_carpark",
+    "coastal_ts",
+    "boom_hourly",
+    "LOOP_SEATTLE_5T",
+    "SZ_TAXI_15T",
+    "monash_london_smart_meters",
+    "m5",
+    "wiki_daily_100k",
+    "monash_traffic"
+  ],
+  "excluded": [
+    "monash_electricity_hourly",
+    "electricity_15min"
+  ],
+  "dependencies": {
+    "m4_hourly": {
+      "phase1_fit_hash": "sha256:308f4c10caa52d3e31b478ad1da8d7bd9300c4db94623089e00c931e185775e1",
+      "window_digest": "sha256:6394d28b53bf6a76d61c3b0cfb788a44d7dd3b948988788e482e0ee96d96af72"
+    },
+    "uber_tlc_hourly": {
+      "phase1_fit_hash": "sha256:44a30c6b5e3493c5373f1c00249b23c718aacf502c6b24d5bceee3a68c715804",
+      "window_digest": "sha256:80d43a522c99132981130b9ec59ce6a82f96b1c4486e3f69d95673ff440cf75d"
+    },
+    "wind_farms_hourly": {
+      "phase1_fit_hash": "sha256:a6a34b3ca80e72512f4cb08aac037ce499213584333c7dfbd24f8faf6c8d829e",
+      "window_digest": "sha256:f6062120f4117747776f95a53f8b676b54dc69cae7a735322957d065057355eb"
+    },
+    "sg_carpark": {
+      "phase1_fit_hash": "sha256:ba272e7922bae18c0a3c48d9088156ba2e51ba82c2ce416d790dea1f28cf8f0f",
+      "window_digest": "sha256:35b23be3a09bce394ac99c123e96a55d405e15f08cdf8d7f906e70059fa9f3a3"
+    },
+    "coastal_ts": {
+      "phase1_fit_hash": "sha256:c7f3d082799319629c1a8be9d6d3645970b6afe9be57f8ec8ee597cbf4a6d4e4",
+      "window_digest": "sha256:5262c19d9f3768ecbce0ebc175f563263f8fef2545933189fd03984e796c112c"
+    },
+    "boom_hourly": {
+      "phase1_fit_hash": "sha256:2b5920cd7c4fa29fd9d3af7941ea8a6c2eb70d21f91de25203bc05a5a136cabd",
+      "window_digest": "sha256:eb756813903574e81bb0a26f65e0b03d20c34377bbd3f6f7c00c33aa385a1b19"
+    },
+    "LOOP_SEATTLE_5T": {
+      "phase1_fit_hash": "sha256:d07e8e885575c5de7924ae6e9012f6134ff85ad0f9fdece0e30662a609ad3148",
+      "window_digest": "sha256:37084be3b4c193a6a6da18402b8ac7baf99cdcfbda23594415eba375fcca7220"
+    },
+    "SZ_TAXI_15T": {
+      "phase1_fit_hash": "sha256:e0c3d72cf0a5120dce7a898b8335625905db91ef8fb87d08f49f6bab6d8f249d",
+      "window_digest": "sha256:e7dbdeae77a6f2f9bf621e96a9045afd29159a36f6c5035f6f4f34ed880cda77"
+    },
+    "monash_london_smart_meters": {
+      "phase1_fit_hash": "sha256:7166a15336061b954c5bddcc3e0ef551cd3e5ff12fab65e440ee1466775e40a8",
+      "window_digest": "sha256:747ea91cc2a53a2802bba2efe6f85650a600028fb92f5b722ae614dc005c51c9"
+    },
+    "m5": {
+      "phase1_fit_hash": "sha256:fcbc8fc03d5a74c73d0f240a39c81f9624364f412a17757fc444bf77a16b94eb",
+      "window_digest": "sha256:142420d448d06fa97a1bf901d416990660659747e740a4e426f99ade1ff9d2f8"
+    },
+    "wiki_daily_100k": {
+      "phase1_fit_hash": "sha256:7b7e562c88b967330a341aa87935a6628004685de61ff8feff9254126188ca44",
+      "window_digest": "sha256:f730a8cdde3e477f890d0411f4843bc0087f6ac91ddcb0f7a812786e5def0a6c"
+    },
+    "monash_traffic": {
+      "phase1_fit_hash": "sha256:711b6175ca2a0ae2cea4e833aca2c705507c1a77c89890f0546d80e82af778d4",
+      "window_digest": "sha256:038eaf0f24540d708ec5b35b530b87723fc196518b80c2e441e2127aac813817"
+    },
+    "monash_electricity_hourly": {
+      "phase1_fit_hash": "sha256:6cf1a130e9cf3e62a16bd6950dd1eb6cf8963d92ddfbc7d66438cab9c2f94cb9",
+      "window_digest": "sha256:adce7921407c90694f539e6d871e907e8a99b6430307b66e0d9f199bb906e5f0"
+    }
+  },
+  "h3_reference_config_hash": "sha256:5751c8e84edffc5bcacc40429035b85c4f30cef6c210035cc025e8a2f1196374",
+  "epochs": 1500,
+  "lr": 0.001,
+  "wd_grid": [
+    0.0,
+    0.1,
+    1.0,
+    10.0,
+    30.0,
+    100.0
+  ],
+  "eval_every": 25,
+  "seed": 0,
+  "native_gate_rtol": 0.0001,
+  "h3_repro_rtol": 1e-06,
+  "quantiles": [
+    0.1,
+    0.2,
+    0.3,
+    0.4,
+    0.5,
+    0.6,
+    0.7,
+    0.8,
+    0.9
+  ],
+  "boot_b": 5000,
+  "boot_seed": 0,
+  "config_hash": "sha256:20952045ad749f5593f9d1e70ee468ca630e254713cac2b3d01f0542da333447"
+}

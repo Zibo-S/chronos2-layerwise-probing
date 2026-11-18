@@ -1,0 +1,91 @@
+{
+  "protocol": "phase2c/lodo-v1",
+  "kind": "lodo",
+  "model": "chronos2",
+  "objective": "noa_equal_weight_mse/v1",
+  "variant": "sibling_excluded",
+  "target": "m5",
+  "depth": 6,
+  "depth_label": "L6",
+  "sources": [
+    "sg_carpark",
+    "boom_hourly",
+    "electricity_15min",
+    "monash_traffic"
+  ],
+  "excluded": [
+    "m4_hourly",
+    "monash_electricity_hourly",
+    "uber_tlc_hourly",
+    "wind_farms_hourly",
+    "coastal_ts",
+    "LOOP_SEATTLE_5T",
+    "SZ_TAXI_15T",
+    "monash_london_smart_meters",
+    "m5",
+    "wiki_daily_100k"
+  ],
+  "dependencies": {
+    "sg_carpark": {
+      "phase1_fit_hash": "sha256:ba272e7922bae18c0a3c48d9088156ba2e51ba82c2ce416d790dea1f28cf8f0f",
+      "window_digest": "sha256:35b23be3a09bce394ac99c123e96a55d405e15f08cdf8d7f906e70059fa9f3a3"
+    },
+    "boom_hourly": {
+      "phase1_fit_hash": "sha256:2b5920cd7c4fa29fd9d3af7941ea8a6c2eb70d21f91de25203bc05a5a136cabd",
+      "window_digest": "sha256:eb756813903574e81bb0a26f65e0b03d20c34377bbd3f6f7c00c33aa385a1b19"
+    },
+    "electricity_15min": {
+      "phase1_fit_hash": "sha256:c66d64364d40a11b86db9b4e6913b3bb43ba957aeffd7ad1e35824ff3a5d976b",
+      "window_digest": "sha256:fcefaa9880cc530f7efd30129a626f145130206d89940eafd4694322ca9a7cd8"
+    },
+    "monash_traffic": {
+      "phase1_fit_hash": "sha256:711b6175ca2a0ae2cea4e833aca2c705507c1a77c89890f0546d80e82af778d4",
+      "window_digest": "sha256:038eaf0f24540d708ec5b35b530b87723fc196518b80c2e441e2127aac813817"
+    },
+    "m5": {
+      "phase1_fit_hash": "sha256:fcbc8fc03d5a74c73d0f240a39c81f9624364f412a17757fc444bf77a16b94eb",
+      "window_digest": "sha256:142420d448d06fa97a1bf901d416990660659747e740a4e426f99ade1ff9d2f8"
+    }
+  },
+  "h3_reference_config_hash": "sha256:e94b8d59d19262c1d2305cd5f4ea6675a6afa75c64a00b8dc0cad83e0c8c8cbb",
+  "epochs": 1500,
+  "lr": 0.001,
+  "wd_grid": [
+    0.0,
+    0.1,
+    1.0,
+    10.0,
+    30.0,
+    100.0
+  ],
+  "eval_every": 25,
+  "seed": 0,
+  "native_gate_rtol": 0.0001,
+  "h3_repro_rtol": 1e-06,
+  "quantiles": [
+    0.1,
+    0.2,
+    0.3,
+    0.4,
+    0.5,
+    0.6,
+    0.7,
+    0.8,
+    0.9
+  ],
+  "boot_b": 5000,
+  "boot_seed": 0,
+  "phase2f_protocol": "phase2f/source-scaling-v1",
+  "phase2f_kind": "source_scaling",
+  "n_sources": 4,
+  "order_seed": 0,
+  "order_rule": "phase2f/source-order/v1",
+  "selection_order": [
+    "boom_hourly",
+    "electricity_15min",
+    "sg_carpark",
+    "monash_traffic"
+  ],
+  "cell_id": "N04_seed0",
+  "config_hash": "sha256:f887fb4357854fd3449ed791d8b0e05ebe1bb29520ea7007d002f04d5448c754"
+}

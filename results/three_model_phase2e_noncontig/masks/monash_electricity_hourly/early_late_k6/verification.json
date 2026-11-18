@@ -1,0 +1,72 @@
+{
+  "model_level": {
+    "mask": [
+      1,
+      2,
+      3,
+      10,
+      11,
+      12
+    ],
+    "M1_trace": [
+      1,
+      2,
+      3,
+      10,
+      11,
+      12
+    ],
+    "M1_passed": true,
+    "M2_passed": true,
+    "M3_passed": true,
+    "M4": {
+      "bitwise": false,
+      "max_abs": 0.0001174015408764717,
+      "max_scaled": 0.00297176238864377,
+      "atol": 0.008052799025368375,
+      "rtol": 0.0001,
+      "n": 8,
+      "passed": true
+    },
+    "M4_passed": true,
+    "passed": true
+  },
+  "dataset_gates": "gates/monash_electricity_hourly.json",
+  "identity_adapter_equals_hard_offline_bitwise": true,
+  "V3_hard": {
+    "rule": "mean test MASE agrees to rtol (V3, option A)",
+    "rtol": 0.0001,
+    "mase_mean_physical": 1.214083667240346,
+    "mase_mean_offline": 1.2140836711476526,
+    "mase_mean_rel_diff": 3.2183172965948797e-09,
+    "elementwise": {
+      "bitwise": false,
+      "max_abs": 5.210526869969812e-07,
+      "max_scaled": 0.0023919564390928894,
+      "atol": 0.00012140836711476526,
+      "rtol": 0.0001,
+      "n": 262,
+      "passed": true
+    },
+    "elementwise_passed": true,
+    "passed": true
+  },
+  "V3_noa": {
+    "rule": "mean test MASE agrees to rtol (V3, option A)",
+    "rtol": 0.0001,
+    "mase_mean_physical": 0.9543081486169469,
+    "mase_mean_offline": 0.9543081542418416,
+    "mase_mean_rel_diff": 5.894212090882831e-09,
+    "elementwise": {
+      "bitwise": false,
+      "max_abs": 5.055283966992619e-07,
+      "max_scaled": 0.002586059482594792,
+      "atol": 9.543081542418416e-05,
+      "rtol": 0.0001,
+      "n": 262,
+      "passed": true
+    },
+    "elementwise_passed": true,
+    "passed": true
+  }
+}

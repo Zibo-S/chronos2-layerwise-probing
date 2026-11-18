@@ -1,0 +1,179 @@
+{
+  "model_level": {
+    "mask": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6
+    ],
+    "M1_trace": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6
+    ],
+    "M1_passed": true,
+    "M2_passed": true,
+    "M3_passed": true,
+    "M4": {
+      "bitwise": false,
+      "max_abs": 0.0001451040822075811,
+      "max_scaled": 0.0035593350235463353,
+      "atol": 0.0077028857629081685,
+      "rtol": 0.0001,
+      "n": 8,
+      "passed": true
+    },
+    "M4_passed": true,
+    "passed": true
+  },
+  "dataset_gates": "gates/wind_farms_hourly.json",
+  "prefix_states_vs_phase1_cache": {
+    "train": {
+      "bitwise": true,
+      "max_abs": 0.0,
+      "max_abs_over_std": 0.0,
+      "ref_std": 0.07635806668092152,
+      "tol": 0.001,
+      "passed": true
+    },
+    "val": {
+      "bitwise": true,
+      "max_abs": 0.0,
+      "max_abs_over_std": 0.0,
+      "ref_std": 0.07519000081259436,
+      "tol": 0.001,
+      "passed": true
+    },
+    "test": {
+      "bitwise": true,
+      "max_abs": 0.0,
+      "max_abs_over_std": 0.0,
+      "ref_std": 0.07503589157581227,
+      "tol": 0.001,
+      "passed": true
+    }
+  },
+  "scorer_on_cached_states_vs_h3": {
+    "hard": {
+      "mean_ours": 4.8468706603577,
+      "mean_ref": 4.8468706603577,
+      "mean_rel_diff": 0.0,
+      "window_max_abs_diff": 0.0,
+      "bitwise": true,
+      "rtol": 1e-06,
+      "passed": true
+    },
+    "noa": {
+      "mean_ours": 4.4571508469135095,
+      "mean_ref": 4.4571508469135095,
+      "mean_rel_diff": 0.0,
+      "window_max_abs_diff": 0.0,
+      "bitwise": true,
+      "rtol": 1e-06,
+      "passed": true
+    }
+  },
+  "identity_adapter_equals_hard_offline_bitwise": true,
+  "V3_hard": {
+    "rule": "mean test MASE agrees to rtol (V3, option A)",
+    "rtol": 0.0001,
+    "mase_mean_physical": 4.846870652239079,
+    "mase_mean_offline": 4.8468706603577,
+    "mase_mean_rel_diff": 1.6750233087851497e-09,
+    "elementwise": {
+      "bitwise": false,
+      "max_abs": 6.593383846897893e-06,
+      "max_scaled": 0.008480456916064116,
+      "atol": 0.00048468706603577004,
+      "rtol": 0.0001,
+      "n": 262,
+      "passed": true
+    },
+    "elementwise_passed": true,
+    "passed": true
+  },
+  "V3_noa": {
+    "rule": "mean test MASE agrees to rtol (V3, option A)",
+    "rtol": 0.0001,
+    "mase_mean_physical": 4.45715082870718,
+    "mase_mean_offline": 4.4571508469135095,
+    "mase_mean_rel_diff": 4.0847461534138215e-09,
+    "elementwise": {
+      "bitwise": false,
+      "max_abs": 8.414838648551637e-06,
+      "max_scaled": 0.010862079156517435,
+      "atol": 0.00044571508469135095,
+      "rtol": 0.0001,
+      "n": 262,
+      "passed": true
+    },
+    "elementwise_passed": true,
+    "passed": true
+  },
+  "reextracted_vs_h3": {
+    "hard": {
+      "mean_ours": 4.8468706603577,
+      "mean_ref": 4.8468706603577,
+      "mean_rel_diff": 0.0,
+      "window_max_abs_diff": 0.0,
+      "bitwise": true,
+      "rtol": 0.0001,
+      "passed": true
+    },
+    "noa": {
+      "mean_ours": 4.4571508469135095,
+      "mean_ref": 4.4571508469135095,
+      "mean_rel_diff": 0.0,
+      "window_max_abs_diff": 0.0,
+      "bitwise": true,
+      "rtol": 0.0001,
+      "passed": true
+    }
+  },
+  "physical_prefix_vs_h3_offline": {
+    "hard": {
+      "rule": "mean test MASE agrees to rtol (V3, option A)",
+      "rtol": 0.0001,
+      "mase_mean_physical": 4.846870652239079,
+      "mase_mean_offline": 4.8468706603577,
+      "mase_mean_rel_diff": 1.6750233087851497e-09,
+      "elementwise": {
+        "bitwise": false,
+        "max_abs": 6.593383846897893e-06,
+        "max_scaled": 0.008480456916064116,
+        "atol": 0.00048468706603577004,
+        "rtol": 0.0001,
+        "n": 262,
+        "passed": true
+      },
+      "elementwise_passed": true,
+      "passed": true
+    },
+    "noa": {
+      "rule": "mean test MASE agrees to rtol (V3, option A)",
+      "rtol": 0.0001,
+      "mase_mean_physical": 4.45715082870718,
+      "mase_mean_offline": 4.4571508469135095,
+      "mase_mean_rel_diff": 4.0847461534138215e-09,
+      "elementwise": {
+        "bitwise": false,
+        "max_abs": 8.414838648551637e-06,
+        "max_scaled": 0.010862079156517435,
+        "atol": 0.00044571508469135095,
+        "rtol": 0.0001,
+        "n": 262,
+        "passed": true
+      },
+      "elementwise_passed": true,
+      "passed": true
+    }
+  },
+  "physical_prefix_vs_committed_h4_physical": {
+    "note": "no committed physical H4 result for Chronos-2 at L6 on wind_farms_hourly"
+  }
+}

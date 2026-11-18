@@ -1,0 +1,841 @@
+{
+ "repeat": 2,
+ "job": "9229964",
+ "host": "ng10904",
+ "headline_eligible": true,
+ "ineligible_reasons": [],
+ "finished_utc": "2026-11-16T11:09:58+00:00",
+ "protocol": {
+  "warmup": 20,
+  "reps": 100,
+  "batch_sizes": [
+   1,
+   256
+  ],
+  "levels": [
+   "api_e2e",
+   "device_forward"
+  ],
+  "device": "cuda",
+  "seed": 0,
+  "kinds": [
+   "hard",
+   "adapter"
+  ],
+  "imported_from": "experiments.run_phase2_latency"
+ },
+ "configs": [
+  {
+   "id": "000_native_native_start",
+   "kind": "native",
+   "mask": [
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12
+   ],
+   "label": "native",
+   "strategy": "native",
+   "budget": 12,
+   "drift": "start",
+   "status": "ok",
+   "median_ms": {
+    "api_e2e__B1": 19.5243295,
+    "device_forward__B1": 19.0185625,
+    "api_e2e__B256": 183.80521299999998,
+    "device_forward__B256": 172.1970925
+   },
+   "params": {
+    "active_params": 119477664,
+    "n_blocks": 12,
+    "block_params": 113273856,
+    "per_block_params": 9439488,
+    "non_block_params": 6203808
+   }
+  },
+  {
+   "id": "001_adapter_middle_k6",
+   "kind": "adapter",
+   "mask": [
+    4,
+    5,
+    6,
+    7,
+    8,
+    9
+   ],
+   "label": "middle_k6",
+   "strategy": "middle",
+   "budget": 6,
+   "status": "ok",
+   "median_ms": {
+    "api_e2e__B1": 10.940871999999999,
+    "device_forward__B1": 10.271791,
+    "api_e2e__B256": 107.80565999999999,
+    "device_forward__B256": 90.2873525
+   },
+   "params": {
+    "active_params": 63431328,
+    "n_blocks": 6,
+    "block_params": 56636928,
+    "per_block_params": 9439488,
+    "non_block_params": 6794400
+   }
+  },
+  {
+   "id": "002_adapter_middle_k4",
+   "kind": "adapter",
+   "mask": [
+    4,
+    5,
+    6,
+    7
+   ],
+   "label": "middle_k4",
+   "strategy": "middle",
+   "budget": 4,
+   "status": "ok",
+   "median_ms": {
+    "api_e2e__B1": 8.9816145,
+    "device_forward__B1": 7.869902,
+    "api_e2e__B256": 81.346073,
+    "device_forward__B256": 63.016549499999996
+   },
+   "params": {
+    "active_params": 44552352,
+    "n_blocks": 4,
+    "block_params": 37757952,
+    "per_block_params": 9439488,
+    "non_block_params": 6794400
+   }
+  },
+  {
+   "id": "003_hard_prefix_k4",
+   "kind": "hard",
+   "mask": [
+    1,
+    2,
+    3,
+    4
+   ],
+   "label": "prefix_k4",
+   "strategy": "prefix",
+   "budget": 4,
+   "status": "ok",
+   "median_ms": {
+    "api_e2e__B1": 8.9516135,
+    "device_forward__B1": 8.337331,
+    "api_e2e__B256": 73.5440605,
+    "device_forward__B256": 61.8251455
+   },
+   "params": {
+    "active_params": 43961760,
+    "n_blocks": 4,
+    "block_params": 37757952,
+    "per_block_params": 9439488,
+    "non_block_params": 6203808
+   }
+  },
+  {
+   "id": "004_hard_early_late_k6",
+   "kind": "hard",
+   "mask": [
+    1,
+    2,
+    3,
+    10,
+    11,
+    12
+   ],
+   "label": "early_late_k6",
+   "strategy": "early_late",
+   "budget": 6,
+   "status": "ok",
+   "median_ms": {
+    "api_e2e__B1": 12.140958000000001,
+    "device_forward__B1": 11.260377,
+    "api_e2e__B256": 102.2354045,
+    "device_forward__B256": 88.988193
+   },
+   "params": {
+    "active_params": 62840736,
+    "n_blocks": 6,
+    "block_params": 56636928,
+    "per_block_params": 9439488,
+    "non_block_params": 6203808
+   }
+  },
+  {
+   "id": "005_hard_middle_k6",
+   "kind": "hard",
+   "mask": [
+    4,
+    5,
+    6,
+    7,
+    8,
+    9
+   ],
+   "label": "middle_k6",
+   "strategy": "middle",
+   "budget": 6,
+   "status": "ok",
+   "median_ms": {
+    "api_e2e__B1": 11.063625,
+    "device_forward__B1": 10.2218165,
+    "api_e2e__B256": 106.48763550000001,
+    "device_forward__B256": 88.7134135
+   },
+   "params": {
+    "active_params": 62840736,
+    "n_blocks": 6,
+    "block_params": 56636928,
+    "per_block_params": 9439488,
+    "non_block_params": 6203808
+   }
+  },
+  {
+   "id": "006_adapter_uniform_k4",
+   "kind": "adapter",
+   "mask": [
+    1,
+    4,
+    8,
+    12
+   ],
+   "label": "uniform_k4",
+   "strategy": "uniform",
+   "budget": 4,
+   "status": "ok",
+   "median_ms": {
+    "api_e2e__B1": 8.166743,
+    "device_forward__B1": 7.5158515,
+    "api_e2e__B256": 81.966011,
+    "device_forward__B256": 62.039492499999994
+   },
+   "params": {
+    "active_params": 44552352,
+    "n_blocks": 4,
+    "block_params": 37757952,
+    "per_block_params": 9439488,
+    "non_block_params": 6794400
+   }
+  },
+  {
+   "id": "007_hard_early_late_k4",
+   "kind": "hard",
+   "mask": [
+    1,
+    2,
+    11,
+    12
+   ],
+   "label": "early_late_k4",
+   "strategy": "early_late",
+   "budget": 4,
+   "status": "ok",
+   "median_ms": {
+    "api_e2e__B1": 8.354979499999999,
+    "device_forward__B1": 7.7129645,
+    "api_e2e__B256": 73.026026,
+    "device_forward__B256": 61.4629725
+   },
+   "params": {
+    "active_params": 43961760,
+    "n_blocks": 4,
+    "block_params": 37757952,
+    "per_block_params": 9439488,
+    "non_block_params": 6203808
+   }
+  },
+  {
+   "id": "008_adapter_uniform_k9",
+   "kind": "adapter",
+   "mask": [
+    1,
+    2,
+    4,
+    5,
+    7,
+    8,
+    10,
+    11,
+    12
+   ],
+   "label": "uniform_k9",
+   "strategy": "uniform",
+   "budget": 9,
+   "status": "ok",
+   "median_ms": {
+    "api_e2e__B1": 16.3298285,
+    "device_forward__B1": 15.396312,
+    "api_e2e__B256": 144.098115,
+    "device_forward__B256": 132.237147
+   },
+   "params": {
+    "active_params": 91749792,
+    "n_blocks": 9,
+    "block_params": 84955392,
+    "per_block_params": 9439488,
+    "non_block_params": 6794400
+   }
+  },
+  {
+   "id": "009_adapter_prefix_k9",
+   "kind": "adapter",
+   "mask": [
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9
+   ],
+   "label": "prefix_k9",
+   "strategy": "prefix",
+   "budget": 9,
+   "status": "ok",
+   "median_ms": {
+    "api_e2e__B1": 16.7046175,
+    "device_forward__B1": 15.768861999999999,
+    "api_e2e__B256": 151.2219295,
+    "device_forward__B256": 132.81147900000002
+   },
+   "params": {
+    "active_params": 91749792,
+    "n_blocks": 9,
+    "block_params": 84955392,
+    "per_block_params": 9439488,
+    "non_block_params": 6794400
+   }
+  },
+  {
+   "id": "010_hard_early_late_k9",
+   "kind": "hard",
+   "mask": [
+    1,
+    2,
+    3,
+    4,
+    5,
+    9,
+    10,
+    11,
+    12
+   ],
+   "label": "early_late_k9",
+   "strategy": "early_late",
+   "budget": 9,
+   "status": "ok",
+   "median_ms": {
+    "api_e2e__B1": 16.5472495,
+    "device_forward__B1": 15.7895205,
+    "api_e2e__B256": 144.145807,
+    "device_forward__B256": 132.0620125
+   },
+   "params": {
+    "active_params": 91159200,
+    "n_blocks": 9,
+    "block_params": 84955392,
+    "per_block_params": 9439488,
+    "non_block_params": 6203808
+   }
+  },
+  {
+   "id": "011_adapter_early_late_k6",
+   "kind": "adapter",
+   "mask": [
+    1,
+    2,
+    3,
+    10,
+    11,
+    12
+   ],
+   "label": "early_late_k6",
+   "strategy": "early_late",
+   "budget": 6,
+   "status": "ok",
+   "median_ms": {
+    "api_e2e__B1": 11.4637155,
+    "device_forward__B1": 10.8256885,
+    "api_e2e__B256": 101.8061345,
+    "device_forward__B256": 89.1287425
+   },
+   "params": {
+    "active_params": 63431328,
+    "n_blocks": 6,
+    "block_params": 56636928,
+    "per_block_params": 9439488,
+    "non_block_params": 6794400
+   }
+  },
+  {
+   "id": "012_hard_prefix_k9",
+   "kind": "hard",
+   "mask": [
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9
+   ],
+   "label": "prefix_k9",
+   "strategy": "prefix",
+   "budget": 9,
+   "status": "ok",
+   "median_ms": {
+    "api_e2e__B1": 15.147326,
+    "device_forward__B1": 14.4956525,
+    "api_e2e__B256": 142.730023,
+    "device_forward__B256": 131.749005
+   },
+   "params": {
+    "active_params": 91159200,
+    "n_blocks": 9,
+    "block_params": 84955392,
+    "per_block_params": 9439488,
+    "non_block_params": 6203808
+   }
+  },
+  {
+   "id": "013_native_native_middle",
+   "kind": "native",
+   "mask": [
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12
+   ],
+   "label": "native",
+   "strategy": "native",
+   "budget": 12,
+   "drift": "middle",
+   "status": "ok",
+   "median_ms": {
+    "api_e2e__B1": 21.165469,
+    "device_forward__B1": 19.806333000000002,
+    "api_e2e__B256": 188.525209,
+    "device_forward__B256": 174.17584499999998
+   },
+   "params": {
+    "active_params": 119477664,
+    "n_blocks": 12,
+    "block_params": 113273856,
+    "per_block_params": 9439488,
+    "non_block_params": 6203808
+   }
+  },
+  {
+   "id": "014_adapter_early_late_k9",
+   "kind": "adapter",
+   "mask": [
+    1,
+    2,
+    3,
+    4,
+    5,
+    9,
+    10,
+    11,
+    12
+   ],
+   "label": "early_late_k9",
+   "strategy": "early_late",
+   "budget": 9,
+   "status": "ok",
+   "median_ms": {
+    "api_e2e__B1": 16.883387499999998,
+    "device_forward__B1": 16.255295,
+    "api_e2e__B256": 145.037175,
+    "device_forward__B256": 132.69477
+   },
+   "params": {
+    "active_params": 91749792,
+    "n_blocks": 9,
+    "block_params": 84955392,
+    "per_block_params": 9439488,
+    "non_block_params": 6794400
+   }
+  },
+  {
+   "id": "015_hard_uniform_k6",
+   "kind": "hard",
+   "mask": [
+    1,
+    3,
+    5,
+    8,
+    10,
+    12
+   ],
+   "label": "uniform_k6",
+   "strategy": "uniform",
+   "budget": 6,
+   "status": "ok",
+   "median_ms": {
+    "api_e2e__B1": 11.4624415,
+    "device_forward__B1": 11.2430965,
+    "api_e2e__B256": 108.031432,
+    "device_forward__B256": 90.081773
+   },
+   "params": {
+    "active_params": 62840736,
+    "n_blocks": 6,
+    "block_params": 56636928,
+    "per_block_params": 9439488,
+    "non_block_params": 6203808
+   }
+  },
+  {
+   "id": "016_hard_uniform_k9",
+   "kind": "hard",
+   "mask": [
+    1,
+    2,
+    4,
+    5,
+    7,
+    8,
+    10,
+    11,
+    12
+   ],
+   "label": "uniform_k9",
+   "strategy": "uniform",
+   "budget": 9,
+   "status": "ok",
+   "median_ms": {
+    "api_e2e__B1": 16.73139,
+    "device_forward__B1": 16.6827985,
+    "api_e2e__B256": 143.179764,
+    "device_forward__B256": 131.0504345
+   },
+   "params": {
+    "active_params": 91159200,
+    "n_blocks": 9,
+    "block_params": 84955392,
+    "per_block_params": 9439488,
+    "non_block_params": 6203808
+   }
+  },
+  {
+   "id": "017_adapter_middle_k9",
+   "kind": "adapter",
+   "mask": [
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10
+   ],
+   "label": "middle_k9",
+   "strategy": "middle",
+   "budget": 9,
+   "status": "ok",
+   "median_ms": {
+    "api_e2e__B1": 16.2083305,
+    "device_forward__B1": 15.344280999999999,
+    "api_e2e__B256": 143.0899685,
+    "device_forward__B256": 131.87366250000002
+   },
+   "params": {
+    "active_params": 91749792,
+    "n_blocks": 9,
+    "block_params": 84955392,
+    "per_block_params": 9439488,
+    "non_block_params": 6794400
+   }
+  },
+  {
+   "id": "018_hard_middle_k4",
+   "kind": "hard",
+   "mask": [
+    4,
+    5,
+    6,
+    7
+   ],
+   "label": "middle_k4",
+   "strategy": "middle",
+   "budget": 4,
+   "status": "ok",
+   "median_ms": {
+    "api_e2e__B1": 8.3494075,
+    "device_forward__B1": 7.4447405,
+    "api_e2e__B256": 73.57395550000001,
+    "device_forward__B256": 61.3170005
+   },
+   "params": {
+    "active_params": 43961760,
+    "n_blocks": 4,
+    "block_params": 37757952,
+    "per_block_params": 9439488,
+    "non_block_params": 6203808
+   }
+  },
+  {
+   "id": "019_hard_prefix_k6",
+   "kind": "hard",
+   "mask": [
+    1,
+    2,
+    3,
+    4,
+    5,
+    6
+   ],
+   "label": "prefix_k6",
+   "strategy": "prefix",
+   "budget": 6,
+   "status": "ok",
+   "median_ms": {
+    "api_e2e__B1": 11.3249765,
+    "device_forward__B1": 10.660635,
+    "api_e2e__B256": 101.15179599999999,
+    "device_forward__B256": 89.35334950000001
+   },
+   "params": {
+    "active_params": 62840736,
+    "n_blocks": 6,
+    "block_params": 56636928,
+    "per_block_params": 9439488,
+    "non_block_params": 6203808
+   }
+  },
+  {
+   "id": "020_adapter_prefix_k6",
+   "kind": "adapter",
+   "mask": [
+    1,
+    2,
+    3,
+    4,
+    5,
+    6
+   ],
+   "label": "prefix_k6",
+   "strategy": "prefix",
+   "budget": 6,
+   "status": "ok",
+   "median_ms": {
+    "api_e2e__B1": 11.799945000000001,
+    "device_forward__B1": 10.5628345,
+    "api_e2e__B256": 103.1018665,
+    "device_forward__B256": 90.026543
+   },
+   "params": {
+    "active_params": 63431328,
+    "n_blocks": 6,
+    "block_params": 56636928,
+    "per_block_params": 9439488,
+    "non_block_params": 6794400
+   }
+  },
+  {
+   "id": "021_adapter_early_late_k4",
+   "kind": "adapter",
+   "mask": [
+    1,
+    2,
+    11,
+    12
+   ],
+   "label": "early_late_k4",
+   "strategy": "early_late",
+   "budget": 4,
+   "status": "ok",
+   "median_ms": {
+    "api_e2e__B1": 8.1409075,
+    "device_forward__B1": 7.485803499999999,
+    "api_e2e__B256": 74.6018045,
+    "device_forward__B256": 61.533339
+   },
+   "params": {
+    "active_params": 44552352,
+    "n_blocks": 4,
+    "block_params": 37757952,
+    "per_block_params": 9439488,
+    "non_block_params": 6794400
+   }
+  },
+  {
+   "id": "022_adapter_uniform_k6",
+   "kind": "adapter",
+   "mask": [
+    1,
+    3,
+    5,
+    8,
+    10,
+    12
+   ],
+   "label": "uniform_k6",
+   "strategy": "uniform",
+   "budget": 6,
+   "status": "ok",
+   "median_ms": {
+    "api_e2e__B1": 11.371344,
+    "device_forward__B1": 10.631243999999999,
+    "api_e2e__B256": 100.9823515,
+    "device_forward__B256": 90.673953
+   },
+   "params": {
+    "active_params": 63431328,
+    "n_blocks": 6,
+    "block_params": 56636928,
+    "per_block_params": 9439488,
+    "non_block_params": 6794400
+   }
+  },
+  {
+   "id": "023_hard_middle_k9",
+   "kind": "hard",
+   "mask": [
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10
+   ],
+   "label": "middle_k9",
+   "strategy": "middle",
+   "budget": 9,
+   "status": "ok",
+   "median_ms": {
+    "api_e2e__B1": 15.673124000000001,
+    "device_forward__B1": 15.104829,
+    "api_e2e__B256": 143.947469,
+    "device_forward__B256": 131.203061
+   },
+   "params": {
+    "active_params": 91159200,
+    "n_blocks": 9,
+    "block_params": 84955392,
+    "per_block_params": 9439488,
+    "non_block_params": 6203808
+   }
+  },
+  {
+   "id": "024_hard_uniform_k4",
+   "kind": "hard",
+   "mask": [
+    1,
+    4,
+    8,
+    12
+   ],
+   "label": "uniform_k4",
+   "strategy": "uniform",
+   "budget": 4,
+   "status": "ok",
+   "median_ms": {
+    "api_e2e__B1": 8.395074000000001,
+    "device_forward__B1": 7.704612,
+    "api_e2e__B256": 79.016092,
+    "device_forward__B256": 61.7047425
+   },
+   "params": {
+    "active_params": 43961760,
+    "n_blocks": 4,
+    "block_params": 37757952,
+    "per_block_params": 9439488,
+    "non_block_params": 6203808
+   }
+  },
+  {
+   "id": "025_adapter_prefix_k4",
+   "kind": "adapter",
+   "mask": [
+    1,
+    2,
+    3,
+    4
+   ],
+   "label": "prefix_k4",
+   "strategy": "prefix",
+   "budget": 4,
+   "status": "ok",
+   "median_ms": {
+    "api_e2e__B1": 8.487674,
+    "device_forward__B1": 7.8444015,
+    "api_e2e__B256": 80.5354265,
+    "device_forward__B256": 62.026416
+   },
+   "params": {
+    "active_params": 44552352,
+    "n_blocks": 4,
+    "block_params": 37757952,
+    "per_block_params": 9439488,
+    "non_block_params": 6794400
+   }
+  },
+  {
+   "id": "026_native_native_end",
+   "kind": "native",
+   "mask": [
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12
+   ],
+   "label": "native",
+   "strategy": "native",
+   "budget": 12,
+   "drift": "end",
+   "status": "ok",
+   "median_ms": {
+    "api_e2e__B1": 20.0291555,
+    "device_forward__B1": 19.4379625,
+    "api_e2e__B256": 190.4509505,
+    "device_forward__B256": 173.0655885
+   },
+   "params": {
+    "active_params": 119477664,
+    "n_blocks": 12,
+    "block_params": 113273856,
+    "per_block_params": 9439488,
+    "non_block_params": 6203808
+   }
+  }
+ ]
+}

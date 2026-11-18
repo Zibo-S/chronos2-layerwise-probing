@@ -1,0 +1,72 @@
+{
+  "model_level": {
+    "mask": [
+      1,
+      3,
+      5,
+      8,
+      10,
+      12
+    ],
+    "M1_trace": [
+      1,
+      3,
+      5,
+      8,
+      10,
+      12
+    ],
+    "M1_passed": true,
+    "M2_passed": true,
+    "M3_passed": true,
+    "M4": {
+      "bitwise": false,
+      "max_abs": 0.00018941545363304613,
+      "max_scaled": 0.003998847384928908,
+      "atol": 0.009727503359548298,
+      "rtol": 0.0001,
+      "n": 8,
+      "passed": true
+    },
+    "M4_passed": true,
+    "passed": true
+  },
+  "dataset_gates": "gates/wind_farms_hourly.json",
+  "identity_adapter_equals_hard_offline_bitwise": true,
+  "V3_hard": {
+    "rule": "mean test MASE agrees to rtol (V3, option A)",
+    "rtol": 0.0001,
+    "mase_mean_physical": 4.402589897287184,
+    "mase_mean_offline": 4.402589926070808,
+    "mase_mean_rel_diff": 6.537884485315219e-09,
+    "elementwise": {
+      "bitwise": false,
+      "max_abs": 1.0048237312876296e-05,
+      "max_scaled": 0.01858110423434079,
+      "atol": 0.00044025899260708085,
+      "rtol": 0.0001,
+      "n": 262,
+      "passed": true
+    },
+    "elementwise_passed": true,
+    "passed": true
+  },
+  "V3_noa": {
+    "rule": "mean test MASE agrees to rtol (V3, option A)",
+    "rtol": 0.0001,
+    "mase_mean_physical": 4.417426497821651,
+    "mase_mean_offline": 4.417426524220137,
+    "mase_mean_rel_diff": 5.975987584410092e-09,
+    "elementwise": {
+      "bitwise": false,
+      "max_abs": 9.045252473249832e-06,
+      "max_scaled": 0.01487163833128341,
+      "atol": 0.0004417426524220138,
+      "rtol": 0.0001,
+      "n": 262,
+      "passed": true
+    },
+    "elementwise_passed": true,
+    "passed": true
+  }
+}

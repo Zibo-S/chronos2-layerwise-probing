@@ -1,0 +1,105 @@
+{
+  "native_gate_vs_phase1": {
+    "available": true,
+    "rtol": 0.0001,
+    "test_loss_mean_ours": 0.19601279724289783,
+    "test_loss_mean_phase1": 0.19601279744018182,
+    "test_loss_mean_rel_diff": 1.006485276842258e-09,
+    "test_loss_window_max_abs_diff": 5.960464477539063e-08,
+    "test_mase_mean_ours": 0.9809678103319266,
+    "test_mase_mean_phase1": 0.9809678116775947,
+    "test_mase_mean_rel_diff": 1.371776032261886e-09,
+    "test_mase_window_max_abs_diff": 2.1832762575613174e-07,
+    "test_mase_window_max_rel_diff": 5.633196660121026e-06,
+    "passed": true
+  },
+  "native_vs_h3": {
+    "mean_ours": 0.9809678103319266,
+    "mean_ref": 0.9809678103319266,
+    "mean_rel_diff": 0.0,
+    "window_max_abs_diff": 0.0,
+    "bitwise": true,
+    "rtol": 1e-06,
+    "passed": true
+  },
+  "hard_vs_h3": {
+    "mean_ours": 1.0868905074885469,
+    "mean_ref": 1.0868905074885469,
+    "mean_rel_diff": 0.0,
+    "window_max_abs_diff": 0.0,
+    "bitwise": true,
+    "rtol": 1e-06,
+    "passed": true
+  },
+  "specific_vs_h3": {
+    "mean_ours": 1.0030444123442817,
+    "mean_ref": 1.0030444123442817,
+    "mean_rel_diff": 0.0,
+    "window_max_abs_diff": 0.0,
+    "bitwise": true,
+    "rtol": 1e-06,
+    "passed": true
+  },
+  "test_rows_vs_h3": {
+    "passed": true
+  },
+  "identity_adapter_equals_hard_cut": {
+    "passed": true
+  },
+  "target_isolation": {
+    "passed": true,
+    "target": "m5",
+    "sources": [
+      "monash_electricity_hourly",
+      "uber_tlc_hourly",
+      "coastal_ts",
+      "monash_london_smart_meters"
+    ],
+    "excluded": [
+      "m4_hourly",
+      "wind_farms_hourly",
+      "sg_carpark",
+      "boom_hourly",
+      "LOOP_SEATTLE_5T",
+      "electricity_15min",
+      "SZ_TAXI_15T",
+      "m5",
+      "wiki_daily_100k",
+      "monash_traffic"
+    ],
+    "target_fingerprints": {
+      "train": "sha256:40cfc77714b9719d1c3c4924a6aa0f3c9f8c2dc98ca61fd0267ebba7fa3f0821",
+      "val": "sha256:8e505db774dc38d3ddf915e61872f20ba7f36058c79507dea25b2dd24b3d7267"
+    },
+    "source_fingerprints": {
+      "monash_electricity_hourly": {
+        "train": "sha256:ab4c509b78401e5d9817029374dc8df1fff689047bf0afcf995d5d38d5ba0018",
+        "val": "sha256:21cf186797acfff992f9c1ec45b3ce383f10d6ff642fdea32e5c6e7cf4051336"
+      },
+      "uber_tlc_hourly": {
+        "train": "sha256:8eae6cc74e44e6513904c5c1b6714cad9d756057e0fcea7ed9c2ec2472d4b349",
+        "val": "sha256:1d1a41f29d4afb14e4d7146cc2926dc250de687685fa1b1b76d7b62f735d0d5e"
+      },
+      "coastal_ts": {
+        "train": "sha256:43741b20434e64782bec1f21587048dd16d0fe76e82008b6f18eb6204e856ef9",
+        "val": "sha256:6dcdcf80b64bb35ff4f3746e8bd0943855781dc47873b717836b480115c1c445"
+      },
+      "monash_london_smart_meters": {
+        "train": "sha256:5dd8a4aafec32ed08e9efe2dd94e81379baf38314f5e96645dcfe9a96b9049b1",
+        "val": "sha256:28071e4de2ec3452965fefdfb7302fb21a0cd5a35600309e0611ec00f7158beb"
+      }
+    },
+    "note": "the pooled tensors are built from `sources` only; the target's train/val fingerprints match no source block"
+  },
+  "equal_train_counts": {
+    "passed": true,
+    "counts": {
+      "monash_electricity_hourly": 1394,
+      "uber_tlc_hourly": 1394,
+      "coastal_ts": 1394,
+      "monash_london_smart_meters": 1394
+    },
+    "note": "informational: the criterion weighs sources equally whatever the counts"
+  },
+  "all_passed": true
+}

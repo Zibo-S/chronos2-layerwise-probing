@@ -1,0 +1,202 @@
+{
+  "model_level": {
+    "mask": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9
+    ],
+    "M1_trace": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9
+    ],
+    "M1_passed": true,
+    "M2_passed": true,
+    "M3_passed": true,
+    "M4": {
+      "bitwise": false,
+      "max_abs": 0.00012010633025738571,
+      "max_scaled": 0.0029569188675106547,
+      "atol": 0.008472649968783923,
+      "rtol": 0.0001,
+      "n": 8,
+      "passed": true
+    },
+    "M4_passed": true,
+    "passed": true
+  },
+  "dataset_gates": "gates/monash_london_smart_meters.json",
+  "prefix_states_vs_phase1_cache": {
+    "train": {
+      "bitwise": true,
+      "max_abs": 0.0,
+      "max_abs_over_std": 0.0,
+      "ref_std": 0.10766134714586865,
+      "tol": 0.001,
+      "passed": true
+    },
+    "val": {
+      "bitwise": true,
+      "max_abs": 0.0,
+      "max_abs_over_std": 0.0,
+      "ref_std": 0.10713570525226697,
+      "tol": 0.001,
+      "passed": true
+    },
+    "test": {
+      "bitwise": true,
+      "max_abs": 0.0,
+      "max_abs_over_std": 0.0,
+      "ref_std": 0.10772631823601647,
+      "tol": 0.001,
+      "passed": true
+    }
+  },
+  "scorer_on_cached_states_vs_h3": {
+    "hard": {
+      "mean_ours": 0.886810458395236,
+      "mean_ref": 0.886810458395236,
+      "mean_rel_diff": 0.0,
+      "window_max_abs_diff": 0.0,
+      "bitwise": true,
+      "rtol": 1e-06,
+      "passed": true
+    },
+    "noa": {
+      "mean_ours": 0.7963398248042777,
+      "mean_ref": 0.7963398248042777,
+      "mean_rel_diff": 0.0,
+      "window_max_abs_diff": 0.0,
+      "bitwise": true,
+      "rtol": 1e-06,
+      "passed": true
+    }
+  },
+  "identity_adapter_equals_hard_offline_bitwise": true,
+  "V3_hard": {
+    "rule": "mean test MASE agrees to rtol (V3, option A)",
+    "rtol": 0.0001,
+    "mase_mean_physical": 0.8868104630840692,
+    "mase_mean_offline": 0.886810458395236,
+    "mase_mean_rel_diff": 5.287300308874819e-09,
+    "elementwise": {
+      "bitwise": false,
+      "max_abs": 2.261038873907495e-07,
+      "max_scaled": 0.0010560417369969448,
+      "atol": 8.86810458395236e-05,
+      "rtol": 0.0001,
+      "n": 262,
+      "passed": true
+    },
+    "elementwise_passed": true,
+    "passed": true
+  },
+  "V3_noa": {
+    "rule": "mean test MASE agrees to rtol (V3, option A)",
+    "rtol": 0.0001,
+    "mase_mean_physical": 0.796339816918659,
+    "mase_mean_offline": 0.7963398248042777,
+    "mase_mean_rel_diff": 9.902328714382382e-09,
+    "elementwise": {
+      "bitwise": false,
+      "max_abs": 3.843310014683965e-07,
+      "max_scaled": 0.0026681573061495996,
+      "atol": 7.963398248042777e-05,
+      "rtol": 0.0001,
+      "n": 262,
+      "passed": true
+    },
+    "elementwise_passed": true,
+    "passed": true
+  },
+  "reextracted_vs_h3": {
+    "hard": {
+      "mean_ours": 0.886810458395236,
+      "mean_ref": 0.886810458395236,
+      "mean_rel_diff": 0.0,
+      "window_max_abs_diff": 0.0,
+      "bitwise": true,
+      "rtol": 0.0001,
+      "passed": true
+    },
+    "noa": {
+      "mean_ours": 0.7963398248042777,
+      "mean_ref": 0.7963398248042777,
+      "mean_rel_diff": 0.0,
+      "window_max_abs_diff": 0.0,
+      "bitwise": true,
+      "rtol": 0.0001,
+      "passed": true
+    }
+  },
+  "physical_prefix_vs_h3_offline": {
+    "hard": {
+      "rule": "mean test MASE agrees to rtol (V3, option A)",
+      "rtol": 0.0001,
+      "mase_mean_physical": 0.8868104630840692,
+      "mase_mean_offline": 0.886810458395236,
+      "mase_mean_rel_diff": 5.287300308874819e-09,
+      "elementwise": {
+        "bitwise": false,
+        "max_abs": 2.261038873907495e-07,
+        "max_scaled": 0.0010560417369969448,
+        "atol": 8.86810458395236e-05,
+        "rtol": 0.0001,
+        "n": 262,
+        "passed": true
+      },
+      "elementwise_passed": true,
+      "passed": true
+    },
+    "noa": {
+      "rule": "mean test MASE agrees to rtol (V3, option A)",
+      "rtol": 0.0001,
+      "mase_mean_physical": 0.796339816918659,
+      "mase_mean_offline": 0.7963398248042777,
+      "mase_mean_rel_diff": 9.902328714382382e-09,
+      "elementwise": {
+        "bitwise": false,
+        "max_abs": 3.843310014683965e-07,
+        "max_scaled": 0.0026681573061495996,
+        "atol": 7.963398248042777e-05,
+        "rtol": 0.0001,
+        "n": 262,
+        "passed": true
+      },
+      "elementwise_passed": true,
+      "passed": true
+    }
+  },
+  "physical_prefix_vs_committed_h4_physical": {
+    "noa": {
+      "rule": "mean test MASE agrees to rtol (V3, option A)",
+      "rtol": 0.0001,
+      "mase_mean_physical": 0.796339816918659,
+      "mase_mean_offline": 0.796339816918659,
+      "mase_mean_rel_diff": 0.0,
+      "elementwise": {
+        "bitwise": true,
+        "max_abs": 0.0,
+        "max_scaled": 0.0,
+        "atol": 7.96339816918659e-05,
+        "rtol": 0.0001,
+        "n": 262,
+        "passed": true
+      },
+      "elementwise_passed": true,
+      "passed": true
+    }
+  }
+}

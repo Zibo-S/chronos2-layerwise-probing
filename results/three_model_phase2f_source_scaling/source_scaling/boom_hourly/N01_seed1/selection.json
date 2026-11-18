@@ -1,0 +1,133 @@
+{
+  "schema": "phase2f_selection/v1",
+  "protocol": "phase2f/source-scaling-v1",
+  "target": "boom_hourly",
+  "depth": 6,
+  "label": "L6",
+  "n_sources": 1,
+  "order_seed": 1,
+  "cell_id": "N01_seed1",
+  "selection_order": [
+    "electricity_15min"
+  ],
+  "sources_fit_order": [
+    "electricity_15min"
+  ],
+  "pool": [
+    "m4_hourly",
+    "monash_electricity_hourly",
+    "uber_tlc_hourly",
+    "wind_farms_hourly",
+    "sg_carpark",
+    "coastal_ts",
+    "LOOP_SEATTLE_5T",
+    "electricity_15min",
+    "SZ_TAXI_15T",
+    "monash_london_smart_meters",
+    "m5",
+    "wiki_daily_100k",
+    "monash_traffic"
+  ],
+  "excluded": [
+    "m4_hourly",
+    "monash_electricity_hourly",
+    "uber_tlc_hourly",
+    "wind_farms_hourly",
+    "sg_carpark",
+    "coastal_ts",
+    "boom_hourly",
+    "LOOP_SEATTLE_5T",
+    "SZ_TAXI_15T",
+    "monash_london_smart_meters",
+    "m5",
+    "wiki_daily_100k",
+    "monash_traffic"
+  ],
+  "n_families": 1,
+  "series_family_members": [
+    "electricity_15min"
+  ],
+  "both_series_siblings": false,
+  "shared_across_seeds": null,
+  "order_rule": "phase2f/source-order/v1",
+  "order_draw": 1,
+  "target_rationale": {
+    "frequency": "1H",
+    "seasonal_period": 24,
+    "domain_family": "cloud",
+    "provenance": "not_listed",
+    "signal": "cloud observability metrics: the lowest dynamic range in the roster, many flat stretches (Phase-1 yield screen: 12% constant future windows)",
+    "why": "the hourly slot must be 'not listed' (only hourly datasets are), and SG Carpark would repeat Loop Seattle's transport family"
+  },
+  "training_work": {
+    "n_train_windows": 1394,
+    "n_val_windows": 262,
+    "n_train_slot_states": 5576,
+    "n_train_windows_per_source": {
+      "electricity_15min": 1394
+    },
+    "n_val_windows_per_source": {
+      "electricity_15min": 262
+    },
+    "steps_planned": 9000,
+    "steps_completed": 9000,
+    "window_passes": 12546000,
+    "fit_seconds": 60.4,
+    "cuda_max_memory_allocated_gb": 0.84
+  },
+  "fit_reproduction": {
+    "source": "electricity_15min",
+    "label": "L6",
+    "passed": true,
+    "bitwise_adapter": true,
+    "adapter_sha256": "sha256:906b083ea32930161618e9028bf791ab1a984a7474757064c49bc631de70d0d4",
+    "h3_adapter_sha256": "sha256:906b083ea32930161618e9028bf791ab1a984a7474757064c49bc631de70d0d4",
+    "val_curve_points_compared": 366,
+    "val_curve_max_rel_diff": 0.0,
+    "checks": {
+      "hard_cut_val": {
+        "ours": 0.1633904129266739,
+        "h3": 0.1633904129266739,
+        "rel_diff": 0.0,
+        "rtol": 1e-06,
+        "passed": true
+      },
+      "selected_wd": {
+        "ours": 0.0,
+        "h3": 0.0,
+        "passed": true
+      },
+      "selected_epoch": {
+        "ours": 250,
+        "h3": 250,
+        "passed": true
+      },
+      "selected_val": {
+        "ours": 0.03787587583065033,
+        "h3": 0.03787587583065033,
+        "rel_diff": 0.0,
+        "rtol": 0.0001,
+        "passed": true
+      },
+      "source_test_mase_vs_h3": {
+        "mean_ours": 1.241872670803688,
+        "mean_ref": 1.241872670803688,
+        "mean_rel_diff": 0.0,
+        "window_max_abs_diff": 0.0,
+        "bitwise": true,
+        "rtol": 0.0001,
+        "passed": true
+      }
+    },
+    "rule": "N = 1 pooled fit vs the committed H3 NOA fit of its source: same epoch-0 criterion (1e-6), same selected (wd, epoch), selected val criterion and the source's own test MASE to 1e-4"
+  },
+  "phase2c_crosscheck": null,
+  "timings": {
+    "fit_s": 60.4,
+    "eval_s": 0.4,
+    "cell_total_s": 60.8,
+    "cuda_max_memory_allocated_gb": 0.84
+  },
+  "job": "9253740",
+  "target_labels_used": "final evaluation of the frozen adapter only (test split, read once); the fit reads source states and the full model's own outputs"
+}

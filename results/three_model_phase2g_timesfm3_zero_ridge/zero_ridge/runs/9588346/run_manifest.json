@@ -1,0 +1,161 @@
+{
+  "schema": "phase2g_zero_ridge_run/v1",
+  "protocol": "phase2g/timesfm3-zero-ridge-v1",
+  "job": "9588346",
+  "started_utc": "2026-11-17T05:30:57+00:00",
+  "phase1_root": "/scratch/eserebri/repos/chronos2-layerwise-probing/results/three_model_phase1_q9_expanded",
+  "h3_root": "/scratch/eserebri/repos/chronos2-layerwise-probing/results/three_model_phase2",
+  "cache_root": "/scratch/eserebri/chronos2/phase1_shared_cache",
+  "window_cache": "/scratch/eserebri/chronos2/phase1_shared_windows",
+  "datasets": [
+    "m4_hourly",
+    "monash_electricity_hourly",
+    "uber_tlc_hourly",
+    "wind_farms_hourly",
+    "sg_carpark",
+    "coastal_ts",
+    "boom_hourly",
+    "LOOP_SEATTLE_5T",
+    "electricity_15min",
+    "SZ_TAXI_15T",
+    "monash_london_smart_meters",
+    "m5",
+    "wiki_daily_100k",
+    "monash_traffic"
+  ],
+  "kappas": [
+    1e-12,
+    1e-11,
+    1e-10,
+    1e-09,
+    1e-08,
+    1e-07,
+    1e-06,
+    1e-05,
+    0.0001,
+    0.001,
+    0.01,
+    0.1,
+    1.0,
+    10.0,
+    100.0
+  ],
+  "boot_b": 5000,
+  "seed": 0,
+  "numerics": {
+    "matmul_allow_tf32": false,
+    "cudnn_allow_tf32": false,
+    "float32_matmul_precision": "highest",
+    "cudnn_benchmark": false,
+    "cudnn_deterministic": true,
+    "deterministic_algorithms": true,
+    "cublas_workspace_config": "unavailable (not set)",
+    "sdpa": {
+      "flash_sdp_enabled": true,
+      "mem_efficient_sdp_enabled": true,
+      "math_sdp_enabled": true
+    },
+    "amp": false,
+    "torch_compile": false
+  },
+  "environment": {
+    "general": {
+      "timestamp_utc": "2026-11-17T05:30:57+00:00",
+      "hostname": "nc10918",
+      "argv": [
+        "/scratch/eserebri/repos/chronos2-layerwise-probing/experiments/run_phase2g_timesfm3_zero_ridge.py",
+        "--device",
+        "cpu"
+      ],
+      "git": {
+        "sha": "bb3f16fab9ea4e8415b25c211710da0cabb2c5c3",
+        "branch": "rebuttal",
+        "dirty": true,
+        "dirty_files": [
+          ".venv",
+          "experiments/run_phase2g_timesfm3_zero_ridge.py",
+          "job_phase2g_timesfm3_zero_ridge.sh",
+          "results/three_model_phase2_lodo/",
+          "results/three_model_phase2d_pooled/slurm/",
+          "results/three_model_phase2e_noncontig/",
+          "results/three_model_phase2f_source_scaling/",
+          "results/three_model_phase2g_timesfm3_zero_ridge/",
+          "three_models_paper/figures/lodo/",
+          "three_models_paper/figures/noncontig/",
+          "three_models_paper/figures/source_scaling/"
+        ],
+        "diff_sha256": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    "slurm": {
+      "SLURM_JOB_ID": "9588346",
+      "SLURM_JOB_NAME": "p2g-zero",
+      "SLURM_JOB_ACCOUNT": "def-irina_cpu",
+      "SLURM_JOB_PARTITION": "cpubase_bycore_b1",
+      "SLURM_JOB_NODELIST": "nc10918",
+      "SLURM_CPUS_PER_TASK": "8",
+      "SLURM_MEM_PER_NODE": "32768",
+      "SLURM_MEM_PER_CPU": "unavailable (not set)",
+      "SLURM_JOB_GPUS": "unavailable (not set)",
+      "SLURM_GPUS_ON_NODE": "unavailable (not set)",
+      "CUDA_VISIBLE_DEVICES": "unavailable (not set)",
+      "SLURM_ARRAY_TASK_ID": "unavailable (not set)",
+      "time_limit": "3:00:00"
+    },
+    "gpu": {
+      "nvidia_smi": "unavailable (exit 9)",
+      "name": "unavailable (no CUDA device)",
+      "count": 0
+    },
+    "cpu": {
+      "model": "AMD EPYC 7532 32-Core Processor",
+      "affinity_count": 8,
+      "os_cpu_count": 64,
+      "omp_num_threads": "8"
+    },
+    "software": {
+      "python": "3.11.5",
+      "platform": "Linux-5.14.0-687.61.1.el9_8.x86_64-x86_64-AMD_EPYC_7532_32-Core_Processor-with-glibc2.37",
+      "torch": "2.12.1+computecanada",
+      "numpy": "1.26.4+computecanada",
+      "scipy": "1.15.2+computecanada",
+      "scikit-learn": "1.7.1+computecanada",
+      "transformers": "5.13.0+computecanada",
+      "huggingface_hub": "1.22.0+computecanada",
+      "safetensors": "0.8.0+computecanada",
+      "einops": "0.8.2+computecanada",
+      "datasets": "5.0.0+computecanada",
+      "chronos-forecasting": "2.3.1",
+      "timesfm": "3.0.2",
+      "tirex-ts": "1.4.2",
+      "accelerate": "1.14.0+computecanada",
+      "pandas": "2.3.3+computecanada",
+      "torch_cuda": "13.2",
+      "cudnn": 92101
+    },
+    "numerics": {
+      "matmul_allow_tf32": false,
+      "cudnn_allow_tf32": false,
+      "float32_matmul_precision": "highest",
+      "cudnn_benchmark": false,
+      "cudnn_deterministic": true,
+      "deterministic_algorithms": true,
+      "cublas_workspace_config": "unavailable (not set)",
+      "sdpa": {
+        "flash_sdp_enabled": true,
+        "mem_efficient_sdp_enabled": true,
+        "math_sdp_enabled": true
+      },
+      "amp": false,
+      "torch_compile": false
+    },
+    "models": {
+      "hf_home": "/scratch/eserebri/chronos2/hf_cache",
+      "hf_hub_offline": "1",
+      "amazon/chronos-2": "29ec3766d36d6f73f0696f85560a422f50e8498c",
+      "autogluon/chronos-2-small": "ddec01313e50b6bc58ebaa92ede81bc24a3d9f9a",
+      "google/timesfm-3.0-pytorch": "43046b85ec22d584a13f8098c2ed39c889e129c2",
+      "NX-AI/TiRex": "63c740922493f5fbe60b277609ec62babfba2762"
+    }
+  }
+}

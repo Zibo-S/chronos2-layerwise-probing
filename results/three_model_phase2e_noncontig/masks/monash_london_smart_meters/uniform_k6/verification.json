@@ -1,0 +1,72 @@
+{
+  "model_level": {
+    "mask": [
+      1,
+      3,
+      5,
+      8,
+      10,
+      12
+    ],
+    "M1_trace": [
+      1,
+      3,
+      5,
+      8,
+      10,
+      12
+    ],
+    "M1_passed": true,
+    "M2_passed": true,
+    "M3_passed": true,
+    "M4": {
+      "bitwise": false,
+      "max_abs": 0.00018941545363304613,
+      "max_scaled": 0.003998847384928908,
+      "atol": 0.009727503359548298,
+      "rtol": 0.0001,
+      "n": 8,
+      "passed": true
+    },
+    "M4_passed": true,
+    "passed": true
+  },
+  "dataset_gates": "gates/monash_london_smart_meters.json",
+  "identity_adapter_equals_hard_offline_bitwise": true,
+  "V3_hard": {
+    "rule": "mean test MASE agrees to rtol (V3, option A)",
+    "rtol": 0.0001,
+    "mase_mean_physical": 0.8835603813582042,
+    "mase_mean_offline": 0.8835603774995395,
+    "mase_mean_rel_diff": 4.367177183747376e-09,
+    "elementwise": {
+      "bitwise": false,
+      "max_abs": 7.745357155641841e-07,
+      "max_scaled": 0.0015653911185283603,
+      "atol": 8.835603774995395e-05,
+      "rtol": 0.0001,
+      "n": 262,
+      "passed": true
+    },
+    "elementwise_passed": true,
+    "passed": true
+  },
+  "V3_noa": {
+    "rule": "mean test MASE agrees to rtol (V3, option A)",
+    "rtol": 0.0001,
+    "mase_mean_physical": 0.8261987950429877,
+    "mase_mean_offline": 0.8261987971842141,
+    "mase_mean_rel_diff": 2.5916600528742625e-09,
+    "elementwise": {
+      "bitwise": false,
+      "max_abs": 5.0542616136795e-07,
+      "max_scaled": 0.0020170349210481423,
+      "atol": 8.261987971842142e-05,
+      "rtol": 0.0001,
+      "n": 262,
+      "passed": true
+    },
+    "elementwise_passed": true,
+    "passed": true
+  }
+}

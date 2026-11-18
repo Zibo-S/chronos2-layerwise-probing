@@ -1,0 +1,109 @@
+{
+  "schema": "phase2f_selection/v1",
+  "protocol": "phase2f/source-scaling-v1",
+  "target": "monash_london_smart_meters",
+  "depth": 6,
+  "label": "L6",
+  "n_sources": 8,
+  "order_seed": 2,
+  "cell_id": "N08_seed2",
+  "selection_order": [
+    "monash_traffic",
+    "wind_farms_hourly",
+    "coastal_ts",
+    "m4_hourly",
+    "uber_tlc_hourly",
+    "LOOP_SEATTLE_5T",
+    "electricity_15min",
+    "SZ_TAXI_15T"
+  ],
+  "sources_fit_order": [
+    "m4_hourly",
+    "uber_tlc_hourly",
+    "wind_farms_hourly",
+    "coastal_ts",
+    "LOOP_SEATTLE_5T",
+    "electricity_15min",
+    "SZ_TAXI_15T",
+    "monash_traffic"
+  ],
+  "pool": [
+    "m4_hourly",
+    "monash_electricity_hourly",
+    "uber_tlc_hourly",
+    "wind_farms_hourly",
+    "sg_carpark",
+    "coastal_ts",
+    "boom_hourly",
+    "LOOP_SEATTLE_5T",
+    "electricity_15min",
+    "SZ_TAXI_15T",
+    "m5",
+    "wiki_daily_100k",
+    "monash_traffic"
+  ],
+  "excluded": [
+    "monash_electricity_hourly",
+    "sg_carpark",
+    "boom_hourly",
+    "monash_london_smart_meters",
+    "m5",
+    "wiki_daily_100k"
+  ],
+  "n_families": 8,
+  "series_family_members": [
+    "electricity_15min"
+  ],
+  "both_series_siblings": false,
+  "shared_across_seeds": null,
+  "order_rule": "phase2f/source-order/v1",
+  "order_draw": 2,
+  "target_rationale": {
+    "frequency": "30min",
+    "seasonal_period": 48,
+    "domain_family": "energy",
+    "provenance": "listed",
+    "signal": "single-household electricity use: noisy and spiky",
+    "why": "the only 30-minute dataset; documented pretraining data; same domain family as the two Electricity sources (a near-domain target)"
+  },
+  "training_work": {
+    "n_train_windows": 11152,
+    "n_val_windows": 1776,
+    "n_train_slot_states": 44608,
+    "n_train_windows_per_source": {
+      "m4_hourly": 1394,
+      "uber_tlc_hourly": 1394,
+      "wind_farms_hourly": 1394,
+      "coastal_ts": 1394,
+      "LOOP_SEATTLE_5T": 1394,
+      "electricity_15min": 1394,
+      "SZ_TAXI_15T": 1394,
+      "monash_traffic": 1394
+    },
+    "n_val_windows_per_source": {
+      "m4_hourly": 262,
+      "uber_tlc_hourly": 262,
+      "wind_farms_hourly": 262,
+      "coastal_ts": 48,
+      "LOOP_SEATTLE_5T": 262,
+      "electricity_15min": 262,
+      "SZ_TAXI_15T": 156,
+      "monash_traffic": 262
+    },
+    "steps_planned": 9000,
+    "steps_completed": 9000,
+    "window_passes": 100368000,
+    "fit_seconds": 442.0,
+    "cuda_max_memory_allocated_gb": 2.71
+  },
+  "fit_reproduction": null,
+  "phase2c_crosscheck": null,
+  "timings": {
+    "fit_s": 442.0,
+    "eval_s": 0.3,
+    "cell_total_s": 442.3,
+    "cuda_max_memory_allocated_gb": 2.71
+  },
+  "job": "9253740",
+  "target_labels_used": "final evaluation of the frozen adapter only (test split, read once); the fit reads source states and the full model's own outputs"
+}

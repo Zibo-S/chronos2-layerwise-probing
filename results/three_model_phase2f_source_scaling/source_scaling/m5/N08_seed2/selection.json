@@ -1,0 +1,107 @@
+{
+  "schema": "phase2f_selection/v1",
+  "protocol": "phase2f/source-scaling-v1",
+  "target": "m5",
+  "depth": 6,
+  "label": "L6",
+  "n_sources": 8,
+  "order_seed": 2,
+  "cell_id": "N08_seed2",
+  "selection_order": [
+    "wiki_daily_100k",
+    "boom_hourly",
+    "sg_carpark",
+    "LOOP_SEATTLE_5T",
+    "monash_traffic",
+    "m4_hourly",
+    "coastal_ts",
+    "monash_london_smart_meters"
+  ],
+  "sources_fit_order": [
+    "m4_hourly",
+    "sg_carpark",
+    "coastal_ts",
+    "boom_hourly",
+    "LOOP_SEATTLE_5T",
+    "monash_london_smart_meters",
+    "wiki_daily_100k",
+    "monash_traffic"
+  ],
+  "pool": [
+    "m4_hourly",
+    "monash_electricity_hourly",
+    "uber_tlc_hourly",
+    "wind_farms_hourly",
+    "sg_carpark",
+    "coastal_ts",
+    "boom_hourly",
+    "LOOP_SEATTLE_5T",
+    "electricity_15min",
+    "SZ_TAXI_15T",
+    "monash_london_smart_meters",
+    "wiki_daily_100k",
+    "monash_traffic"
+  ],
+  "excluded": [
+    "monash_electricity_hourly",
+    "uber_tlc_hourly",
+    "wind_farms_hourly",
+    "electricity_15min",
+    "SZ_TAXI_15T",
+    "m5"
+  ],
+  "n_families": 8,
+  "series_family_members": [],
+  "both_series_siblings": false,
+  "shared_across_seeds": null,
+  "order_rule": "phase2f/source-order/v1",
+  "order_draw": 1,
+  "target_rationale": {
+    "frequency": "1D",
+    "seasonal_period": 7,
+    "domain_family": "retail",
+    "provenance": "held_out",
+    "signal": "daily retail unit sales: intermittent low counts",
+    "why": "daily slot; held out from Chronos-2 pretraining (Benchmark II, fev-bench); preferred to Wiki Daily (listed) by R4"
+  },
+  "training_work": {
+    "n_train_windows": 11152,
+    "n_val_windows": 2066,
+    "n_train_slot_states": 44608,
+    "n_train_windows_per_source": {
+      "m4_hourly": 1394,
+      "sg_carpark": 1394,
+      "coastal_ts": 1394,
+      "boom_hourly": 1394,
+      "LOOP_SEATTLE_5T": 1394,
+      "monash_london_smart_meters": 1394,
+      "wiki_daily_100k": 1394,
+      "monash_traffic": 1394
+    },
+    "n_val_windows_per_source": {
+      "m4_hourly": 262,
+      "sg_carpark": 354,
+      "coastal_ts": 48,
+      "boom_hourly": 354,
+      "LOOP_SEATTLE_5T": 262,
+      "monash_london_smart_meters": 262,
+      "wiki_daily_100k": 262,
+      "monash_traffic": 262
+    },
+    "steps_planned": 9000,
+    "steps_completed": 9000,
+    "window_passes": 100368000,
+    "fit_seconds": 442.4,
+    "cuda_max_memory_allocated_gb": 2.72
+  },
+  "fit_reproduction": null,
+  "phase2c_crosscheck": null,
+  "timings": {
+    "fit_s": 442.4,
+    "eval_s": 0.7,
+    "cell_total_s": 443.3,
+    "cuda_max_memory_allocated_gb": 2.72
+  },
+  "job": "9253740",
+  "target_labels_used": "final evaluation of the frozen adapter only (test split, read once); the fit reads source states and the full model's own outputs"
+}

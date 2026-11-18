@@ -1,0 +1,185 @@
+{
+  "model_level": {
+    "mask": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9
+    ],
+    "M1_trace": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9
+    ],
+    "M1_passed": true,
+    "M2_passed": true,
+    "M3_passed": true,
+    "M4": {
+      "bitwise": false,
+      "max_abs": 0.00012010633025738571,
+      "max_scaled": 0.0029569188675106547,
+      "atol": 0.008472649968783923,
+      "rtol": 0.0001,
+      "n": 8,
+      "passed": true
+    },
+    "M4_passed": true,
+    "passed": true
+  },
+  "dataset_gates": "gates/wiki_daily_100k.json",
+  "prefix_states_vs_phase1_cache": {
+    "train": {
+      "bitwise": true,
+      "max_abs": 0.0,
+      "max_abs_over_std": 0.0,
+      "ref_std": 0.11151227989762263,
+      "tol": 0.001,
+      "passed": true
+    },
+    "val": {
+      "bitwise": true,
+      "max_abs": 0.0,
+      "max_abs_over_std": 0.0,
+      "ref_std": 0.11168747990114512,
+      "tol": 0.001,
+      "passed": true
+    },
+    "test": {
+      "bitwise": true,
+      "max_abs": 0.0,
+      "max_abs_over_std": 0.0,
+      "ref_std": 0.1103308826147567,
+      "tol": 0.001,
+      "passed": true
+    }
+  },
+  "scorer_on_cached_states_vs_h3": {
+    "hard": {
+      "mean_ours": 0.9253692882963949,
+      "mean_ref": 0.9253692882963949,
+      "mean_rel_diff": 0.0,
+      "window_max_abs_diff": 0.0,
+      "bitwise": true,
+      "rtol": 1e-06,
+      "passed": true
+    },
+    "noa": {
+      "mean_ours": 0.81233103953652,
+      "mean_ref": 0.81233103953652,
+      "mean_rel_diff": 0.0,
+      "window_max_abs_diff": 0.0,
+      "bitwise": true,
+      "rtol": 1e-06,
+      "passed": true
+    }
+  },
+  "identity_adapter_equals_hard_offline_bitwise": true,
+  "V3_hard": {
+    "rule": "mean test MASE agrees to rtol (V3, option A)",
+    "rtol": 0.0001,
+    "mase_mean_physical": 0.9253692844943289,
+    "mase_mean_offline": 0.9253692882963949,
+    "mase_mean_rel_diff": 4.108701297373541e-09,
+    "elementwise": {
+      "bitwise": false,
+      "max_abs": 4.3059350196550383e-07,
+      "max_scaled": 0.0018796518806029176,
+      "atol": 9.253692882963949e-05,
+      "rtol": 0.0001,
+      "n": 262,
+      "passed": true
+    },
+    "elementwise_passed": true,
+    "passed": true
+  },
+  "V3_noa": {
+    "rule": "mean test MASE agrees to rtol (V3, option A)",
+    "rtol": 0.0001,
+    "mase_mean_physical": 0.8123310349339788,
+    "mase_mean_offline": 0.81233103953652,
+    "mase_mean_rel_diff": 5.665844221123899e-09,
+    "elementwise": {
+      "bitwise": false,
+      "max_abs": 3.7568527311293565e-07,
+      "max_scaled": 0.0035426925071914807,
+      "atol": 8.1233103953652e-05,
+      "rtol": 0.0001,
+      "n": 262,
+      "passed": true
+    },
+    "elementwise_passed": true,
+    "passed": true
+  },
+  "reextracted_vs_h3": {
+    "hard": {
+      "mean_ours": 0.9253692882963949,
+      "mean_ref": 0.9253692882963949,
+      "mean_rel_diff": 0.0,
+      "window_max_abs_diff": 0.0,
+      "bitwise": true,
+      "rtol": 0.0001,
+      "passed": true
+    },
+    "noa": {
+      "mean_ours": 0.81233103953652,
+      "mean_ref": 0.81233103953652,
+      "mean_rel_diff": 0.0,
+      "window_max_abs_diff": 0.0,
+      "bitwise": true,
+      "rtol": 0.0001,
+      "passed": true
+    }
+  },
+  "physical_prefix_vs_h3_offline": {
+    "hard": {
+      "rule": "mean test MASE agrees to rtol (V3, option A)",
+      "rtol": 0.0001,
+      "mase_mean_physical": 0.9253692844943289,
+      "mase_mean_offline": 0.9253692882963949,
+      "mase_mean_rel_diff": 4.108701297373541e-09,
+      "elementwise": {
+        "bitwise": false,
+        "max_abs": 4.3059350196550383e-07,
+        "max_scaled": 0.0018796518806029176,
+        "atol": 9.253692882963949e-05,
+        "rtol": 0.0001,
+        "n": 262,
+        "passed": true
+      },
+      "elementwise_passed": true,
+      "passed": true
+    },
+    "noa": {
+      "rule": "mean test MASE agrees to rtol (V3, option A)",
+      "rtol": 0.0001,
+      "mase_mean_physical": 0.8123310349339788,
+      "mase_mean_offline": 0.81233103953652,
+      "mase_mean_rel_diff": 5.665844221123899e-09,
+      "elementwise": {
+        "bitwise": false,
+        "max_abs": 3.7568527311293565e-07,
+        "max_scaled": 0.0035426925071914807,
+        "atol": 8.1233103953652e-05,
+        "rtol": 0.0001,
+        "n": 262,
+        "passed": true
+      },
+      "elementwise_passed": true,
+      "passed": true
+    }
+  },
+  "physical_prefix_vs_committed_h4_physical": {
+    "note": "no committed physical H4 result for Chronos-2 at L9 on wiki_daily_100k"
+  }
+}

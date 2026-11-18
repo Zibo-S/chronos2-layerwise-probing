@@ -1,0 +1,53 @@
+{
+  "protocol": "phase2e/noncontig-v1",
+  "kind": "masks",
+  "model": "chronos2",
+  "dataset": "monash_electricity_hourly",
+  "strategy": "uniform",
+  "budget": 4,
+  "mask": [
+    1,
+    4,
+    8,
+    12
+  ],
+  "mask_table_digest": "sha256:b40f495f3e849947f65ad0375896fd72a5a59aadea7fc8354416c6ba0c938b25",
+  "prefix_policy": "H3 reuse after gates; refit if the state gate fails",
+  "phase1_fit_hash": "sha256:6cf1a130e9cf3e62a16bd6950dd1eb6cf8963d92ddfbc7d66438cab9c2f94cb9",
+  "window_digest": "sha256:adce7921407c90694f539e6d871e907e8a99b6430307b66e0d9f199bb906e5f0",
+  "h3_config_hash": "sha256:5751c8e84edffc5bcacc40429035b85c4f30cef6c210035cc025e8a2f1196374",
+  "checkpoint": "amazon/chronos-2",
+  "extract_batch_size": 128,
+  "K": 4,
+  "epochs": 1500,
+  "lr": 0.001,
+  "wd_grid": [
+    0.0,
+    0.1,
+    1.0,
+    10.0,
+    30.0,
+    100.0
+  ],
+  "eval_every": 25,
+  "seed": 0,
+  "noa_adapter": "affine",
+  "native_gate_rtol": 0.0001,
+  "quantiles": [
+    0.1,
+    0.2,
+    0.3,
+    0.4,
+    0.5,
+    0.6,
+    0.7,
+    0.8,
+    0.9
+  ],
+  "boot_b": 5000,
+  "boot_seed": 0,
+  "state_gate_tol": 0.001,
+  "h3_repro_rtol": 1e-06,
+  "v3_mean_rtol": 0.0001,
+  "config_hash": "sha256:8c98115ccbbc7fcf4679d670054b3da638fff3b3b714645b04b07357ecceebe1"
+}
