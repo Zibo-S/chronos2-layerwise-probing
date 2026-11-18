@@ -1,0 +1,34 @@
+% Appendix B.4.1: cutting at the tunnel entrance (pre-specified test, reported in the review period).
+% Numbers: experiments/make_rebuttal_numbers.py, section B; physical evaluation:
+% results/three_model_phase2/combined/h4_outcomes.csv.
+
+\subsubsection{Cutting at the tunnel entrance}
+\label{sec:app_entrance_rule}
+
+Before computing the truncation results, we specified one test of the tunnel as a cut rule: truncate each model at its validation-selected 5\% entrance, evaluate no other depth, and count the datasets on which the aligned model stays within 5\% of the full model in test MASE. This test was evaluated on physically truncated models (Appendix~\ref{app:latency}), whose test MASE agrees with the offline pathway to within $10^{-4}$ relative. Table~\ref{tab:entrance_rule} compares it with a single fixed depth for all datasets at a similar speed.
+
+The entrance is not a reliable cut rule on its own: it keeps the aligned model within 5\% of the full model on 7 of 14 datasets for Chronos-2 and 5 of 12 for TiRex, whose entrance is the final block on M4 and Monash Traffic. For TimesFM-3 it does so on none of the 14 datasets with the identity-anchored adapter of the submission and on 2 with the zero-anchored adapter of Appendix~\ref{sec:app_timesfm3_ridge}, whose numbers are offline and post hoc. Compared with a fixed depth, the entrance gives a similar or slightly higher median but roughly halves the worst case: $+15.8\%$ against $+32.9\%$ at L4 and $+33.3\%$ at L3 for Chronos-2, and $+13.6\%$ against $+27.3\%$ at L9 for TiRex. Because the entrance adapts the cut to the dataset, it protects against datasets that tolerate truncation poorly, such as M4 and Electricity, without locating the best cut. The aligned pathway's own compatibility depth is rank-correlated with the entrance for Chronos-2 and TiRex but not for TimesFM-3 (Appendix~\ref{sec:app_native_reference}).
+
+\begin{table}[t]
+\centering
+\caption{\textbf{Cutting at the tunnel entrance versus at a fixed depth.} Aligned pathway, test MASE increase over the full model. Entrance: each dataset cut at its validation-selected 5\% tunnel entrance (TiRex: the 12 datasets whose entrance precedes the final block). Within 5\%: datasets within 5\% of the full model. Speedup: median end-to-end speedup at batch size 1. TimesFM-3 with the zero anchor: offline, analysed after the test results of the identity-anchored fit.}
+\vspace{4pt}
+\label{tab:entrance_rule}
+\small
+\setlength{\tabcolsep}{5pt}
+\begin{tabular}{@{}llcccc@{}}
+\toprule
+Model & Cut & Median & Within 5\% & Worst & Speedup \\
+\midrule
+Chronos-2 & Entrance & $+5.5\%$ & 7/14 & $+15.8\%$ & $2.67\times$ \\
+ & Fixed L3 & $+4.4\%$ & 7/14 & $+33.3\%$ & $2.91\times$ \\
+ & Fixed L4 & $+3.1\%$ & 8/14 & $+32.9\%$ & $2.43\times$ \\
+\midrule
+TiRex & Entrance & $+6.3\%$ & 5/12 & $+13.6\%$ & $1.42\times$ \\
+ & Fixed L9 & $+6.2\%$ & 5/14 & $+27.3\%$ & $1.33\times$ \\
+\midrule
+TimesFM-3 & Entrance, identity anchor & $+35.5\%$ & 0/14 & $+293.0\%$ & $1.37\times$ \\
+ & Entrance, zero anchor & $+14.2\%$ & 2/14 & $+83.1\%$ & $1.37\times$ \\
+\bottomrule
+\end{tabular}
+\end{table}

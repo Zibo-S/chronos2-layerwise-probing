@@ -219,7 +219,7 @@ What remains is that TimesFM-3 becomes compatible late: its aligned pathway stay
 - **TimesFM-3 inside the tunnel.** The 40% to 68% losses inside the tunnel were produced by the regularizer of our TimesFM-3 adapter (answer to Q3). With the corrected adapter, the median MASE increase at a matched depth is +8.9% to +16.5% inside the tunnel and +11.5% to +29.5% before it. Truncation is cheaper inside the tunnel at all 15 depths where both groups contain at least two datasets.
 - **Cutting at the entrance.** The pre-specified test of cutting at the entrance is now reported in Section 4.4 and Appendix B.4.1 (answer to Reviewer 2p99, Q2).
 
-On Table 14, we agree with your reading. The comparison is post hoc and between datasets, some groups contain only two datasets, and datasets whose tunnel begins early may be easier to truncate for other reasons. The text says so, the table reports the group sizes, and we describe the result as an association, as in our limitations.
+On Table 14 of the submission (Table 19 in the revision), we agree with your reading. The comparison is post hoc and between datasets, some groups contain only two datasets, and datasets whose tunnel begins early may be easier to truncate for other reasons. Section 4.4 now says so, the table reports the group sizes, and we describe the result as an association, as in our limitations.
 
 **Adaptation cost and zero-shot use.** See our answer to Q2: the adapter needs no labels, it transfers across datasets at mild truncation, and calibration costs one forward pass and about one minute of fitting for Chronos-2.
 

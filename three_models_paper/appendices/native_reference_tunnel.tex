@@ -1,0 +1,35 @@
+% Appendix B.1.6: the forecasting tunnel referenced to the full model (review period).
+% Numbers: experiments/make_rebuttal_numbers.py, section A (results/rebuttal_numbers/).
+
+\subsubsection{Tunnel referenced to the full model}
+\label{sec:app_native_reference}
+
+The tunnel of Equation~\ref{eq:tunnel_entrance} is referenced to the final-block readout, not to the full model. Here we replace the reference by the full model's validation loss $\mathcal{R}^{\mathrm{val}}_{\mathrm{full}}$, computed in the same target space, and keep the sustained criterion unchanged: $\mathcal{R}^{\mathrm{val}}_{j}\le(1+\epsilon)\,\mathcal{R}^{\mathrm{val}}_{\mathrm{full}}$ for every $j\in\{\ell,\dots,L\}$. Because the final-block readout is part of every suffix, such a tunnel exists only where the final-block readout is itself within $\epsilon$ of the full model.
+
+Table~\ref{tab:native_reference} shows that this is rare. At the final block, the readout's validation loss exceeds the full model's by a median 17.7\%, 20.3\%, and 12.7\% for Chronos-2, TimesFM-3, and TiRex, and is within 5\% in only 6 of the 42 pairs: Chronos-2 and TiRex on SZ Taxi and Coastal T-S, TimesFM-3 on Coastal T-S, and TiRex on Wiki Daily. In all six, the tunnel referenced to the full model begins before the final block. At $\epsilon=0.10$, 15 pairs have such a tunnel, all beginning before the final block; at $\epsilon=0.02$, two pairs have one, and in only one of them does it begin before the final block. The tunnel of the main analysis therefore measures where later blocks stop improving a fixed linear readout; the gap between that readout and the full model is a property of the readout, present at every depth.
+
+The aligned pathway, unlike a readout, reproduces the full model at the final block, so the same criterion applied to its validation loss asks from which depth the aligned truncated model stays within $\epsilon$ of the full model. Such a depth exists before the final block in 33 of 42 pairs at $\epsilon=0.05$ and 39 of 42 at $\epsilon=0.10$, using the zero-anchored TimesFM-3 adapter of Appendix~\ref{sec:app_timesfm3_ridge} (27 and 37 with the identity-anchored adapter of the submission). For Chronos-2 and TiRex, this depth is rank-correlated with the tunnel entrance across datasets (Spearman 0.81 and 0.80), and the two differ by at most one block on 9 and 11 of 14 datasets. For TimesFM-3 there is no such relation ($-0.02$): its aligned pathway stays within 5\% of the full model only from a median of L18.5, wherever the tunnel begins.
+
+\paragraph{Entrances at L0.} Seven pairs enter the tunnel at L0. In four of them, M5 for all three models and TiRex on SZ Taxi, the final-block readout's validation loss is within 5\% of the best constant forecast (ratios 0.95 to 1.01; Appendix~\ref{app:readout_training}), so an L0 entrance indicates that no depth adds forecasting performance a linear readout can use. These pairs are marked in Table~\ref{tab:tunnel_q9}. In the other three, TimesFM-3 on BOOM, Wind Farms, and Wiki Daily, the final-block readout is clearly better than the constant forecast (ratios 0.72 to 0.88) and the L0 readout matches it.
+
+\begin{table}[t]
+\centering
+\caption{\textbf{Tunnels referenced to the full model.} Validation $Q=9$ loss. Final block: readout loss relative to the full model (median over 14 datasets) and the number of datasets within 5\%. Readout and aligned pathway: number of datasets whose sustained tunnel, referenced to the full model's validation loss, begins before the final block, at $\epsilon=0.02$, $0.05$, and $0.10$. Spearman: rank correlation across datasets between the readout tunnel entrance of Table~\ref{tab:tunnel_q9} and the aligned pathway's 5\% entrance. TimesFM-3 uses the zero-anchored adapter; the identity-anchored adapter of the submission gives 4 / 5 / 9 and $0.05$.}
+\vspace{4pt}
+\label{tab:native_reference}
+\small
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{@{}lcccc@{}}
+\toprule
+& \multicolumn{1}{c}{Final-block readout} & \multicolumn{1}{c}{Readout} & \multicolumn{1}{c}{Aligned pathway} & \\
+\cmidrule(lr){2-2}\cmidrule(lr){3-3}\cmidrule(lr){4-4}
+Model & vs.\ full model (within 5\%) & 2\% / 5\% / 10\% & 2\% / 5\% / 10\% & Spearman \\
+\midrule
+Chronos-2 & $+17.7\%$ (2/14) & 0 / 2 / 4 & 8 / 13 / 14 & $0.81$ \\
+TimesFM-3 & $+20.3\%$ (1/14) & 0 / 1 / 5 & 8 / 11 / 11 & $-0.02$ \\
+TiRex & $+12.7\%$ (3/14) & 1 / 3 / 6 & 8 / 9 / 14 & $0.80$ \\
+\midrule
+All & 6/42 & 1 / 6 / 15 & 24 / 33 / 39 & \\
+\bottomrule
+\end{tabular}
+\end{table}

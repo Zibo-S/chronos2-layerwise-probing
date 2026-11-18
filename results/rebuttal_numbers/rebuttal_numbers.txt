@@ -1,0 +1,210 @@
+====================================================================================================
+A. 96qN Q1: tunnel referenced to the full model (validation Q9 loss)
+  Chronos-2 final-block readout val loss vs full model: median +17.7% [+1.3%, +64.9%]; within 5%: 2/14 ['SZ Taxi', 'Coastal T-S']
+     eps 0.02: direct substitution: tunnel 1/14, pre-final 0/14 []; H3 (final readout replaced): pre-final 0/14 (only under H3: [])
+     eps 0.05: direct substitution: tunnel 2/14, pre-final 2/14 ['SZ Taxi', 'Coastal T-S']; H3 (final readout replaced): pre-final 3/14 (only under H3: ['Wiki Daily'])
+     eps 0.10: direct substitution: tunnel 4/14, pre-final 4/14 ['SZ Taxi', 'Coastal T-S', 'Uber TLC', 'Wiki Daily']; H3 (final readout replaced): pre-final 4/14 (only under H3: [])
+  TimesFM-3 final-block readout val loss vs full model: median +20.3% [+4.2%, +63.3%]; within 5%: 1/14 ['Coastal T-S']
+     eps 0.02: direct substitution: tunnel 0/14, pre-final 0/14 []; H3 (final readout replaced): pre-final 0/14 (only under H3: [])
+     eps 0.05: direct substitution: tunnel 1/14, pre-final 1/14 ['Coastal T-S']; H3 (final readout replaced): pre-final 1/14 (only under H3: [])
+     eps 0.10: direct substitution: tunnel 5/14, pre-final 5/14 ['SZ Taxi', 'Coastal T-S', 'M5', 'London Smart Meters', 'Wiki Daily']; H3 (final readout replaced): pre-final 5/14 (only under H3: [])
+  TiRex     final-block readout val loss vs full model: median +12.7% [+0.8%, +30.2%]; within 5%: 3/14 ['SZ Taxi', 'Coastal T-S', 'Wiki Daily']
+     eps 0.02: direct substitution: tunnel 1/14, pre-final 1/14 ['Coastal T-S']; H3 (final readout replaced): pre-final 1/14 (only under H3: [])
+     eps 0.05: direct substitution: tunnel 3/14, pre-final 3/14 ['SZ Taxi', 'Coastal T-S', 'Wiki Daily']; H3 (final readout replaced): pre-final 4/14 (only under H3: ['M5'])
+     eps 0.10: direct substitution: tunnel 6/14, pre-final 6/14 ['SZ Taxi', 'Coastal T-S', 'M5', 'London Smart Meters', 'Uber TLC', 'Wiki Daily']; H3 (final readout replaced): pre-final 6/14 (only under H3: [])
+  TOTAL final-block readout within 5% of full model: 6/42
+  TOTAL eps 0.02: direct: any 2/42, pre-final 1/42 | H3 definition pre-final 1/42
+  TOTAL eps 0.05: direct: any 6/42, pre-final 6/42 | H3 definition pre-final 8/42
+  TOTAL eps 0.10: direct: any 15/42, pre-final 15/42 | H3 definition pre-final 15/42
+  aligned pathway, native-referenced sustained tunnel (pre-final counts of 14):
+     tol_0.02: Chronos-2 8; TimesFM-3 identity 4 / zero 8; TiRex 8 | total 20/42 (with TimesFM-3 zero: 24/42)
+     tol_0.05: Chronos-2 13; TimesFM-3 identity 5 / zero 11; TiRex 9 | total 27/42 (with TimesFM-3 zero: 33/42)
+     tol_0.1: Chronos-2 14; TimesFM-3 identity 9 / zero 11; TiRex 14 | total 37/42 (with TimesFM-3 zero: 39/42)
+     Spearman(Phase-1 entrance, aligned 5% native-referenced entrance) Chronos-2: +0.81; within one block 9/14; median aligned entrance L8.0
+     Spearman(Phase-1 entrance, aligned 5% native-referenced entrance) TimesFM-3: +0.05; within one block 0/14; median aligned entrance L20.0
+     Spearman(Phase-1 entrance, aligned 5% native-referenced entrance) TiRex: +0.80; within one block 11/14; median aligned entrance L9.5
+     TimesFM-3 zero anchor: Spearman -0.02; within one block 2/14; median entrance L18.5
+  the seven L0 entrances: final-block readout val loss / constant-forecast floor; full model low-skill flag
+     Chronos-2 M5                     readout(final)/floor 1.008; full-model low-skill False
+     TimesFM-3 BOOM                   readout(final)/floor 0.729; full-model low-skill False
+     TimesFM-3 M5                     readout(final)/floor 0.984; full-model low-skill True
+     TimesFM-3 Wiki Daily             readout(final)/floor 0.881; full-model low-skill False
+     TimesFM-3 Wind Farms             readout(final)/floor 0.716; full-model low-skill False
+     TiRex     SZ Taxi                readout(final)/floor 0.951; full-model low-skill True
+     TiRex     M5                     readout(final)/floor 0.963; full-model low-skill True
+====================================================================================================
+B. 2p99 Q2: cutting at the frozen Phase-1 entrance (aligned pathway, test MASE vs full model)
+  Chronos-2 n=14 median +5.5%, within 5% 7/14, worst +15.8%, median speedup 2.67x
+       fixed L3: median +4.4%, within 5% 7/14, worst +33.3% (M4), speedup 2.91x
+       fixed L4: median +3.1%, within 5% 8/14, worst +32.9% (M4), speedup 2.43x
+       fixed L9: median +2.2%, within 5% 10/14, worst +15.8% (Electricity), speedup 1.28x
+  TimesFM-3 n=14 median +35.5%, within 5% 0/14, worst +293.0%, median speedup 1.37x
+       fixed L1: median +38.7%, within 5% 0/14, worst +911.1% (BOOM), speedup 1.37x
+       fixed L5: median +69.8%, within 5% 0/14, worst +2048.8% (BOOM), speedup 1.24x
+       fixed L10: median +67.3%, within 5% 0/14, worst +2751.2% (BOOM), speedup 1.19x
+  TiRex     n=12 median +6.3%, within 5% 5/12, worst +13.6%, median speedup 1.42x
+       fixed L3: median +13.4%, within 5% 1/14, worst +49.9% (M4), speedup 3.93x
+       fixed L4: median +12.8%, within 5% 1/14, worst +48.7% (M4), speedup 2.99x
+       fixed L9: median +6.2%, within 5% 5/14, worst +27.3% (Electricity), speedup 1.33x
+  TimesFM-3 zero anchor at the entrance: within 5% 2/14, median +14.2%, worst +83.1%
+====================================================================================================
+C. 2p99 Q3: pairs documented as held out from pretraining
+  9 held-out pairs; tunnel before final block: 8; test loss change at entrance: median +1.3% [-8.3%, +6.9%] (all 42: +1.3%)
+  23 pairs not documented as pretraining data: pre-final 22
+  Chronos-2 (n=4) | L3 hard +9.3% aligned +0.9% probe +7.2% | L6 hard +10.6% aligned +1.1% probe +5.7% | L9 hard +6.3% aligned +1.1% probe +6.0%
+       all 14 aligned at 25/50/75%: ['+4.4%', '+2.3%', '+2.2%']
+  TimesFM-3 (n=3) | L5 hard +3297.7% aligned +73.0% probe +9.2% zero +3.9% | L10 hard +8834.4% aligned +52.9% probe +9.6% zero +4.5% | L15 hard +9920.7% aligned +29.8% probe +9.6% zero +4.4%
+       all 14 aligned at 25/50/75%: ['+69.8%', '+67.3%', '+47.9%']
+  TiRex     (n=2) | L3 hard +160.4% aligned +27.2% probe +40.8% | L6 hard +138.0% aligned +15.6% probe +39.4% | L9 hard +132.4% aligned +8.3% probe +30.5%
+       all 14 aligned at 25/50/75%: ['+13.4%', '+10.6%', '+6.2%']
+     Chronos-2 L4 aligned LOOP Seattle: -4.7%; full-model low-skill False
+     Chronos-2 L4 aligned SZ Taxi: +0.2%; full-model low-skill True
+     Chronos-2 L4 aligned M5: +1.5%; full-model low-skill False
+     Chronos-2 L4 aligned Monash Traffic: +27.3%; full-model low-skill False
+  full-model validation loss / constant-forecast floor (held-out datasets):
+     Chronos-2 LOOP Seattle     0.72
+     Chronos-2 SZ Taxi          0.91
+     Chronos-2 M5               0.89
+     Chronos-2 Monash Traffic   0.35
+     TimesFM-3 LOOP Seattle     0.79
+     TimesFM-3 SZ Taxi          0.90
+     TimesFM-3 M5               0.91
+     TiRex     M5               0.91
+     TiRex     Monash Traffic   0.40
+====================================================================================================
+D. 96qN Q3: TimesFM-3 identity- vs zero-anchored closed form (Phase 2g)
+  depth | hard | identity | zero | zero_out | probe | zero<=5% | zero<id (CI) | zero vs probe better/worse (CI)
+  L0       35x   +31.3%  +24.3%  +23.9%  +31.9% |  0 (id 0) |  8 | 8/2 | IQR [+15.7%, +48.8%] | speedup (1.384439505262513, 5.943253110015933)
+  L1       38x   +38.7%  +10.6%   +9.7%  +15.8% |  2 (id 0) | 14 | 10/2 | IQR [+7.2%, +32.4%] | speedup (1.3724722373793026, 4.651041968499897)
+  L2       37x   +53.8%  +11.1%   +8.8%  +15.3% |  4 (id 0) | 14 | 11/3 | IQR [+5.1%, +31.5%] | speedup (1.428086066845799, 4.249886300237453)
+  L3       59x   +62.4%  +11.0%   +8.9%  +16.9% |  4 (id 0) | 14 | 11/3 | IQR [+4.8%, +30.7%] | speedup (1.335219189933938, 3.486953516481505)
+  L4       42x   +77.3%  +11.3%   +9.5%  +17.0% |  4 (id 0) | 14 | 10/3 | IQR [+4.9%, +31.3%] | speedup (1.2938064879403643, 3.109414350956207)
+  L5       53x   +69.8%  +10.6%   +8.5%  +16.8% |  4 (id 0) | 14 | 10/4 | IQR [+4.5%, +31.3%] | speedup (1.2394598071023932, 2.704498019005708)
+  L6       76x   +81.9%  +10.4%   +8.1%  +16.6% |  3 (id 0) | 14 | 10/3 | IQR [+7.0%, +31.7%] | speedup (1.2445900309294757, 2.4355229249180557)
+  L7       92x   +65.1%  +10.5%   +8.2%  +15.5% |  3 (id 0) | 14 | 11/3 | IQR [+6.4%, +35.4%] | speedup (1.22036216488048, 2.2061891481488756)
+  L8      111x   +58.1%  +11.3%   +9.7%  +15.8% |  3 (id 0) | 14 | 10/3 | IQR [+6.5%, +36.7%] | speedup (1.2469826939101563, 2.0298155078120907)
+  L9      129x   +69.9%  +11.9%  +10.0%  +16.1% |  3 (id 0) | 13 | 10/3 | IQR [+6.4%, +32.5%] | speedup (1.1778947225357868, 1.8536634308838653)
+  L10     121x   +67.3%  +11.3%  +10.1%  +17.0% |  2 (id 0) | 14 | 10/3 | IQR [+6.6%, +31.8%] | speedup (1.187272509332605, 1.7084380667649146)
+  L11     143x   +59.5%  +11.2%   +9.9%  +16.8% |  3 (id 0) | 14 | 10/3 | IQR [+6.4%, +31.2%] | speedup (1.121612991447725, 1.599192791627599)
+  L12     151x   +62.7%  +11.1%   +9.0%  +16.9% |  3 (id 0) | 14 | 10/3 | IQR [+6.1%, +31.5%] | speedup (1.152818453822076, 1.5139175846669626)
+  L13     147x   +56.4%  +10.4%   +8.3%  +16.3% |  4 (id 0) | 14 | 11/3 | IQR [+5.5%, +27.7%] | speedup (1.1077368087709483, 1.4157351897929482)
+  L14     129x   +56.0%   +9.9%   +8.1%  +16.3% |  4 (id 0) | 14 | 11/3 | IQR [+5.4%, +25.7%] | speedup (1.1060860111874695, 1.3421619788612977)
+  L15     160x   +47.9%   +8.5%   +7.1%  +14.8% |  3 (id 0) | 14 | 10/3 | IQR [+6.0%, +24.4%] | speedup (1.0780301232339404, 1.2641926767054803)
+  L16     108x   +40.3%   +7.1%   +7.2%  +14.5% |  5 (id 0) | 12 | 10/3 | IQR [+4.1%, +23.6%] | speedup (1.046439374321341, 1.203877805840885)
+  L17      91x   +29.7%   +6.1%   +6.0%  +14.7% |  5 (id 1) | 13 | 11/3 | IQR [+2.8%, +19.3%] | speedup (1.0701685775028895, 1.1481853515676812)
+  L18      62x   +14.3%   +3.9%   +3.7%  +13.2% |  9 (id 3) | 13 | 11/3 | IQR [+1.6%, +11.4%] | speedup (1.0333876565350084, 1.0921604666591322)
+  L19       7x    +5.4%   +1.3%   +1.0%  +12.7% | 11 (id 6) | 13 | 12/1 | IQR [+0.6%, +3.9%] | speedup (0.9853789896052291, 1.0364938384035858)
+  identity kappa <= 1e-8: 231/280; zero kappa in [1e-6, 1e-4]: 221/280; zero kappa >= 10: 36/280 on ['BOOM', 'Wind Farms']; validation distillation error lower for zero: 280/280
+  identity L1-L17: val/train 13.0-183.5; eff. params 1017-1280; test R2 -0.60 to +0.53; negative on 4-11 | L0: val/train 1.9, eff. params 253, R2 +0.12
+  zero     L1-L17: val/train 1.9-3.2; eff. params 262-681; test R2 +0.64 to +0.88; negative on 2-3 | L0: val/train 1.3, eff. params 76, R2 +0.33
+  zero: L0 worse than every L1..L18 on 12/14 (exceptions ['BOOM', 'Wind Farms']); worse than L19 on 14/14
+  BOOM         L1: zero +191.0% id +911.1% probe +31.2%  L5: zero +181.1% id +2048.8% probe +46.7%  L10: zero +187.3% id +2751.2% probe +42.7%  L15: zero +216.6% id +1665.8% probe +44.1%  L19: zero +12.9% id +45.1% probe +40.8%
+  Wind Farms   L1: zero +35.5% id +56.6% probe +8.4%  L5: zero +38.0% id +237.7% probe +9.7%  L10: zero +39.5% id +742.9% probe +9.4%  L15: zero +45.0% id +412.4% probe +9.9%  L19: zero +9.1% id +22.4% probe +8.5%
+  LOOP Seattle L1: zero -6.0% id +25.5% probe -8.5%  L5: zero +3.9% id +73.0% probe -8.2%  L10: zero +0.1% id +52.9% probe -17.4%  L15: zero -1.5% id +29.8% probe -19.7%  L19: zero +1.2% id +3.4% probe -12.7%
+  Electricity  L1: zero +2.7% id +23.3% probe +16.4%  L5: zero +3.5% id +62.7% probe +22.9%  L10: zero +15.7% id +71.9% probe +19.0%  L15: zero +9.5% id +44.2% probe +15.0%  L19: zero -0.1% id +3.6% probe +12.4%
+  zero worse than probe (CI): {1: ['BOOM', 'Wind Farms'], 5: ['LOOP Seattle', 'BOOM', 'Monash Traffic', 'Wind Farms'], 10: ['LOOP Seattle', 'BOOM', 'Wind Farms'], 15: ['LOOP Seattle', 'BOOM', 'Wind Farms'], 19: ['LOOP Seattle']}
+  budget identity eps 0.05: cut 5/14, within on test 4, median speedup B=1 1.00x B=256 1.00x
+  budget identity eps 0.2: cut 11/14, within on test 9, median speedup B=1 1.02x B=256 1.06x
+  budget zero     eps 0.05: cut 11/14, within on test 9, median speedup B=1 1.02x B=256 1.06x
+  budget zero     eps 0.2: cut 14/14, within on test 13, median speedup B=1 1.28x B=256 3.18x
+  strata (zero): cheaper inside at 15/15 depths: L0 4/10 +16.5 vs +29.5; L1 8/6 +10.6 vs +15.0; L2 8/6 +11.1 vs +12.1; L3 8/6 +11.0 vs +11.5; L4 8/6 +11.3 vs +12.6; L5 9/5 +10.3 vs +19.5; L6 9/5 +10.3 vs +18.7; L7 9/5 +10.3 vs +19.1; L8 9/5 +10.5 vs +20.9; L9 9/5 +10.3 vs +21.1; L10 9/5 +10.6 vs +22.7; L11 9/5 +10.3 vs +22.6; L12 11/3 +10.9 vs +13.8; L13 11/3 +10.4 vs +13.0; L14 12/2 +8.9 vs +20.6
+====================================================================================================
+E. Phase 2c: leave-one-dataset-out transfer (Chronos-2)
+  all      L4 (2.43x, n=14): hard +37.0% pooled +12.7% [+4.9%, +24.5%] specific +3.1%; pooled<hard (CI) 13; within 5/10 4/5; pooled-specific +7.1 pp; gap closed 75% (specific 91%); late ckpt 8, grid max 0
+  held_out L4 (2.43x, n=4): hard +8.4% pooled +15.5% [+2.8%, +29.0%] specific +0.8%; pooled<hard (CI) 3; within 5/10 2/2; pooled-specific +4.7 pp; gap closed 74% (specific 87%); late ckpt 3, grid max 0
+  all      L6 (1.78x, n=14): hard +20.1% pooled +9.0% [+4.8%, +18.5%] specific +2.3%; pooled<hard (CI) 13; within 5/10 4/8; pooled-specific +5.1 pp; gap closed 70% (specific 86%); late ckpt 8, grid max 0
+  held_out L6 (1.78x, n=4): hard +10.6% pooled +15.3% [+3.2%, +27.8%] specific +1.1%; pooled<hard (CI) 3; within 5/10 2/2; pooled-specific +4.0 pp; gap closed 48% (specific 89%); late ckpt 2, grid max 0
+  all      L9 (1.28x, n=14): hard +17.1% pooled +4.0% [+3.2%, +7.6%] specific +2.2%; pooled<hard (CI) 13; within 5/10 9/11; pooled-specific +1.7 pp; gap closed 80% (specific 87%); late ckpt 3, grid max 0
+  held_out L9 (1.28x, n=4): hard +6.3% pooled +1.8% [-0.3%, +6.5%] specific +1.1%; pooled<hard (CI) 3; within 5/10 3/3; pooled-specific +1.8 pp; gap closed 85% (specific 84%); late ckpt 1, grid max 0
+     Loop Seattle     L4: pooled +27.2% hard +5.6% specific -4.7%; improves over hard (CI) False
+     Loop Seattle     L6: pooled +26.2% hard +10.4% specific -3.6%; improves over hard (CI) False
+     Loop Seattle     L9: pooled -1.9% hard -3.3% specific -4.3%; improves over hard (CI) False
+     SZ Taxi          L4: pooled +0.1% hard +5.5% specific +0.2%; improves over hard (CI) True
+     SZ Taxi          L6: pooled +0.0% hard +3.3% specific +0.0%; improves over hard (CI) True
+     SZ Taxi          L9: pooled +0.3% hard +2.2% specific +0.4%; improves over hard (CI) True
+     M5               L4: pooled +3.7% hard +11.2% specific +1.5%; improves over hard (CI) True
+     M5               L6: pooled +4.3% hard +10.8% specific +2.3%; improves over hard (CI) True
+     M5               L9: pooled +3.3% hard +10.4% specific +1.8%; improves over hard (CI) True
+     Traffic          L4: pooled +34.5% hard +134.1% specific +27.3%; improves over hard (CI) True
+     Traffic          L6: pooled +32.4% hard +50.2% specific +26.5%; improves over hard (CI) True
+     Traffic          L9: pooled +16.3% hard +108.3% specific +14.1%; improves over hard (CI) True
+     M4               L4: pooled +128.1% hard +737.8% specific +32.9%; improves over hard (CI) True
+     M4               L6: pooled +41.5% hard +269.7% specific +30.8%; improves over hard (CI) True
+     M4               L9: pooled +32.6% hard +327.5% specific +7.6%; improves over hard (CI) True
+  datasets where pooled does NOT beat the hard cut (CI): {'4': ['Loop Seattle'], '6': ['Loop Seattle'], '9': ['Loop Seattle']}
+  sibling sensitivity columns: ['dataset', 'display', 'label', 'depth', 'full_mase', 'unseen_series_dmase', 'sibling_included_dmase', 'difference_pp', 'specific_dmase', 'hard_dmase', 'n_sources_unseen_series', 'n_sources_sibling_included']
+  sibling included vs excluded: max |difference| 2.50 pp
+====================================================================================================
+F. Phase 2f: number of source datasets (Chronos-2, L6)
+  N= 1: mean +19.7% [+9.3, +32.5] (cells 12); gap to specific +16.5 pp; worse than hard (CI) 3; within 5% 1; fit 1.01 min on 1394 windows
+  N= 4: mean +12.7% [+6.9, +18.3] (cells 12); gap to specific +9.5 pp; worse than hard (CI) 2; within 5% 3; fit 3.75 min on 5576 windows
+  N= 8: mean +13.2% [+5.7, +22.6] (cells 12); gap to specific +10.0 pp; worse than hard (CI) 3; within 5% 3; fit 7.38 min on 11152 windows
+  N=13: mean +12.8% [+6.0, +22.1] (cells 4); gap to specific +9.7 pp; worse than hard (CI) 1; within 5% 1; fit 12.14 min on 18122 windows
+  hard cut mean over targets +19.8%; dataset-specific +3.2%
+     Loop Seattle         N= 1: mean +25.8% [+10.6, +44.8] hard +10.4 specific -3.6
+     Loop Seattle         N= 4: mean +18.5% [+9.6, +23.3] hard +10.4 specific -3.6
+     Loop Seattle         N= 8: mean +26.8% [+20.7, +31.8] hard +10.4 specific -3.6
+     Loop Seattle         N=13: mean +26.2% [+26.2, +26.2] hard +10.4 specific -3.6
+     London Smart Meters  N= 1: mean +13.3% [+12.5, +13.8] hard +16.6 specific +4.6
+     London Smart Meters  N= 4: mean +11.8% [+10.9, +12.4] hard +16.6 specific +4.6
+     London Smart Meters  N= 8: mean +10.7% [+10.0, +12.0] hard +16.6 specific +4.6
+     London Smart Meters  N=13: mean +9.6% [+9.6, +9.6] hard +16.6 specific +4.6
+     BOOM                 N= 1: mean +33.6% [+16.8, +50.7] hard +41.5 specific +9.3
+     BOOM                 N= 4: mean +16.4% [+12.0, +21.9] hard +41.5 specific +9.3
+     BOOM                 N= 8: mean +11.3% [+10.3, +13.2] hard +41.5 specific +9.3
+     BOOM                 N=13: mean +11.2% [+11.2, +11.2] hard +41.5 specific +9.3
+     M5                   N= 1: mean +6.0% [+5.0, +6.8] hard +10.8 specific +2.3
+     M5                   N= 4: mean +4.0% [+3.6, +4.4] hard +10.8 specific +2.3
+     M5                   N= 8: mean +3.8% [+3.2, +4.3] hard +10.8 specific +2.3
+     M5                   N=13: mean +4.3% [+4.3, +4.3] hard +10.8 specific +2.3
+  N=1 range over 12 cells: +5.0% to +50.7%; N=13 worse than specific (CI): 4/4; LOOP Seattle worse than hard cut (CI) in 8/10 cells
+====================================================================================================
+G. Phase 2e: non-contiguous blocks (Chronos-2)
+  k=4 prefix     hard blocks              1-4: median +37.0% [+13.8, +112.8] within5 0; speedup B1 2.35x B256 2.50x; vs prefix median - better/worse CI -/-; invalid_v3 0
+  k=4 prefix     noa  blocks              1-4: median +3.1% [+0.5, +11.4] within5 8; speedup B1 2.36x B256 2.49x; vs prefix median - better/worse CI -/-; invalid_v3 0
+  k=4 uniform    hard blocks         1,4,8,12: median +42.2% [+12.3, +144.3] within5 1; speedup B1 2.39x B256 2.50x; vs prefix median 3.395461697145697 better/worse CI 3/6; invalid_v3 0
+  k=4 uniform    noa  blocks         1,4,8,12: median +8.9% [+3.2, +13.5] within5 5; speedup B1 2.35x B256 2.45x; vs prefix median 4.311830052343946 better/worse CI 0/10; invalid_v3 0
+  k=4 early_late hard blocks        1-2,11-12: median +31.3% [+12.1, +138.5] within5 2; speedup B1 2.40x B256 2.51x; vs prefix median 2.309595411408524 better/worse CI 4/6; invalid_v3 0
+  k=4 early_late noa  blocks        1-2,11-12: median +10.1% [+5.8, +38.3] within5 3; speedup B1 2.37x B256 2.50x; vs prefix median 8.38390099023869 better/worse CI 0/11; invalid_v3 0
+  k=4 middle     hard blocks              4-7: median +63.3% [+20.8, +123.6] within5 1; speedup B1 2.40x B256 2.53x; vs prefix median 7.730279009250657 better/worse CI 2/11; invalid_v3 0
+  k=4 middle     noa  blocks              4-7: median +7.2% [+4.9, +24.9] within5 4; speedup B1 2.24x B256 2.34x; vs prefix median 5.979029627158713 better/worse CI 0/12; invalid_v3 0
+  k=6 prefix     hard blocks              1-6: median +20.1% [+11.3, +48.0] within5 1; speedup B1 1.66x B256 1.84x; vs prefix median - better/worse CI -/-; invalid_v3 0
+  k=6 prefix     noa  blocks              1-6: median +2.3% [+0.4, +11.5] within5 9; speedup B1 1.72x B256 1.81x; vs prefix median - better/worse CI -/-; invalid_v3 0
+  k=6 uniform    hard blocks    1,3,5,8,10,12: median +17.5% [+11.9, +30.1] within5 1; speedup B1 1.75x B256 1.75x; vs prefix median -12.535318601856055 better/worse CI 8/4; invalid_v3 0
+  k=6 uniform    noa  blocks    1,3,5,8,10,12: median +4.2% [+1.5, +9.5] within5 8; speedup B1 1.76x B256 1.81x; vs prefix median -0.7046664884130752 better/worse CI 4/4; invalid_v3 0
+  k=6 early_late hard blocks        1-3,10-12: median +23.1% [+6.9, +50.6] within5 3; speedup B1 1.73x B256 1.84x; vs prefix median -1.6260378896023038 better/worse CI 6/4; invalid_v3 0
+  k=6 early_late noa  blocks        1-3,10-12: median +7.6% [+2.2, +13.2] within5 5; speedup B1 1.75x B256 1.82x; vs prefix median 3.675240354329305 better/worse CI 1/7; invalid_v3 0
+  k=6 middle     hard blocks              4-9: median +52.0% [+18.5, +85.0] within5 1; speedup B1 1.82x B256 1.83x; vs prefix median 23.146461313780826 better/worse CI 1/13; invalid_v3 0
+  k=6 middle     noa  blocks              4-9: median +7.6% [+4.9, +24.3] within5 4; speedup B1 1.81x B256 1.75x; vs prefix median 6.532484586492318 better/worse CI 1/12; invalid_v3 0
+  k=9 prefix     hard blocks              1-9: median +17.1% [+11.3, +35.8] within5 2; speedup B1 1.30x B256 1.29x; vs prefix median - better/worse CI -/-; invalid_v3 0
+  k=9 prefix     noa  blocks              1-9: median +2.2% [+0.9, +6.2] within5 10; speedup B1 1.27x B256 1.28x; vs prefix median - better/worse CI -/-; invalid_v3 0
+  k=9 uniform    hard blocks 1-2,4-5,7-8,10-12: median +1.1% [+0.2, +11.1] within5 9; speedup B1 1.23x B256 1.30x; vs prefix median -15.382713262304769 better/worse CI 13/1; invalid_v3 0
+  k=9 uniform    noa  blocks 1-2,4-5,7-8,10-12: median +0.9% [+0.1, +3.4] within5 11; speedup B1 1.28x B256 1.29x; vs prefix median -1.5705456797525332 better/worse CI 7/1; invalid_v3 0
+  k=9 early_late hard blocks         1-5,9-12: median +2.1% [+0.2, +9.6] within5 9; speedup B1 1.27x B256 1.29x; vs prefix median -14.777298343339751 better/worse CI 13/1; invalid_v3 0
+  k=9 early_late noa  blocks         1-5,9-12: median +0.9% [-0.3, +4.0] within5 11; speedup B1 1.25x B256 1.24x; vs prefix median -0.8031855107606415 better/worse CI 6/1; invalid_v3 0
+  k=9 middle     hard blocks             2-10: median +20.2% [+10.2, +44.8] within5 2; speedup B1 1.28x B256 1.29x; vs prefix median 3.940107581942419 better/worse CI 2/6; invalid_v3 0
+  k=9 middle     noa  blocks             2-10: median +3.4% [+1.9, +9.1] within5 8; speedup B1 1.24x B256 1.29x; vs prefix median 1.1512959830065665 better/worse CI 1/6; invalid_v3 0
+  skip block  1: median +5.19% worse/better (CI) 10/1
+  skip block  2: median +2.18% worse/better (CI) 9/0
+  skip block  3: median +0.21% worse/better (CI) 3/1
+  skip block  4: median +0.13% worse/better (CI) 3/1
+  skip block  5: median -0.03% worse/better (CI) 2/2
+  skip block  6: median +0.29% worse/better (CI) 3/2
+  skip block  7: median -0.03% worse/better (CI) 4/3
+  skip block  8: median +0.07% worse/better (CI) 4/3
+  skip block  9: median +0.44% worse/better (CI) 6/2
+  skip block 10: median +0.42% worse/better (CI) 6/1
+  skip block 11: median +1.52% worse/better (CI) 10/1
+  skip block 12: median +18.49% worse/better (CI) 14/0
+====================================================================================================
+H. Chronos-2-small versus truncated Chronos-2
+  Chronos-2-small: median +0.8% IQR [+0.0%, +5.9%], within 5% 10/14, worst +15.6% (M4); speedups {('api_e2e', '1'): 1.7952674320750097, ('api_e2e', '256'): 3.2841512797401418, ('device_forward', '1'): 1.8489880493768522, ('device_forward', '256'): 3.8334977647982993}
+  Chronos-2 aligned L3: median +4.4%, within 5% 7/14, speedup 2.91x / 3.10x
+  Chronos-2 aligned L4: median +3.1%, within 5% 8/14, speedup 2.43x / 2.51x
+  Chronos-2 aligned L5: median +2.1%, within 5% 8/14, speedup 2.06x / 2.11x
+  Chronos-2 aligned L6: median +2.3%, within 5% 9/14, speedup 1.78x / 1.82x
+  Chronos-2 full model median ms: {('api_e2e', '1'): 19.4313455, ('api_e2e', '256'): 181.77279099999998, ('device_forward', '1'): 18.8098035, ('device_forward', '256'): 171.02117149999998}  -> one pass over 1,394 windows at B=256 ~ 1.0 s
+====================================================================================================
+I. Chronos-2 / TiRex iterative adapters: validation / training distillation error at the selected checkpoint (the TimesFM-3 identity fit has 13-184 at L1-L17)
+  Chronos-2 val/train median 1.76 IQR [1.33, 2.35] max 10.9 over 168 fits; hard cut selected 0
+  TiRex     val/train median 2.29 IQR [1.58, 3.66] max 15.0 over 168 fits; hard cut selected 0
