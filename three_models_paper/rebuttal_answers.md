@@ -7,10 +7,12 @@ belongs to. Markdown tables and `$...$` math render on OpenReview.
   committed result tables and writes `results/rebuttal_numbers/rebuttal_numbers.{txt,json}`.
 - **Appendix and section numbers:** they refer to the revised `main.tex` and were checked against
   the compiled PDF.
-- **TimesFM-3 corrected-adapter numbers:** they are offline (cached representations), and the
-  answers say so. The physical-truncation check for the new adapters is reported in Appendix B.3.1.
+- **TimesFM-3 corrected-adapter numbers:** computed offline and confirmed on physically truncated
+  models: 98 of 98 configurations (7 depths × 14 datasets) agree in test MASE within 4.5×10⁻⁵ relative
+  (Narval jobs 9761535, 9762989, 9762990; Appendix B.3.1).
 - **Your own text:** the dHTD Q2 answer is unchanged; its numbers were re-checked against the 2d
   results.
+- **Length:** every answer is under 4,000 characters (longest: 96qN Q3, about 3,600).
 
 ---
 
@@ -26,7 +28,7 @@ belongs to. Markdown tables and `$...$` math render on OpenReview.
 4. Architecture-aware versus generic content-mean readouts for all three models (Appendix B.1.5; dHTD).
 5. A corrected regularizer for the closed-form TimesFM-3 adapter (Appendix B.3.1; 96qN).
 
-The fifth changes a result. Reviewer 96qN's question about TimesFM-3 at L0 led us to find that our closed-form TimesFM-3 adapter was regularized toward the hard cut, which for TimesFM-3 is 35 to 160 times worse than the full model in MASE from L0 to L17. Validation therefore selected almost no regularization, and the adapter overfit its 1,394 training windows. Shrinking the adapter toward zero instead, with every other choice unchanged, reduces the median MASE increase of the aligned TimesFM-3 pathway at 25, 50 and 75% of depth from +69.8%, +67.3% and +47.9% to +10.6%, +11.3% and +8.5%. The Chronos-2 and TiRex adapters are fitted iteratively with early stopping and do not show this problem: at the selected checkpoint their validation error is a median 1.8 and 2.3 times their training error, against 13 to 184 times for the original TimesFM-3 fit. We made the change after seeing the original test results, so the revised paper reports both fits, uses the corrected one in Sections 4.3 to 5, and marks its numbers as computed offline.
+The fifth changes a result. Reviewer 96qN's question about TimesFM-3 at L0 led us to find that our closed-form TimesFM-3 adapter was regularized toward the hard cut, which for TimesFM-3 is 35 to 160 times worse than the full model in MASE from L0 to L17. Validation therefore selected almost no regularization, and the adapter overfit its 1,394 training windows. Shrinking the adapter toward zero instead, with every other choice unchanged, reduces the median MASE increase of the aligned TimesFM-3 pathway at 25, 50 and 75% of depth from +69.8%, +67.3% and +47.9% to +10.6%, +11.3% and +8.5%. The Chronos-2 and TiRex adapters are fitted iteratively with early stopping and do not show this problem: at the selected checkpoint their validation error is a median 1.8 and 2.3 times their training error, against 13 to 184 times for the original TimesFM-3 fit. We made the change after seeing the original test results, so the revised paper reports both fits and uses the corrected one in Sections 4.3 to 5. Its numbers are computed offline, and physically truncated models reproduce them: at seven depths on all 14 datasets, test MASE agrees with the offline pathway to within 4.5×10⁻⁵ relative (Appendix B.3.1).
 
 We also report the tunnel referenced to the full model rather than to the final-block readout (Appendix B.1.6), the pre-specified test of cutting at the tunnel entrance (Section 4.4, Appendix B.4.1), and results on the model-dataset pairs documented as held out from pretraining (Appendix B.4.5).
 
@@ -101,7 +103,7 @@ The qualitative conclusions therefore hold on the held-out pairs: forecasts are 
 - It contains only 4, 3 and 2 datasets per model.
 - On SZ Taxi and M5, the full models are close to the best constant forecast (validation loss 0.89 to 0.91 of the constant forecast's), so small degradations there are weak evidence. Monash Traffic, where the models have the most skill (0.35 for Chronos-2, 0.40 for TiRex), is also where truncation is least tolerated: +27.3% for aligned Chronos-2 at L4.
 
-In the strictest setting, neither the backbone nor the adapter has seen the target. Using the leave-one-dataset-out adapter on Chronos-2's four held-out datasets, it improves on the hard cut on three of them at L4, L6 and L9, and fails on LOOP Seattle (Appendix B.4.5).
+In the strictest setting, the target is in neither the backbone's documented pretraining data nor the adapter's training data. Using the leave-one-dataset-out adapter on Chronos-2's four held-out datasets, it improves on the hard cut on three of them at L4, L6 and L9, and fails on LOOP Seattle (Appendix B.4.2). Appendix B.4.5 collects the held-out results.
 
 ---
 
@@ -118,7 +120,7 @@ The revised Section 4.4 states this explicitly. Truncation is useful when a sepa
 
 - At batch size 1, Chronos-2 truncated after L4 runs 2.43× faster at +3.1%, and after L3 2.91× faster at +4.4%, both beyond Chronos-2-small's speed.
 - No smaller version of TimesFM-3 or TiRex has been released, so for these models truncation is the only training-free way to trade accuracy for speed. TiRex truncated after L7 runs 1.71× faster at +8.5%.
-- For TimesFM-3, the corrected adapter (answer to Reviewer 96qN, Q3) changes the accuracy side substantially (+10.6% after L1, instead of +38.7%). Its batch-size-1 speedup is still capped at 1.43× by the per-call cost outside the backbone; at batch size 256, truncation after L1 runs 4.65× faster at +10.6% (offline accuracy).
+- For TimesFM-3, the corrected adapter (answer to Reviewer 96qN, Q3) changes the accuracy side substantially (+10.6% after L1, instead of +38.7%). Its batch-size-1 speedup is still capped at 1.43× by the per-call cost outside the backbone; at batch size 256, truncation after L1 runs 4.65× faster at +10.6%.
 
 The two approaches are complementary: a smaller pretrained model could itself be truncated, which we did not test.
 
@@ -187,7 +189,7 @@ On the cost of calibration: the adapter needs only the full model's own forecast
 
 Yes. TimesFM-3's head is a single linear map, so adapter plus head is an affine map from the last context token's state to the forecast. At L0, this state is computed from the last 32 context values alone (normalized with the context's mean and standard deviation), before any attention. The aligned pathway at L0 is therefore a linear forecaster on an embedding of the last input patch.
 
-Your question led us to the reason why L0 outperformed L2 to L17, and it lies in our fit, not in the representations. The closed-form adapter was regularized toward the identity, $\lambda\lVert\Delta_\ell\rVert_F^2$ with $A_\ell(h)=h+\Delta_\ell h+b_\ell$, that is, toward the hard cut. For TimesFM-3, the hard cut is 35 to 160 times worse than the full model from L0 to L17. Validation therefore selected almost no regularization ($\kappa\le10^{-8}$ in 231 of 280 fits), and the adapter nearly interpolated the 1,394 training windows: from L1 to L17, its median validation error was 13 to 184 times its training error. At L0, the same fit kept about 250 effective parameters per output direction, against 1,000 to 1,280 of 1,280 at later depths, and generalized (ratio 1.9).
+Your question led us to the reason why L0 outperformed L2 to L17, and it lies in our fit, not in the representations. The closed-form adapter was regularized toward the identity, $\lambda\lVert\Delta_\ell\rVert_F^2$ with $A_\ell(h)=h+\Delta_\ell h+b_\ell$, that is, toward the hard cut. For TimesFM-3, the hard cut is 35 to 160 times worse than the full model from L0 to L17. Validation therefore selected almost no regularization ($\kappa\le10^{-8}$ in 231 of 280 fits), and the adapter nearly interpolated the 1,394 training windows: from L1 to L17, its median validation error was 13 to 184 times its training error. At L0, the same fit kept about 250 effective parameters per output direction, against 1,000 to 1,280 of 1,280 at later depths, and generalized: its validation error was 1.9 times its training error.
 
 We repeated the fit with the penalty on the whole linear map, $\lambda\lVert I+\Delta_\ell\rVert_F^2$, which shrinks the adapter toward zero, and changed nothing else: the states, splits, targets, $\kappa$ grid and validation-only selection are the same (Appendix B.3.1). Median test MASE increase over the full model, 14 datasets:
 
@@ -206,7 +208,7 @@ Two statements of the submission therefore change:
 - The +48% to +70% degradation at 25 to 75% of depth was produced by our regularizer; the corrected values are +10.6%, +11.3% and +8.5%.
 - The supervised readout is not closer to the full model than the aligned pathway.
 
-What remains is that TimesFM-3 becomes compatible late: its aligned pathway stays about 10% above the full model up to L14 and is within 5% on most datasets only at L18 (9 of 14). We have revised Sections 4.3, 4.4 and 5, and kept the original fit in Appendix B.3.1. These numbers are computed offline. The adapter has the same shape as before, so latency is unchanged; Appendix B.3.1 reports the status of the physical-truncation check for the new adapters.
+What remains is that TimesFM-3 becomes compatible late: its aligned pathway stays about 10% above the full model up to L14 and is within 5% on most datasets only at L18 (9 of 14). We have revised Sections 4.3, 4.4 and 5, and kept the original fit in Appendix B.3.1. These numbers are computed offline from cached representations. We checked them on physically truncated models at L0, L1, L5, L10, L15, L18 and L19 on all 14 datasets: in all 98 configurations, test MASE agrees with the offline pathway to within 4.5×10⁻⁵ relative. The adapter has the same shape as before, so latency is unchanged.
 
 ---
 

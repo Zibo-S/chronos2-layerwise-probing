@@ -2638,4 +2638,7 @@ submission was built from (author text of main.tex, V3 mean-rule tables, restyle
 (CPU). Jobs 9761535 (all 14, roster order), 9762989 and 9762990 (disjoint subsets, to finish in time). Refits the
 zero adapter with the 2g code (same kappa required), splices it into a truncated public-API model, compares
 physical vs offline mean test MASE (V3 rule 1e-4). Output `results/three_model_phase2g_timesfm3_zero_ridge/physical/`.
-First dataset (M4): all 7 depths pass, physical vs offline <= 2.1e-6, offline == committed 2g, native 6.3e-8.
+RESULT (all three jobs COMPLETED 0:0; committed 9219b4f): 98/98 configurations (14 datasets x L0, L1, L5,
+L10, L15, L18, L19) pass; kappa equal 98/98; offline == committed 2g exactly; physical vs offline mean test
+MASE max 4.5e-5 (Coastal T-S; all others <= 9.6e-6); unmodified model vs committed native max 4.2e-5;
+per-value max 14.5% of mean |forecast| (BOOM, L0), <= 2.3% elsewhere, median ~1e-6. Reported in Appendix B.3.1.
