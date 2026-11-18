@@ -185,8 +185,26 @@ def build_h4(root: Path):
                          "mase_ci_hi": a["mase_vs_native"]["ratio_ci_hi"],
                          "wql_ratio": a["wql_vs_native"]["ratio"],
                          "within_budget_mase": a["mase_vs_native"]["within_budget"],
-                         "V3_passed": a.get("V3_passed")})
+                         **dict(zip(("V3_passed", "V3_elementwise_passed"),
+                                    _v3_mean_verdict(t.get("V3", {}).get(arm),
+                                                     a.get("V3_passed"))))})
     return rows
+
+
+# V3 RULE (changed 2026-09-26, notes/PLAN.md "V3 decision"): a physically truncated model passes
+# when its test MASE agrees with the offline H3 pathway to V3_MEAN_RTOL relative. The element-wise
+# check specified beforehand (rtol 1e-4 on every forecast value / per-window MASE) also fails for
+# the UNMODIFIED TiRex model (bf16 recurrence, up to ~11% of the mean forecast magnitude on single
+# values), so it measures GPU numerics, not truncation. Its verdict is kept beside the new one
+# (V3_elementwise_passed) and counted in phase2_stats.json; nothing saved in a cell is rewritten.
+V3_MEAN_RTOL = 1e-4
+
+
+def _v3_mean_verdict(v3: dict | None, elementwise):
+    """(mean-level verdict, element-wise verdict) for one physical configuration."""
+    if not v3 or v3.get("mase_mean_rel_diff") is None:
+        return elementwise, elementwise           # metric-level checks (probe head) are unchanged
+    return bool(v3["mase_mean_rel_diff"] <= V3_MEAN_RTOL), elementwise
 
 
 def build_h4_outcomes(root: Path):
@@ -199,8 +217,19 @@ def build_h4_outcomes(root: Path):
         if not o or o["rule"]["version"] != phase2.H4_OUTCOME_RULE["version"]:
             raise RuntimeError(f"{cell}: no H4 outcome under rule "
                                f"{phase2.H4_OUTCOME_RULE['version']}; re-run evaluate there")
+        # re-derive the verdict under the V3 rule above with the SAME pre-registered function;
+        # the status stored at evaluation time (element-wise V3) is kept beside it
+        status_elementwise = o["status"]
+        arms = {k: {**v, "V3_passed": _v3_mean_verdict(t.get("V3", {}).get(k),
+                                                         v.get("V3_passed"))[0]}
+                for k, v in t["arms"].items()}
+        o = phase2.h4_outcome(arms, candidate_depth=o["candidate_depth"]["depth_index"],
+                              phase1_entrance=o["candidate_depth"]["depth_index"],
+                              n_blocks=o["blocks_total"], label=o["candidate_depth"]["label"],
+                              low_skill=o["low_skill"])
         sec = o["secondary_not_deciding"]
         rows.append({"model": t["model"], "dataset": t["dataset"],
+                     "status_elementwise_v3": status_elementwise,
                      "candidate_label": o["candidate_depth"]["label"],
                      "candidate_depth_index": o["candidate_depth"]["depth_index"],
                      "blocks_total": o["blocks_total"], "blocks_removed": o["blocks_removed"],
@@ -315,7 +344,8 @@ def build_budget_physical(root: Path):
                          "physical_test_mase": r["physical_test_mase"],
                          "offline_test_mase": r["offline_test_mase"],
                          "mase_mean_rel_diff": r["V3"]["mase_mean_rel_diff"],
-                         "V3_passed": r["V3_passed"],
+                         **dict(zip(("V3_passed", "V3_elementwise_passed"),
+                                    _v3_mean_verdict(r["V3"], r["V3_passed"]))),
                          "active_params": r["active_params"],
                          "fraction_params_removed": r["fraction_params_removed"]})
     return rows
@@ -508,6 +538,9 @@ def build(output_root) -> dict:
              "h4_budget_physical": {
                  "n_points": len(bud_phys),
                  "n_V3_passed": sum(bool(r["V3_passed"]) for r in bud_phys),
+                 "V3_rule": f"test MASE agrees with the offline pathway to {V3_MEAN_RTOL:g} relative",
+                 "n_V3_elementwise_passed": sum(bool(r.get("V3_elementwise_passed"))
+                                                for r in bud_phys),
                  "failed": [f"{r['model']}/{r['dataset']}/{r['arm']}@{r['label']}"
                             for r in bud_phys if not r["V3_passed"]]},
              "h4_rule": phase2.H4_OUTCOME_RULE,

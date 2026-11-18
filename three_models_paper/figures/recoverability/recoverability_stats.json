@@ -23,6 +23,12 @@
         "results/three_model_phase1_q9_loop_lowlr",
         "Q=9 rerun at lr=1e-3 with widened weight-decay grid not yet complete"
       ]
+    },
+    "superseded_q1": {
+      "LOOP_SEATTLE_5T": [
+        "results/three_model_phase1_q1_loop_lowlr",
+        "matched Q=1 rerun at lr=1e-3 not yet run"
+      ]
     }
   },
   "pending_q9": [],
@@ -1340,6 +1346,15 @@
       },
       {
         "model": "chronos2",
+        "dataset": "LOOP_SEATTLE_5T",
+        "q9": 9,
+        "q1": 9,
+        "delta": 0,
+        "q1_label": "L9",
+        "q9_label": "L9"
+      },
+      {
+        "model": "chronos2",
         "dataset": "electricity_15min",
         "q9": 10,
         "q1": 10,
@@ -1454,6 +1469,15 @@
         "delta": 0,
         "q1_label": "L0",
         "q9_label": "L0"
+      },
+      {
+        "model": "timesfm3",
+        "dataset": "LOOP_SEATTLE_5T",
+        "q9": 14,
+        "q1": 10,
+        "delta": -4,
+        "q1_label": "L10",
+        "q9_label": "L14"
       },
       {
         "model": "timesfm3",
@@ -1574,6 +1598,15 @@
       },
       {
         "model": "tirex",
+        "dataset": "LOOP_SEATTLE_5T",
+        "q9": 9,
+        "q1": 9,
+        "delta": 0,
+        "q1_label": "L9",
+        "q9_label": "L9"
+      },
+      {
+        "model": "tirex",
         "dataset": "electricity_15min",
         "q9": 10,
         "q1": 10,
@@ -1627,55 +1660,39 @@
         "q9_label": "L12"
       }
     ],
-    "not_comparable": [
-      {
-        "model": "chronos2",
-        "dataset": "LOOP_SEATTLE_5T",
-        "reason": "Q=1/Q=9 fit configs differ in ['probe_lr', 'wd_grid']"
-      },
-      {
-        "model": "timesfm3",
-        "dataset": "LOOP_SEATTLE_5T",
-        "reason": "Q=1/Q=9 fit configs differ in ['probe_lr', 'wd_grid']"
-      },
-      {
-        "model": "tirex",
-        "dataset": "LOOP_SEATTLE_5T",
-        "reason": "Q=1/Q=9 fit configs differ in ['probe_lr', 'wd_grid']"
-      }
-    ],
+    "not_comparable": [],
     "agreement": {
       "chronos2": {
-        "n": 13,
-        "n_exact": 7,
-        "n_within_1": 11,
-        "n_within_2": 12,
+        "n": 14,
+        "n_exact": 8,
+        "n_within_1": 12,
+        "n_within_2": 13,
         "median_abs_delta": 0.0,
-        "mean_signed_delta": 0.07692307692307693
+        "mean_signed_delta": 0.07142857142857142
       },
       "timesfm3": {
-        "n": 13,
+        "n": 14,
         "n_exact": 10,
         "n_within_1": 11,
         "n_within_2": 12,
         "median_abs_delta": 0.0,
-        "mean_signed_delta": 0.7692307692307693
+        "mean_signed_delta": 0.42857142857142855
       },
       "tirex": {
-        "n": 13,
-        "n_exact": 12,
-        "n_within_1": 13,
-        "n_within_2": 13,
+        "n": 14,
+        "n_exact": 13,
+        "n_within_1": 14,
+        "n_within_2": 14,
         "median_abs_delta": 0.0,
-        "mean_signed_delta": 0.07692307692307693
+        "mean_signed_delta": 0.07142857142857142
       },
       "all": {
-        "n": 39,
-        "n_exact": 29,
-        "n_within_1": 35,
-        "n_within_2": 37,
+        "n": 42,
+        "n_exact": 31,
+        "n_within_1": 37,
+        "n_within_2": 39,
         "median_abs_delta": 0.0,
-        "mean_signed_delta": 0.3076923076923077
+        "mean_signed_delta": 0.19047619047619047
       }
     }
   },
@@ -1779,23 +1796,7 @@
       }
     }
   },
-  "pending_q1_figures": [
-    {
-      "model": "chronos2",
-      "dataset": "LOOP_SEATTLE_5T",
-      "reason": "matched Q=1 rerun at lr=1e-3 not yet run"
-    },
-    {
-      "model": "timesfm3",
-      "dataset": "LOOP_SEATTLE_5T",
-      "reason": "matched Q=1 rerun at lr=1e-3 not yet run"
-    },
-    {
-      "model": "tirex",
-      "dataset": "LOOP_SEATTLE_5T",
-      "reason": "matched Q=1 rerun at lr=1e-3 not yet run"
-    }
-  ],
+  "pending_q1_figures": [],
   "q9_summary_02": {
     "chronos2": {
       "n": 14,

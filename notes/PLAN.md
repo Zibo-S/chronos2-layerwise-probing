@@ -2386,3 +2386,217 @@ A100-reproduction checks failed:
   The smoke measured the cross-GPU fit difference at ~0.1% of test MASE, plus occasional flips
   of near-tied decay choices. State it beside any Fir number; comparisons with the A100 H3
   adapters carry this term.
+
+---
+
+# PHASE 2d RESULTS (Narval job 9229962, 2026-11-16, code 9bd5cd1 = affd819 tree)
+
+**Run.** COMPLETED 0:0 on one A100 (ng30705), 1 h 53 min wall (main stage 100 min), 15.7 GB of
+48 GB RAM. 42/42 cells. Results only in the SCRATCH clone (`results/three_model_phase2d_pooled/`,
+`three_models_paper/figures/pooled/`); archive staged at
+`/scratch/eserebri/archive/rebuttal_phase2d_pooled_9229962` (nearline copy not yet done).
+
+**Gates, all pass.**
+- One-batch identity vs the Phase-1 caches: Chronos-2 slots bitwise (content mean 1.9e-6 of std);
+  TimesFM-3 token 15 bitwise, RevIN mu/sd identical; TiRex both token-63 readouts bitwise.
+- Native-refit preflight (Electricity, all 3 models): val and test curves differ by 0.0; the same
+  wd at every point.
+- Every cell reproduced its native curves and entrances from the Phase-1 artifacts.
+
+**Final-block test loss, content mean (pooled) vs native** (median; paired CI):
+
+| | change | worse / better / n.s. | val-selected BEST pooled depth vs native final |
+|---|---|---|---|
+| Chronos-2 | +27.2% | 12 / 1 (Loop Seattle) / 1 | +21.6% |
+| TimesFM-3 | +15.9% | 14 / 0 / 0 | +10.7% |
+| TiRex | +20.9% | 13 / 0 / 1 | +19.2% |
+
+From L2 on, pooled is worse at every depth in >= 12/14 datasets for each model. The one exception
+is Chronos-2 Emb (pooled better 10/14): the native forecast slots at Emb carry no window
+information, so native Emb sits at the constant-forecast floor by construction.
+
+**Entrances (sustained 5%, validation).**
+- Pooled vs native: same on 3 / 4 / 3 of 14, within one block on 9 / 8 / 6, median shift
+  -1 / -0.5 / -2 blocks (earlier).
+- Median relative depth native -> pooled: 0.29 -> 0.08, 0.05 -> 0.05, 0.79 -> 0.21.
+- Pre-final entrance: pooled 14/14 for all three models (native 14 / 14 / 12).
+- Spearman of the val curves vs native: 0.53 / 0.22 / 0.48.
+
+**Why the earlier pooled entrances are not earlier recoverability.**
+- The pooled reference is weak. Its final block is worse than the native readout AT THE NATIVE
+  ENTRANCE in 13 / 14 / 13 of 14.
+- Pooled curves are flat and plateau early. Val loss(Emb)/loss(final)-1, median: 17% vs native
+  53% (Chronos-2), 6% vs 7% (TimesFM-3), 15% vs 23% (TiRex). The pooled val argmin is before
+  the final block in 14 / 14 / 10 of 14; this reproduces README finding 1 at a higher loss level.
+- Final-block val/floor (constant-forecast floor), median native vs pooled: 0.66 vs 0.80,
+  0.72 vs 0.87, 0.67 vs 0.81.
+- Pooled final block AT or ABOVE the floor:
+  - Chronos-2: Loop, M5;
+  - TimesFM-3: Loop 1.12, SZ Taxi, M5;
+  - TiRex: Loop 1.11, SZ Taxi.
+- The native reference itself is low-skill (val/floor > 0.9) on M5 and SZ Taxi (all three) and
+  Loop (TimesFM-3, TiRex). Entrances there say little for any readout.
+
+**Decomposition (final-block test loss, median, worse / better by CI).**
+- Token selection, same head and params (native_mean -> pooled): Chronos-2 +11.1% (12/1),
+  TiRex +15.6% (13/0). TimesFM-3 representation (native -> pooled): +15.9% (14/0).
+- Structure + averaging (native -> native_mean): Chronos-2 +8.7% (12/1), TiRex +3.2% (12/0).
+- TiRex: native -> concat +3.8% (12/1); concat -> native_mean +0.3% (5/4/5).
+- **Chronos-2 concat FIT IS DEGENERATE: do not interpret its steps** (+35.4% structure, -21.2%
+  pooling + capacity).
+  - Linear(3072, 576) contains the native shared head as a special case, yet its final-block
+    TRAIN loss is 0.220 vs native 0.158.
+  - At the smallest wd, val is worse than the constant forecast at 85% of depths (median 1.24x
+    the floor).
+  - The selected fit is at val/floor > 0.95 on 7/14 at the final block.
+  - Reading: a 1.77M-parameter head at lr 1e-2 on 1,394 windows. TiRex concat (590k) is
+    healthy (val/floor 0.70).
+
+**Found in the outputs.**
+- `combined/layer_comparison.csv` has NO model/dataset columns (`make_phase2d_tables.py`:
+  `cmp_rows += c["comparisons"]`). Labels were rebuilt from the row order and verified against
+  `final_block.csv` (7.6e-8). The other tables and the figures read the cells and are unaffected.
+- The TiRex pass-1 real-token mean is NOT a near-duplicate of pass 0 (the inspection note above
+  was an assumption). Measured: 0.08 of the std at L1, 1.7 at L7, 2.3 at L12+RMS; Emb 0. This
+  does not affect any result (pass 0 is used, decision D2). Cause not investigated.
+- wd at the grid max on depth-axis points, pooled: 3% / 6% / 15% (TiRex highest).
+
+---
+
+# REBUTTAL RESULTS: 2c / 2e / 2f on Narval + reviewer-specific numbers (2026-11-16)
+
+**Runs.** All COMPLETED 0:0 on one A100 each (code = the affd819 tree); every gate passed.
+
+| job | phase | wall | coverage |
+|---|---|---|---|
+| 9229954 | 2c LODO | 10 h 05 | 48/48 cells (42 main + 6 sibling) |
+| 9229964 | 2e non-contiguous | 4 h 43 | 168/168 mask cells, 14 single-skip, 3 latency repeats |
+| 9253740 | 2f source scaling | 3 h 30 | 40/40 cells; 12/12 N = 1 fits bitwise equal to H3 |
+
+- Results exist ONLY in the scratch clone (`$SCRATCH/repos/chronos2-layerwise-probing/results/`).
+- Archives are staged at `/scratch/eserebri/archive/rebuttal_phase2{c_lodo_9229954,e_noncontig_9229964,f_source_scaling_9253740}`.
+- **Still to do:** commit from the scratch clone; `bash tools/rebuttal_nearline_copy.sh <stage>` on a login node (also for 2d).
+- The Fir copies are now redundant. Fir state was not checked (no open SSH master).
+
+**2c LODO** (Chronos-2; median test MASE change vs full model over 14 datasets; speedup B=1):
+
+| | L4 (2.43x) | L6 (1.78x) | L9 (1.28x) |
+|---|---|---|---|
+| hard cut | +37.0% | +20.1% | +17.1% |
+| pooled, target unseen | +12.7% | +9.0% | +4.0% |
+| dataset-specific (H3) | +3.1% | +2.3% | +2.2% |
+| pooled beats hard (paired CI) | 13/14 | 13/14 | 13/14 |
+| pooled within 5% / 10% | 4 / 5 | 4 / 8 | 9 / 11 |
+| pooled minus specific (median) | +7.1 pp | +5.1 pp | +1.7 pp |
+| hard-cut gap recovered (median) | 75% | 70% | 80% |
+
+- Loop Seattle is the exception: pooled is worse than the hard cut at L4 and L6 (+27.2% vs +5.6% at L4).
+- M4 at L4: pooled +128% (hard +738%, specific +32.9%).
+- Held out from Chronos-2 pretraining, per dataset at L4 (pooled / hard / specific): Loop +27.2 / +5.6 / -4.7; SZ Taxi +0.1 / +5.5 / +0.2; M5 +3.7 / +11.2 / +1.5; Traffic +34.5 / +134.1 / +27.3. Medians over these four mislead (pooled +15.5% vs hard +8.4%).
+- Electricity sibling included vs excluded: at most 2.5 pp.
+- 19 of 42 main fits selected a checkpoint in the last 10% of epochs; decay never at the grid max.
+
+**2f source scaling** (Chronos-2, L6, targets Loop Seattle / London / BOOM / M5):
+
+| N sources | 1 | 4 | 8 | 13 |
+|---|---|---|---|---|
+| mean test MASE change | +19.7% | +12.7% | +13.2% | +12.8% |
+
+- References (mean over the four targets): hard cut +19.8%, dataset-specific +3.2%.
+- One source: +5.0% to +50.7% over 12 target-source pairs; worse than the hard cut (CI) in 3.
+- Per target, N = 1 to 13: BOOM +33.6 to +11.2 (specific +9.3); London +13.3 to +9.6 (+4.6); M5 +6.0 to +4.3 (+2.3); Loop +25.8 to +26.2 (-3.6; worse than the hard cut, paired CI, in 8 of its 10 cells).
+- N = 13 is worse than dataset-specific on 4 of 4 targets (paired CI).
+- The fixed-total-window control was not run.
+
+**2e non-contiguous** (Chronos-2, 14 datasets; median test MASE change, aligned (hard)):
+
+| blocks kept | prefix | uniform | early + late | middle window |
+|---|---|---|---|---|
+| 4 | +3.1% (+37.0%) | +8.9% (+42.2%) | +10.1% (+31.3%) | +7.2% (+63.3%) |
+| 6 | +2.3% (+20.1%) | +4.2% (+17.5%) | +7.6% (+23.1%) | +7.6% (+52.0%) |
+| 9 | +2.2% (+17.1%) | +0.9% (+1.1%) | +0.9% (+2.1%) | +3.4% (+20.2%) |
+
+- Better / worse than prefix (paired CI, of 14): k=4: 0/10, 0/11, 0/12; k=6: 4/4, 1/7, 1/12; k=9: 7/1, 6/1, 1/6.
+- Speed at matched block count agrees within 6% (k=4: 2.36x / 2.35x / 2.37x / 2.24x).
+- Single-block removal, no adapter: L12 +18.5% (14/14 worse), L1 +5.2%, L2 +2.2%, L11 +1.5%, each of L3 to L10 at most +0.4%.
+- Reading: prefix wins at strong compression; at 9 of 12, keeping the last blocks wins and needs almost no adapter.
+
+**Reviewer-specific numbers** (post hoc; read-only from `combined/h3_depth_metrics.csv`, `h3_tunnels.csv`, `h4_frontier_points.csv`, `h3/*/fits.json`):
+
+- **Tunnel referenced to the full model** (validation Q9 loss, sustained; pre-final pairs of 42):
+
+| readout | 2% | 5% | 10% |
+|---|---|---|---|
+| linear probe | 1 | 8 (C2 3, TFM 1, TiRex 4) | 15 |
+| aligned pathway (NOA) | 20 | 27 (13 / 5 / 9) | 37 (14 / 9 / 14) |
+| hard cut | 0 | 0 | 1 |
+
+  - Final-block probe vs full model, validation loss (median): +17.7% / +20.3% / +12.7%; within 5% in 6 of 42.
+  - Spearman(probe entrance, aligned native-referenced 5% entrance): C2 +0.81, TiRex +0.80, TimesFM-3 +0.05; within one block in 9/14, 11/14, 0/14.
+- **The 7 pairs entering at L0:** final-block probe / constant-forecast floor (validation) is 0.95 to 1.01 for M5 (all three models) and TiRex x SZ Taxi (no linear skill at any depth); 0.72 to 0.88 for TimesFM-3 x BOOM, Wind Farms, Wiki Daily.
+- **Entrance as the cut rule** (aligned test MASE): C2 median +5.5%, 7/14 within 5%, worst +15.8%, median speedup 2.67x; fixed L4 for all: +3.1%, 8/14, worst +32.9%, 2.43x. TiRex: +6.3%, 5/12, worst +13.6%, 1.42x; fixed L9: +6.2%, 5/14, worst +27.3%, 1.33x. TimesFM-3: +35.5%, 0/14.
+- **Held-out pairs** (9): tunnel before final in 8; test-loss change at the entrance median +1.3%. Aligned at 25 / 50 / 75% depth: C2 (n=4) +0.9 / +1.1 / +1.1%; TimesFM-3 (n=3) +73.0 / +52.9 / +29.8%; TiRex (n=2) +27.2 / +15.6 / +8.3%. Full-model val loss / floor: Traffic 0.35 (C2), 0.40 (TiRex); SZ Taxi and M5 0.89 to 0.92.
+- **TimesFM-3 aligned at L0** (median over 14): aligned +31.3% = probe +31.9% at L0; probe +15 to 17% at L1 to L17, aligned +39 to +82%. Closed-form fit: train error 0.170 (L0) to 0.004 (L10), validation 0.30 to 0.57; kappa <= 1e-8 in 231 of 280 fits. The ridge shrinks toward the hard cut (35x to 160x), so validation rejects regularization. Same function class as the probe: the mid-depth numbers measure the fit, not the states.
+  - CORRECTION (2026-11-17): the "effective dof 68 (L0) vs about 900 (L10)" quoted here earlier was the committed `effective_dof` field, sum g/(g + lambda). That is the value for a head direction with m = 1; the head's m_max is about 7e4, so it describes no real output direction. Correct values are in Phase 2g below.
+
+---
+
+# PHASE 2g: TimesFM-3 zero-anchored closed-form alignment (Narval job 9588346, 2026-11-17)
+
+**Question.** Is the +39% to +82% aligned TimesFM-3 degradation at L1 to L17 produced by the ridge anchor (identity = hard cut, which is 35x to 160x for TimesFM-3)?
+
+**Design.** The committed closed form with ONE change, the penalty:
+- `identity`: lambda ||A - I||^2 (committed; recomputed with `anchored_ridge_path` as a gate);
+- `zero` (PRIMARY, fixed before any result): lambda ||A||^2;
+- `zero_out` (sensitivity): lambda ||W A||^2, i.e. plain ridge of the full model's head outputs on the states.
+- Same Phase-1 token-15 caches, rows, splits, teacher (full-model head outputs), metric W^T W, kappa grid 1e-12..1e2, validation-only selection, test read once, bootstrap B=5000.
+- Endpoint candidate of the zero families: A = 0, b = mean(y) (constant normalized forecast).
+- Hard cut, identity arm, probe and native are READ from `results/three_model_phase2`; nothing there was rewritten (sha256 checked before and after).
+
+**Run.** CPU job, 8 cores, 37 min (smoke 9588333 first). 14/14 cells; gates passed for all: native and hard cut reproduce the committed arrays to 1e-8, the identity arm to at most 3.4e-5 (tolerance 1e-4), the same kappa at all 280 fits.
+- New files (untracked, local + scratch clone): `experiments/run_phase2g_timesfm3_zero_ridge.py`, `job_phase2g_timesfm3_zero_ridge.sh`.
+- Results ONLY in the scratch clone: `results/three_model_phase2g_timesfm3_zero_ridge/` (and `_smoke`). Adapters were not saved.
+
+**Result** (median test MASE change vs the full model, 14 datasets):
+
+| depth | hard | identity (paper) | zero | zero_out | probe | zero within 5% | zero < identity (CI) | zero vs probe better / worse (CI) |
+|---|---|---|---|---|---|---|---|---|
+| L0 | 35x | +31.3% | +24.3% | +23.9% | +31.9% | 0 | 8 | 8 / 2 |
+| L1 | 38x | +38.7% | +10.6% | +9.7% | +15.8% | 2 | 14 | 10 / 2 |
+| L5 | 53x | +69.8% | +10.6% | +8.5% | +16.8% | 4 | 14 | 10 / 4 |
+| L10 | 121x | +67.3% | +11.3% | +10.1% | +17.0% | 2 | 14 | 10 / 3 |
+| L15 | 160x | +47.9% | +8.5% | +7.1% | +14.8% | 3 | 14 | 10 / 3 |
+| L17 | 91x | +29.7% | +6.1% | +6.0% | +14.7% | 5 | 13 | 11 / 3 |
+| L18 | 62x | +14.3% | +3.9% | +3.7% | +13.2% | 9 | 13 | 11 / 3 |
+| L19 | 7x | +5.4% | +1.3% | +1.0% | +12.7% | 11 | 13 | 12 / 1 |
+
+- L1 to L14 is a plateau at +9.9% to +11.9% (IQR about +5% to +32%).
+- Validation distillation error: zero < identity in 280 of 280 fits.
+- Fit, medians over datasets at L1 to L17: identity keeps 1,017 to 1,280 of 1,280 effective parameters per output direction (variance-weighted), validation / training error 13 to 184, test R2 negative on 4 to 11 datasets. Zero keeps 262 to 681, ratio 1.9 to 3.2, test R2 0.64 to 0.88. At L0 identity keeps 253 (ratio 1.9).
+- Zero selects kappa 1e-6 to 1e-4 in 221 of 280 fits; kappa >= 10 (near-constant forecast) in 36 = BOOM and Wind Farms at L1 to L18, where test R2 < 0 for every family. There zero is +181% and +38% at L5 (probe +47%, +10%). Cause not identified.
+- Zero worse than the probe (CI): BOOM, Wind Farms, LOOP Seattle (its probe is 8 to 20% BETTER than the full model), Traffic at L5 only.
+- L0 is now the worst depth: worse than each of L1 to L18 on 12 of 14 datasets (exceptions BOOM, Wind Farms), and than L19 on 14.
+- Electricity R2 train / val / test at L5: identity 0.997 / -0.58 / -0.08; zero 0.985 / 0.72 / 0.79.
+- WQL (zero) at L5 / L10 / L15: +15.0 / +17.5 / +14.4%.
+
+**Post hoc readings for the zero arm.**
+- Frozen Phase-1 entrance: within 5% on 2 of 14 (LOOP Seattle, Coastal), median +14.2% (identity 0 of 14, +35.5%).
+- Native-referenced sustained tunnel (validation loss): pre-final 8 / 11 / 11 of 14 at 2 / 5 / 10% (identity 4 / 5 / 9); median 5% entrance L18.5; Spearman with the Phase-1 entrance -0.02.
+- Inside vs before the tunnel at matched depth: cheaper inside at 15 of 15 depths (identity 14 of 15); inside +8.9% to +16.5%, before +11.5% to +29.5%.
+- Budget rule (validation MASE): 5%: 11 of 14 cut, 9 within on test, median speedup 1.02x (B=1). 20%: 14 cut, 13 within, 1.28x (B=1), 3.18x (B=256).
+- Frontier with the committed latency: L1 +10.6% at 1.37x (B=1), 4.65x (B=256); L5 +10.6% at 1.24x, 2.70x; L18 +3.9% at 1.03x.
+- Held out (LOOP Seattle, SZ Taxi, M5) at L5 / L10 / L15: +3.9 / +4.5 / +4.4% (identity +73.0 / +52.9 / +29.8).
+
+**Reading.**
+- Established: the mid-depth degradation of the committed aligned TimesFM-3 pathway comes from the anchor, not from the states. The label-free aligned pathway outperforms the supervised readout. A gap of about 10% to the full model remains until L14 and closes at L18 to L19.
+- Not established: why fitting to the full model's forecasts beats fitting to the true future in the same function class (the probe also differs in loss, optimizer and feature scaling); what fails on BOOM and Wind Farms.
+- Unchanged: hard cut 35x to 160x; B=1 speedup at most 1.43x; the entrance is not a usable cut for TimesFM-3.
+
+**If the paper adopts the zero anchor (not done; paper not edited).**
+- Physical truncation (H4 evaluate) has NOT been rerun for the new adapters; latency carries over (same adapter shape). Needs the adapters saved and a GPU job.
+- Paper tables and figures read the H3 tree; swapping the TimesFM-3 aligned arm needs changes to the table scripts.
+- The change of anchor was made after the original test results and must be reported as such; the identity-anchored results stay in the appendix.
+
+**Verified 2026-11-18 (timesfm 3.0.2 source, `timesfm_2p5_torch.py` forward/decode):** the input embedding is `tokenizer = ResidualBlock` applied to each patch separately (`[normed patch, mask]`), and patch i is normalized with running mean/std over patches 0..i. Nothing mixes patches before `stacked_xf`. So the TimesFM-3 L0 state at token 15 is computed from the last 32 context values alone, normalized by the whole context's mean and std. This closes the open item behind the 96qN Q3 answer.
+
+**Rebuttal status 2026-11-18:** final reply drafts for every slot (incl. the 2g updates to 2p99 Q2/Q3 and 96qN Q1/Q3) were delivered in the session; the paper (`three_models_paper/main.tex`) has NOT been revised for 2c / 2e / 2f / 2g (user's instruction: no rewrite before the conclusions are reviewed). Paper-ready tables/figures for 2c / 2e / 2f exist only in the Narval scratch clone (`three_models_paper/figures/{lodo,source_scaling,noncontig}/`, untracked).

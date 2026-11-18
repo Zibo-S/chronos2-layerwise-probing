@@ -68,9 +68,10 @@ REPRESENTATIVE = ("monash_electricity_hourly", "uber_tlc_hourly", "monash_london
 #      (label in tables, label in figures, colour, line style, line width)
 ARMS = {
     "hard": ("Hard truncation", "Hard truncation", "#8C8C8C", (0, (3, 1.6)), 1.0),
-    "noa": ("Aligned native pathway", "Aligned native pathway", "#009E73", "-", 1.9),
-    "fl": ("Forecast-trained alignment", "Forecast-trained alignment", "#0072B2", "-", 1.0),
-    "probe": ("Probe head", "Probe head", "#E69F00", "-", 1.15),
+    "noa": ("Aligned native pathway", "Aligned native pathway", "#0072B2", "-", 1.9),
+    "fl": ("Forecast-trained alignment", "Forecast-trained alignment", "#CC79A7", "-", 1.0),
+    # dashed: the probe is a recoverability REFERENCE (supervised), not a competing pathway
+    "probe": ("Probe head", "Probe head (reference)", "#EDC48A", (0, (4, 1.5)), 0.9),
     "ra": ("Hidden-state alignment", "Hidden-state alignment (diagnostic)", "#CC79A7", "-", 0.9),
 }
 LADDER_RUNGS = ("hard", "noa", "fl", "probe")          # RA is a diagnostic: appendix only
@@ -93,10 +94,11 @@ RC = {"font.size": 8, "axes.titlesize": 8.5, "axes.labelsize": 7.5, "xtick.label
       "xtick.major.width": 0.6, "ytick.major.width": 0.6, "xtick.minor.width": 0.5,
       "lines.linewidth": 1.3, "pdf.fonttype": 42, "ps.fonttype": 42}
 Y_CAP = 300.0             # % MASE increase: larger values are drawn as triangles at the cap
-DEPTH_CAP = 100.0         # H3 depth panels: the adapted readouts decide the range, not the hard
+DEPTH_CAP = 150.0         # H3 depth panels: the adapted readouts decide the range, not the hard
                           # cut; larger values are triangles at the cap, hard cut's max annotated
 X_CAP = 16.0              # x speedup cap: TiRex with no blocks kept (~340x) is annotated instead
 ENTRANCE_C = "#2E7D32"    # the Phase-1 entrance marker, as in the Phase-1 figures
+TUNNEL_FILL = "#E4F0E4"   # the tunnel region fill, as in the Phase-1 recoverability figures
 
 
 # --------------------------------------------------------------------------- #
@@ -205,11 +207,16 @@ def _final_index(model, rows=()):
 # --------------------------------------------------------------------------- #
 # the shared degradation axis: signed percent, linear to 20 %, logarithmic beyond
 # --------------------------------------------------------------------------- #
-def _degradation_axis(ax, lo=-3.0, cap=Y_CAP, linscale=2.0):
+def _degradation_axis(ax, lo=-3.0, cap=Y_CAP, linscale=2.0, linear=False):
     import matplotlib.ticker as mt
-    ax.set_yscale("symlog", linthresh=20, linscale=linscale)
-    ax.set_ylim(min(lo, -3.0), cap * 1.2)
-    ticks = [t for t in (-20, -10, 0, 5, 10, 20, 50, 100, 300) if min(lo, -3.0) <= t <= cap]
+    if linear:
+        ax.set_yscale("linear")
+        ax.set_ylim(min(lo, -3.0), cap * 1.2)
+        ticks = [t for t in range(-40, int(cap) + 1, 20) if min(lo, -3.0) <= t <= cap]
+    else:
+        ax.set_yscale("symlog", linthresh=20, linscale=linscale)
+        ax.set_ylim(min(lo, -3.0), cap * 1.2)
+        ticks = [t for t in (-20, -10, 0, 5, 10, 20, 50, 100, 300) if min(lo, -3.0) <= t <= cap]
     ax.yaxis.set_major_locator(mt.FixedLocator(ticks))
     ax.yaxis.set_major_formatter(mt.FuncFormatter(
         lambda v, _: "0" if v == 0 else (f"+{v:g}%" if v > 0 else f"{v:g}%")))
@@ -665,7 +672,7 @@ def _frontier_panel(ax, model, rows, xkey, ykey=("degradation_q25", "degradation
         xs += list(x[keep])
     ax.plot([x0], [0.0], marker="*", ms=8, color="black", ls="none", zorder=6, clip_on=False)
     if small and small.get(use) is not None and small.get("degradation") is not None:
-        ax.plot([small[use]], [100 * small["degradation"]], marker="D", ms=4.2, color="#2166AC",
+        ax.plot([small[use]], [100 * small["degradation"]], marker="D", ms=4.2, color="#B2182B",
                 mec="white", mew=0.5, ls="none", zorder=6)
         xs.append(small[use])
     _degradation_axis(ax, lo=float(np.nanmin(ys)) - 2)
@@ -702,13 +709,13 @@ def _annotate_offaxis(ax, notes):
         lo, hi = ycap[0]
         ax.text(0.97, 0.13, f"\u25b2 hard truncation, clipped\n(+{_sig(lo):,.0f}% to "
                 f"+{_sig(hi):,.0f}%)", transform=ax.transAxes, ha="right", va="bottom",
-                fontsize=5.6, color="#6E6E6E", linespacing=0.95)
+                fontsize=5.6, color="#4D4D4D", linespacing=0.95)
     offx = [v for k, v in notes.items() if k in ARMS]
     if offx:
         xlo, xhi = min(v[0] for v in offx), max(v[1] for v in offx)
         rng = f"{xlo:.0f}×" if round(xlo) == round(xhi) else f"{xlo:.0f}–{xhi:.0f}×"
         ax.text(0.97, 0.13, f"L0 (no blocks kept)\nat {rng}, off axis",
-                transform=ax.transAxes, ha="right", va="bottom", fontsize=5.6, color="#6E6E6E",
+                transform=ax.transAxes, ha="right", va="bottom", fontsize=5.6, color="#4D4D4D",
                 linespacing=0.95)
 
 
@@ -723,7 +730,7 @@ def _frontier_legend(fig, small=None, ncol=2, arms=("noa", "fl", "probe", "hard"
     h.append(Patch(facecolor=ARMS["noa"][2], alpha=0.16, lw=0,
                    label="IQR over datasets (aligned)"))
     if small:
-        h.append(Line2D([], [], marker="D", ms=4, color="#2166AC", ls="none",
+        h.append(Line2D([], [], marker="D", ms=4, color="#B2182B", ls="none",
                         label="Chronos-2-small"))
     fig.legend(handles=h, loc="outside lower center", ncol=ncol, frameon=False,
                handlelength=2.0, columnspacing=1.0, borderpad=0.1)
@@ -820,7 +827,8 @@ def frontier_wql(depth_rows, summary, out_dir: Path, stem="h4_frontier_wql"):
 # --------------------------------------------------------------------------- #
 # H3 figures
 # --------------------------------------------------------------------------- #
-def _depth_panel(ax, rr, entrance, L, show_x=True, arms=("hard", "probe", "fl", "noa")):
+def _depth_panel(ax, rr, entrance, L, show_x=True, arms=("hard", "probe", "fl", "noa"),
+                 floor_at_zero=False):
     """One model x dataset: test MASE increase of every readout at every depth (final block
     included), the output-matched arm with its 95% band, the tunnel entrance marked. The y range
     stops at DEPTH_CAP; off-scale points are triangles at the cap, and the hard cut's largest
@@ -840,19 +848,23 @@ def _depth_panel(ax, rr, entrance, L, show_x=True, arms=("hard", "probe", "fl", 
             ax.fill_between(d, np.minimum(100 * (lo - 1), cap), np.minimum(100 * (hi - 1), cap),
                             color=col, alpha=0.18, lw=0, zorder=1)
         y = 100 * (v - 1)
-        _plot_capped(ax, d, y, col, ls, 0.8 if arm != "noa" else 1.3, ms=1.3, cap=cap)
+        _plot_capped(ax, d, y, col, ls, lw if arm == "probe" else (0.8 if arm != "noa" else 1.3),
+                     ms=0 if arm == "probe" else 1.3, cap=cap,
+                     zorder=2 if arm == "probe" else 3)
         if arm == "hard" and (y > cap).any():
             k = int(np.nanargmax(y))
             txt = f"{v[k]:,.0f}×" if v[k] >= 3 else f"+{y[k]:.0f}%"
             # above the triangle row: every curve is capped at `cap`, so nothing can sit there
             ax.annotate(f"hard max {txt}", (d[k], cap), xytext=(0, 3.5), textcoords="offset points",
                         ha="left" if d[k] < L / 2 else "right", va="bottom", fontsize=5.5,
-                        color=col, zorder=6)
+                        color="#4D4D4D", zorder=6)
         lows.append(np.nanmin(100 * (np.minimum(v, lo) - 1)))
     if entrance is not None:
-        ax.axvline(entrance, color=ENTRANCE_C, lw=0.9, ls=(0, (3, 2)), zorder=0.5)
+        ax.axvspan(entrance, L + 0.5, color=TUNNEL_FILL, lw=0, zorder=0)
     _degradation_axis(ax, lo=(min(lows) - 2) if lows else -3, cap=cap, linscale=1.0)
-    ax.set_ylim(top=cap * 1.9)                           # headroom for the off-scale label
+    # main figure: cut at 0 (the full model); appendix panels keep below-0 points (e.g. LOOP
+    # Seattle, where truncated readouts beat the full model). Headroom above for the label.
+    ax.set_ylim(0 if floor_at_zero else ax.get_ylim()[0], cap * 1.9)
     step = 4 if L > 12 else 2
     ax.set_xticks(range(0, L + 1, step))
     ax.set_xticklabels([f"L{i}" for i in range(0, L + 1, step)] if show_x else [])
@@ -861,7 +873,7 @@ def _depth_panel(ax, rr, entrance, L, show_x=True, arms=("hard", "probe", "fl", 
     ax.tick_params(which="major", length=2.5, pad=1.5)
     ax.tick_params(which="minor", length=1.5)
     bottom = ax.get_ylim()[0]
-    ax.yaxis.set_major_locator(mt.FixedLocator([t for t in (-20, -10, 0, 5, 10, 20, 50, 100)
+    ax.yaxis.set_major_locator(mt.FixedLocator([t for t in (-20, -10, 0, 5, 10, 20, 50, 150)
                                                 if bottom <= t <= cap]))
     for s in ("top", "right"):
         ax.spines[s].set_visible(False)
@@ -875,12 +887,11 @@ def _depth_legend_handles(models=MODELS, arms=("noa", "fl", "probe", "hard")):
         if arm == "fl" and not any(m in phase2.FL_MODELS for m in models):
             continue                                   # TimesFM-3: supervised == probe
         _, name, col, ls, lw = ARMS[arm]
-        h.append(Line2D([], [], color=col, ls=ls, lw=1.3 if arm == "noa" else 0.9, marker="o",
-                        ms=2, label=name))
+        h.append(Line2D([], [], color=col, ls=ls, lw=1.3 if arm == "noa" else 0.9,
+                        marker="none" if arm == "probe" else "o", ms=2, label=name))
     h.append(Line2D([], [], color="black", lw=0.6, label="Full model"))
     h.append(Patch(facecolor=ARMS["noa"][2], alpha=0.18, lw=0, label="95% bootstrap CI"))
-    h.append(Line2D([], [], color=ENTRANCE_C, lw=0.9, ls=(0, (3, 2)),
-                    label="Tunnel entrance (5%)"))
+    h.append(Patch(facecolor=TUNNEL_FILL, lw=0, label="Forecasting tunnel (5%)"))
     return h
 
 
@@ -891,7 +902,7 @@ def _entrances(ladder):
 
 def depth_curves(depth_rows, ladder, out_dir: Path, stem="h3_depth_curves",
                  datasets=REPRESENTATIVE, height=5.2, legend_ncol=2,
-                 arms=("hard", "probe", "fl", "noa")):
+                 arms=("hard", "probe", "fl", "noa"), floor_at_zero=False):
     """Datasets x three models, every depth. Default: the three Phase-1 main-figure datasets
     (appendix); the main body uses one dataset in a single row."""
     import matplotlib
@@ -914,11 +925,13 @@ def depth_curves(depth_rows, ladder, out_dir: Path, stem="h3_depth_curves",
                     ax.set_yticks([])
                     continue
                 _depth_panel(ax, rr, ent.get((m, tag)), _final_index(m, rr),
-                             show_x=i == len(datasets) - 1, arms=arms)
+                             show_x=i == len(datasets) - 1, arms=arms,
+                             floor_at_zero=floor_at_zero)
                 if i == 0:
                     ax.set_title(MODEL_NAMES[m], fontweight="bold", pad=2)
                 if j == 0:
-                    ax.set_ylabel(f"{_dname(tag)}: test MASE\nincrease over full model",
+                    name = _dname(tag).replace(" ", r"\ ")     # mathtext bold keeps spaces
+                    ax.set_ylabel(f"$\\bf{{{name}}}$: test MASE\nincrease over full model",
                                   fontsize=7)
         wide = legend_ncol > 2                          # one-row main figure: fit 5.5in
         legend_arms = tuple(a for a in ("noa", "fl", "probe", "hard") if a in arms)
@@ -1197,8 +1210,9 @@ def build(output_root, gen_dir=OUT_DIR) -> dict:
     ladder_figure(ladder, gen)
     depth_curves(depth_rows, ladder, gen)
     depth_curves(depth_rows, ladder, gen, stem="h3_main_electricity",
-                 datasets=("monash_electricity_hourly",), height=2.2, legend_ncol=3,
-                 arms=tuple(a for a in ("hard", "probe", "noa") if a in MAIN_ARMS))
+                 datasets=("monash_electricity_hourly",), height=1.95, legend_ncol=3,
+                 arms=tuple(a for a in ("hard", "probe", "noa") if a in MAIN_ARMS),
+                 floor_at_zero=True)
     for m in MODELS:
         depth_figure_model(m, depth_rows, ladder, gen)
     macros(summary, outcomes, gen / "phase2_macros.tex", budget_summary=bud_summ)

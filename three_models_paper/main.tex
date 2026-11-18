@@ -13,9 +13,9 @@
 \usepackage{url}
 
 
-\title{Truncate to Accelerate:
-\\From Forecast Recoverability to Efficient \\Time-Series Foundation Models}
-% Truncate to Accelerate: Depth, Geometry, and Redundancy in Time-Series Foundation Models
+\title{Truncate to Accelerate: 
+\\From Forecast Recoverability to Efficient \\Time-Series Foundation Models} 
+% Truncate to Accelerate: Depth, Geometry, and Redundancy in Time-Series Foundation Models 
 
 
 \newcommand{\fix}{\marginpar{FIX}}
@@ -130,7 +130,7 @@ A layerwise readout establishes only recoverability, while direct truncation req
 where $A_\ell$ is fit to reproduce the full model's forecast (Section~\ref{sec:adapter}). The degradation from directly applying $g$ to $h^{(\ell)}$, relative to the full model, measures the compatibility gap, while the improvement from $A_\ell$ measures how much of that gap can be corrected by a lightweight transformation.
 
 \paragraph{From compatibility to acceleration.}
-If $g\!\left(A_{\ell}(h^{(\ell)})\right)$ approaches the full model's forecasting performance, blocks $\ell+1,\dots,L$ can be skipped at inference time. Sweeping $\ell$ then traces a performance-compute frontier.
+If $g\!\left(A_{\ell}(h^{(\ell)})\right)$ approaches the full model's forecasting performance, blocks $\ell+1,\dots,L$ can be skipped at inference time. Sweeping $\ell$ then traces a performance-compute frontier. 
 
 We test four hypotheses:
 
@@ -161,7 +161,7 @@ We probe each model at the token positions read by its native forecasting head. 
 horizon, $d$ the hidden width, $P$ the output patch length, and $Q=9$ the number of quantile levels $\{0.1,\dots,0.9\}$ used across all three models. Chronos-2 forecasts from $K=\lceil H/P\rceil$ forecast-slot tokens, while TiRex forecasts from the last input token of
 each of its $K$ inference passes. For both, a shared linear readout
 $q_\ell:\mathbb{R}^{d}\to\mathbb{R}^{Q\times P}$ is applied to each forecast-producing state, and the $K$ predicted patches are concatenated. For TimesFM-3, a linear readout
-$q_\ell:\mathbb{R}^{d}\to\mathbb{R}^{Q\times H}$ predicts the full horizon from the model's last context token. Readouts are trained with the pinball loss in each model's normalized target space, with weight decay selected per depth on validation (Appendix~\ref{app:readout_training}). Because target spaces differ, absolute losses are compared only within a model. Appendix~\ref{sec:app_content_mean} compares these architecture-aware readouts with a generic readout that averages all context-token states.
+$q_\ell:\mathbb{R}^{d}\to\mathbb{R}^{Q\times H}$ predicts the full horizon from the model's last context token. Readouts are trained with the pinball loss in each model's normalized target space, with weight decay selected per depth on validation (Appendix~\ref{app:readout_training}). Because target spaces differ, absolute losses are compared only within a model.
 
 
 \subsection{Hard cut and native-pathway alignment}
@@ -237,9 +237,11 @@ We first ask \textit{whether near-final forecasting performance becomes recovera
 
 Figure~\ref{fig:recov_main} shows the layerwise $Q=9$ mean quantile loss, while Table~\ref{tab:tunnel_q9} summarizes the sustained 5\% tunnel entrance across all datasets. Among the 42 model-dataset pairs, 40 enter the tunnel before the final block: 14/14 for Chronos-2, 14/14 for TimesFM-3, and 12/14 for TiRex; the two exceptions are TiRex on M4 and Monash Traffic. The depth at which the tunnel begins varies across models and datasets.
 
-The validation-selected tunnel entrances also remain close to final-block performance on held-out test data. Across all 42 model-dataset pairs, the median test-loss increase at the selected entrance is 1.3\% (interquartile range (IQR): $-0.7$\% to 4.3\%), with a maximum increase of 9.8\%. Full held-out results are reported in Appendix~\ref{sec:app_heldout_recoverability}. We additionally repeat the analysis with a substantially lower-capacity, median-only ($Q=1$) readout and obtain highly consistent tunnel entrances relative to the $Q=9$ analysis (Appendix~\ref{sec:app_q1_robustness}).
+The validation-selected tunnel entrances also remain close to final-block performance on held-out test data. Across all 42 model-dataset pairs, the median test-loss increase at the selected entrance is 1.3\% (interquartile range (IQR): $-0.7$\% to 4.3\%), with a maximum increase of 9.8\%. Full held-out results are reported in Appendix~\ref{sec:app_heldout_recoverability}. We additionally repeat the analysis with a substantially lower-capacity, median-only ($Q=1$) readout and obtain highly consistent tunnel entrances relative to the $Q=9$ analysis (Appendix~\ref{sec:app_q1_robustness}). 
+We additionally compare our architecture-aware readouts with content-mean pooling and find that the choice of hidden states affects both forecasting loss and the location of the tunnel (Appendix~\ref{sec:app_content_mean}).
 
-Overall, \textit{near-final forecasting performance can be recovered before the final block}, but how early this occurs depends on the architecture, dataset, and tolerated degradation; with $\epsilon=0.08$, the tunnel begins before the final block in all model-dataset pairs, whereas under the stricter $\epsilon=0.02$ criterion this holds for 36/42 pairs (Appendix~\ref{sec:app_tunnel_sensitivity}). We use the 5\% criterion for our main analysis and next ask \textit{whether representation geometry also saturates once near-final forecasting performance becomes recoverable}.
+
+Overall, \textit{near-final forecasting performance can be recovered before the final block}, but how early this occurs depends on the architecture, dataset, and tolerated degradation; with $\epsilon=0.08$, the tunnel begins before the final block in all model-dataset pairs, whereas under the stricter $\epsilon=0.02$ criterion this holds for 36/42 pairs (Appendix~\ref{sec:app_tunnel_sensitivity}). We use the 5\% criterion for our main analysis and next ask \textit{whether representation geometry also saturates once near-final forecasting performance becomes recoverable}. 
 
 \subsection{Geometry and forecast recoverability}
 \label{sec:results_geometry}
@@ -252,7 +254,7 @@ Overall, \textit{near-final forecasting performance can be recovered before the 
   \label{fig:geometry_main}
 \end{figure}
 
-Figure~\ref{fig:geometry_main} shows that the forecasting tunnel does not consistently align with changes in representation geometry. On SG Carpark, the Chronos-2 tunnel begins several blocks after both the effective-rank peak and a major CKA transition; for TimesFM-3, effective rank continues to increase after the tunnel entrance; and for TiRex, substantial CKA evolution continues after the tunnel has already begun. Similarly, for London Smart Meters, the tunnel begins at L3, L1, and L8 for Chronos-2, TimesFM-3, and TiRex, respectively, while effective rank and similarity to the final representation continue to evolve at later depths.
+Figure~\ref{fig:geometry_main} shows that the forecasting tunnel does not consistently align with changes in representation geometry. On SG Carpark, the Chronos-2 tunnel begins several blocks after both the effective-rank peak and a major CKA transition; for TimesFM-3, effective rank continues to increase after the tunnel entrance; and for TiRex, substantial CKA evolution continues after the tunnel has already begun. Similarly, for London Smart Meters, the tunnel begins at L3, L1, and L8 for Chronos-2, TimesFM-3, and TiRex, respectively, while effective rank and similarity to the final representation continue to evolve at later depths. 
 These patterns persist under the stricter 2\% tolerance (Appendix~\ref{app:geometry}).
 
 Taken together, these results show that \textit{forecasting performance can saturate while geometry keeps evolving}. Moreover, geometry alone  neither locates the tunnel nor defines a unique truncation depth: the effective-rank peak identifies a single layer with no direct link to forecast quality, while CKA can reveal several blocks of mutually similar layers, each providing a possible cut point (see Appendix~\ref{app:geometry} for Chronos-2). It does, however, flag a potential challenge for truncation: at the tunnel entrance, CKA with the final block is below 0.5 in 55\% of model-dataset pairs, so \textit{the pretrained head may receive a substantially different representation}.
@@ -262,8 +264,8 @@ Taken together, these results show that \textit{forecasting performance can satu
 
 Using the hard cut and label-free affine adapter introduced in Section~\ref{sec:adapter}, Figure~\ref{fig:h3_main} shows a clear separation between forecast recoverability and native-pathway compatibility. On Electricity, the hard cut never stays within 5\% of the full model before the final block, while the affine adapter closes a median 73\%, over 99\%, and 82\% of the hard-cut gap across intermediate depths for Chronos-2, TimesFM-3, and TiRex, respectively; the particularly large value for TimesFM-3 reflects its extremely poor hard-cut baseline. For TimesFM-3, the same supervised readout $q_\ell$ used in Section~\ref{sec:results_recoverability} remains substantially closer to full-model performance than the aligned pathway on Electricity, and this distinction persists across datasets; for Chronos-2 and TiRex, however, the aligned pathway outperforms both the hard cut and the supervised probe at every depth reported in Table~\ref{tab:h3_depth}. A nonlinear bottleneck adapter changes little relative to the affine adapter for Chronos-2 and TiRex, with a median difference of only $-0.2$ percentage points in test MASE, whereas it performs substantially worse for TimesFM-3 (Appendix~\ref{app:compatibility}).
 
-We conclude that \textit{recoverability precedes native-pathway compatibility in TSFMs}, and that lightweight alignment substantially improves compatibility across all three architectures. The extent of recovery is architecture-dependent: for Chronos-2 and TiRex, a depth-specific affine map can bring intermediate states close to native performance several blocks before the final one, while for TimesFM-3 it removes most of the large hard-cut degradation but leaves a substantial residual gap to the full model.
-
+We conclude that \textit{recoverability precedes native-pathway compatibility in TSFMs}, and that lightweight alignment substantially improves compatibility across all three architectures. The extent of recovery is architecture-dependent: for Chronos-2 and TiRex, a depth-specific affine map can bring intermediate states close to native performance several blocks before the final one, while for TimesFM-3 it removes most of the large hard-cut degradation but leaves a substantial residual gap to the full model. 
+ 
 \begin{figure}[t]
   \centering
   \includegraphics[width=0.9\textwidth]{figures/h3_main_electricity.pdf}
@@ -503,7 +505,7 @@ New York City Taxi and Limousine Commission
 
 \paragraph{Wind Farms.}
 Hourly power production from 337 Australian wind farms
-\citep{godahewa2021monashtimeseriesforecasting}.
+\citep{godahewa2021monashtimeseriesforecasting}. 
 
 \paragraph{BOOM.}
 Monitoring metrics from Datadog production systems
@@ -521,7 +523,7 @@ the Australian coast, from TIME \citep{qiao2026itstimegenerationtime}. We use te
 each station form one bootstrap cluster, leaving 24 independent clusters and producing the widest confidence intervals in the benchmark.
 
 \paragraph{LOOP Seattle.}
-Five-minute freeway speeds from 323 sensor stations in the Seattle area during 2015
+Five-minute freeway speeds from 323 sensor stations in the Seattle area during 2015 
 \citep{cui2018deep,cui2019traffic}.
 
 \paragraph{Electricity (15-minute).}
@@ -937,7 +939,7 @@ Figures~\ref{fig:app_chronos_q9}, \ref{fig:app_timesfm_q9} and~\ref{fig:app_tire
   $\ell_{\mathrm{tunnel}}/L$ for listed versus held-out or not-listed datasets is $0.33$ versus
   $0.25$ for Chronos-2, $0.05$ versus $0.25$ for TimesFM-3, and $0.83$ versus $0.67$ for TiRex. The
   direction therefore differs across models, and exact permutation tests do not distinguish the
-  groups ($p\geq0.58$).
+  groups ($p\geq0.58$). 
 
 \begin{figure}[p]
   \centering
@@ -1120,87 +1122,170 @@ We repeat the analysis with $\epsilon\in\{0.02,0.05,0.08\}$, using the same vali
   \end{tabular}
 \end{table}
 
+
 \subsubsection{Architecture-aware versus generic content-mean readouts}
 \label{sec:app_content_mean}
 
-In Section~\ref{sec:layerwise_readouts}, we probe the hidden states used by each model's native forecasting head. To investigate how this choice affects our results, we repeat the analysis with a generic content-mean readout, which averages the hidden states of all context tokens at each depth and applies a linear map $\mathbb{R}^{d}\to\mathbb{R}^{Q\times H}$ to predict the full forecasting horizon. Unlike our architecture-aware readouts, this procedure does not depend on which states the model uses to produce its forecasts. For Chronos-2, we average the 32 context-patch tokens, excluding the forecast slots and register token; for TimesFM-3, the 16 context tokens; and for TiRex, the 16 real-context tokens of the first forecasting pass, excluding padding. The readouts are trained on the same windows and targets, with the same optimization and validation-selection procedure as in Appendix~\ref{app:readout_training}.
+In Section~\ref{sec:layerwise_readouts}, we probe the hidden states used by each model's native forecasting head. To investigate how this choice affects our results, we repeat the analysis with a more generic content-mean readout, which averages the hidden states of all context tokens at each depth and applies a linear map $\mathbb{R}^{d}\to\mathbb{R}^{Q\times H}$ to predict the full forecasting horizon. Unlike our architecture-aware readouts, this procedure does not depend on which states the model uses to produce its forecasts. For Chronos-2, we average the 32 context-patch tokens, excluding the forecast slots and register token; for TimesFM-3, the 16 context tokens; and for TiRex, the 16 context tokens of the first forecasting pass, excluding padding. All readouts use the same windows, targets, and training procedure described in Appendix~\ref{app:readout_training}.
 
-The generic readout differs from our original readout not only in the choice of hidden states, but also, for Chronos-2 and TiRex, in how those states are mapped to forecasts. Our original readouts apply a shared linear map to each forecast-producing state, whereas the content-mean readout predicts the entire horizon from a single averaged representation. To separate these two effects, we additionally consider a \emph{native-state mean} readout, which averages the native forecast-producing states and applies the same linear map as the content-mean readout. The two mean readouts thus have the same architecture and number of parameters, differing only in which hidden states are averaged. For TimesFM-3, the original readout already predicts the full horizon from a single state, so no additional control is needed.
+The generic readout also differs from our original readout in how the selected states are mapped to forecasts. To separate this effect from the choice of hidden states, we additionally consider a \emph{native-state mean} readout, which averages the native forecast-producing states and applies the same linear map as the content-mean readout. The two mean readouts therefore have the same architecture and number of parameters, differing only in which hidden states are averaged. For TimesFM-3, the readout architecture is already identical, so no additional control is needed.
 
-Table~\ref{tab:content_mean_summary} compares these readouts across all 14 datasets, and Figure~\ref{fig:app_content_mean_curves} shows their layerwise curves for Electricity, Uber TLC, and London Smart Meters. At the final block, content-mean pooling increases the $Q=9$ test loss by a median of 27.2\%, 15.9\%, and 20.9\% for Chronos-2, TimesFM-3, and TiRex, respectively. The increase is significant, with a paired 95\% confidence interval above zero, in 12, 14, and 13 of the 14 datasets. The difference persists across depth: from L2 onwards, the content-mean readout has significantly higher test loss on at least 12 datasets for each model. Even at its best validation-selected depth, it remains a median of 21.6\%, 10.7\%, and 19.2\% worse than the architecture-aware readout at the final block. Comparing the two mean readouts at the final block, which differ only in the choice of states, gives median increases of 11.1\% for Chronos-2 and 15.6\% for TiRex. Thus, the choice of which hidden states to probe contributes substantially to the difference in forecasting performance.
+Table~\ref{tab:content_mean_loss} and Figure~\ref{fig:app_content_mean_curves} compare the forecasting performance of these readouts across all 14 datasets. At the final block, content-mean pooling increases the median test loss by 27.2\%, 15.9\%, and 20.9\% for Chronos-2, TimesFM-3, and TiRex, respectively, relative to our architecture-aware readouts. The paired 95\% confidence intervals exclude zero in the direction of higher loss on 12, 14, and 13 of the 14 datasets. Even at its best validation-selected depth, the content-mean readout remains 21.6\%, 10.7\%, and 19.2\% worse than the architecture-aware final-block readout. Comparing readouts with identical architectures and parameter counts, changing only the selected states increases median final-block loss by 11.1\%, 15.9\%, and 15.6\%, respectively. Thus, the choice of which hidden states to probe contributes substantially to the difference in forecasting performance.
 
-We next examine whether generic pooling changes the location of the forecasting tunnel. Table~\ref{tab:content_mean_entrances} reports the sustained 5\% tunnel entrances for both readouts. The content-mean tunnel generally begins earlier: the median relative entrance depth moves from 29\% to 8\% for Chronos-2 and from 79\% to 21\% for TiRex, while remaining at 5\% for TimesFM-3. However, these earlier entrances should not be interpreted as evidence that forecasting information becomes recoverable earlier. Each tunnel is defined relative to its own final-block readout, and the content-mean readout has substantially higher forecasting loss. Indeed, its final-block test loss exceeds that of the architecture-aware readout already at the latter's tunnel entrance on 13, 14, and 13 of the 14 datasets. The generic readout therefore reaches its 5\% tunnel earlier largely because its forecasting loss saturates at a higher level.
+We next examine whether generic pooling changes the location of the forecasting tunnel. Table~\ref{tab:content_mean_entrances} compares the sustained 5\% tunnel entrances for both readouts. The content-mean tunnel generally begins earlier: the median relative entrance depth moves from 29\% to 8\% for Chronos-2 and from 79\% to 21\% for TiRex, while remaining at 5\% for TimesFM-3. However, these earlier entrances do not necessarily indicate earlier recovery of accurate forecasts. Each tunnel is defined relative to its own final-block readout, and content-mean pooling produces substantially higher forecasting losses. In fact, its final-block test loss exceeds that of the architecture-aware readout already at the latter's tunnel entrance on 13, 14, and 13 of the 14 datasets, respectively. The earlier entrances therefore largely reflect the saturation of a weaker readout.
 
-These results show that the choice of hidden states can substantially affect both forecasting accuracy and the apparent location of the tunnel. For TimesFM-3 and TiRex, averaging context tokens also combines representations that have processed different amounts of the input history, whereas the states read by their native forecasting heads have processed the complete context. Chronos-2, in contrast, uses a bidirectional encoder but produces forecasts from dedicated forecast slots rather than context tokens. While these architectural differences may help explain the results, the experiment does not isolate their individual contributions. Importantly, the qualitative conclusion that the forecasting tunnel begins before the final block remains unchanged: this holds for all 42 model-dataset pairs with content-mean pooling, compared with 40/42 using our architecture-aware readouts.
+Overall, these results show that the choice of hidden states can substantially affect both forecasting performance and the apparent location of the tunnel. Simply averaging intermediate representations can suggest earlier saturation, even when the resulting forecasts remain considerably less accurate. Nevertheless, the qualitative finding that the tunnel begins before the final block remains unchanged, holding for all 42 model-dataset pairs under content-mean pooling, compared with 40/42 using our architecture-aware readouts.
+
 
 \begin{table}[t]
-  \centering
-  \caption{\textbf{Architecture-aware versus generic content-mean readouts.} Medians over the 14 datasets. Changes in test loss and MASE are relative to the architecture-aware readout at the final block (L12 for Chronos-2 and TiRex, L20 for TimesFM-3); parentheses give the number of datasets whose paired 95\% interval lies above / below zero. Best depth: test loss at the depth with the lowest validation loss, relative to the same reference. Depth: sustained 5\% tunnel entrance as a fraction of model depth, selected on validation loss against the readout's own final block. Same / $\pm1$: datasets whose entrance equals that of the architecture-aware readout or lies within one block of it.}
-  \vspace{4pt}
-  \label{tab:content_mean_summary}
-  \footnotesize
-  \setlength{\tabcolsep}{3pt}
-  \begin{tabular}{@{}llrcccccc@{}}
-  \toprule
-  & & & \multicolumn{3}{c}{Change in test performance} & \multicolumn{3}{c}{Tunnel entrance} \\
-  \cmidrule(lr){4-6}\cmidrule(l){7-9}
-  Model & Readout & Params & Loss & MASE & Best depth & Depth & Before final & Same / $\pm1$ \\
-  \midrule
-  Chronos-2 & Architecture-aware & 110,736 &  &  &  & 29\% & 14/14 &  \\
-   & Content mean & 442,944 & $+27.2\%$ (12/1) & $+14.3\%$ & $+21.6\%$ & 8\% & 14/14 & 3 / 9 \\
-   & Native-state mean & 442,944 & $+8.7\%$ (12/1) & $+7.0\%$ & $+2.8\%$ & 12\% & 14/14 & 2 / 5 \\
-  \midrule
-  TimesFM-3 & Architecture-aware & 737,856 &  &  &  & 5\% & 14/14 &  \\
-   & Content mean & 737,856 & $+15.9\%$ (14/0) & $+21.7\%$ & $+10.7\%$ & 5\% & 14/14 & 4 / 8 \\
-  \midrule
-  TiRex & Architecture-aware & 147,744 &  &  &  & 79\% & 12/14 &  \\
-   & Content mean & 295,488 & $+20.9\%$ (13/0) & $+21.2\%$ & $+19.2\%$ & 21\% & 14/14 & 3 / 6 \\
-   & Native-state mean & 295,488 & $+3.2\%$ (12/0) & $+3.9\%$ & $+3.9\%$ & 67\% & 13/14 & 3 / 9 \\
-  \bottomrule
-  \end{tabular}
+\centering
+\caption{\textbf{Final-block forecasting loss for architecture-aware and mean-pooled readouts.}
+Native: absolute $Q=9$ test loss in each model's normalized target space. All dataset-level percentage changes are relative to the original architecture-aware (Native) readout. The final row instead compares content mean with native-state mean, holding the readout architecture and parameter count fixed; for TimesFM-3, native and native-state mean are identical. Medians are computed across 14 datasets from the corresponding per-dataset relative changes. $^{*}$ indicates that the paired 95\% cluster-bootstrap confidence interval excludes zero for the comparison against Native.}
+\vspace{4pt}
+\label{tab:content_mean_loss}
+\scriptsize
+\setlength{\tabcolsep}{3pt}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{@{}lccc cc ccc@{}}
+\toprule
+& \multicolumn{3}{c}{Chronos-2}
+& \multicolumn{2}{c}{TimesFM-3}
+& \multicolumn{3}{c}{TiRex} \\
+\cmidrule(lr){2-4}
+\cmidrule(lr){5-6}
+\cmidrule(l){7-9}
+Dataset
+& Native & Nat.\ mean & Content mean
+& Native & Content mean
+& Native & Nat.\ mean & Content mean \\
+\midrule
+M4
+& 0.099 & $+18.6^{*}$ & $+46.1^{*}$
+& 0.132 & $+27.4^{*}$
+& 0.106 & $+14.0^{*}$ & $+58.5^{*}$ \\
+Electricity
+& 0.118 & $+25.4^{*}$ & $+59.5^{*}$
+& 0.169 & $+19.8^{*}$
+& 0.151 & $+14.5^{*}$ & $+57.8^{*}$ \\
+Uber TLC
+& 0.179 & $+24.9^{*}$ & $+42.8^{*}$
+& 0.263 & $+21.3^{*}$
+& 0.248 & $+12.9^{*}$ & $+28.6^{*}$ \\
+Wind Farms
+& 0.159 & $+16.2^{*}$ & $+25.4^{*}$
+& 0.608 & $+7.5^{*}$
+& 0.589 & $+1.8^{*}$ & $+9.3^{*}$ \\
+SG Carpark
+& 0.101 & $+0.6$ & $+51.8^{*}$
+& 0.134 & $+41.4^{*}$
+& 0.121 & $+4.5^{*}$ & $+64.2^{*}$ \\
+Coastal T-S
+& 0.199 & $+3.8^{*}$ & $+5.7$
+& 0.326 & $+15.9^{*}$
+& 0.293 & $+0.8$ & $+11.5$ \\
+BOOM
+& 0.131 & $+6.0^{*}$ & $+10.8^{*}$
+& 0.238 & $+13.3^{*}$
+& 0.212 & $+1.3^{*}$ & $+17.0^{*}$ \\
+LOOP Seattle
+& 0.191 & $-2.6^{*}$ & $-5.7^{*}$
+& 0.234 & $+15.9^{*}$
+& 0.239 & $+0.4$ & $+20.9^{*}$ \\
+Electricity (15-min)
+& 0.165 & $+14.2^{*}$ & $+33.6^{*}$
+& 0.204 & $+57.2^{*}$
+& 0.201 & $+8.0^{*}$ & $+38.5^{*}$ \\
+SZ Taxi
+& 0.237 & $+3.8^{*}$ & $+6.8^{*}$
+& 0.323 & $+4.7^{*}$
+& 0.313 & $+2.0^{*}$ & $+6.3^{*}$ \\
+London Smart Meters
+& 0.148 & $+11.4^{*}$ & $+29.1^{*}$
+& 0.216 & $+12.6^{*}$
+& 0.203 & $+4.5^{*}$ & $+20.9^{*}$ \\
+M5
+& 0.220 & $+2.0^{*}$ & $+4.4^{*}$
+& 0.293 & $+5.8^{*}$
+& 0.288 & $+1.1^{*}$ & $+3.2^{*}$ \\
+Wiki Daily
+& 0.183 & $+4.4^{*}$ & $+10.4^{*}$
+& 0.247 & $+8.3^{*}$
+& 0.242 & $+1.7^{*}$ & $+8.5^{*}$ \\
+Monash Traffic
+& 0.084 & $+15.4^{*}$ & $+53.8^{*}$
+& 0.119 & $+31.5^{*}$
+& 0.099 & $+13.7^{*}$ & $+57.0^{*}$ \\
+\midrule
+\textbf{Median change vs.\ Native}
+& -- & $\mathbf{+8.7\%}$ & $\mathbf{+27.2\%}$
+& -- & $\mathbf{+15.9\%}$
+& -- & $\mathbf{+3.2\%}$ & $\mathbf{+20.9\%}$ \\
+\textbf{Content vs.\ Nat.\ mean}
+& -- & -- & $\mathbf{+11.1\%}$
+& -- & $\mathbf{+15.9\%}$
+& -- & -- & $\mathbf{+15.6\%}$ \\
+\bottomrule
+\end{tabular}%
+}
 \end{table}
 
+
 \begin{table}[t]
-  \centering
-  \caption{\textbf{Tunnel entrances and final-block loss of the content-mean readout, per dataset.} Entrance: sustained 5\% tunnel entrance of the architecture-aware / content-mean readout, each selected on validation loss against its own final block. $\Delta$ final: change in final-block test loss of the content mean relative to the architecture-aware readout; $^{\circ}$ marks the two changes whose paired 95\% interval includes zero. Median depth is the median of $\ell/L$ over the 14 datasets; before final counts the datasets whose tunnel begins before the final block.}
-  \vspace{4pt}
-  \label{tab:content_mean_entrances}
-  \small
-  \setlength{\tabcolsep}{4pt}
-  \begin{tabular}{@{}lcccccc@{}}
-  \toprule
-  & \multicolumn{2}{c}{Chronos-2} & \multicolumn{2}{c}{TimesFM-3} & \multicolumn{2}{c}{TiRex} \\
-  \cmidrule(lr){2-3}\cmidrule(lr){4-5}\cmidrule(l){6-7}
-  Dataset & Entrance & $\Delta$ final & Entrance & $\Delta$ final & Entrance & $\Delta$ final \\
-  \midrule
-  M4 & L8 / L9 & $+46.1\%$ & L16 / L18 & $+27.4\%$ & L12 / L7 & $+58.5\%$ \\
-  Electricity & L9 / L10 & $+59.5\%$ & L15 / L1 & $+19.8\%$ & L11 / L10 & $+57.8\%$ \\
-  Uber TLC & L4 / L0 & $+42.8\%$ & L1 / L1 & $+21.3\%$ & L10 / L8 & $+28.6\%$ \\
-  Wind Farms & L3 / L2 & $+25.4\%$ & L0 / L1 & $+7.5\%$ & L11 / L1 & $+9.3\%$ \\
-  SG Carpark & L10 / L1 & $+51.8\%$ & L12 / L1 & $+41.4\%$ & L11 / L9 & $+64.2\%$ \\
-  Coastal T-S & L1 / L1 & $+5.7\%^{\circ}$ & L5 / L0 & $+15.9\%$ & L1 / L1 & $+11.5\%^{\circ}$ \\
-  BOOM & L3 / L2 & $+10.8\%$ & L0 / L1 & $+13.3\%$ & L8 / L5 & $+17.0\%$ \\
-  LOOP Seattle & L9 / L8 & $-5.7\%$ & L14 / L1 & $+15.9\%$ & L9 / L0 & $+20.9\%$ \\
-  Electricity (15-minute) & L10 / L10 & $+33.6\%$ & L1 / L1 & $+57.2\%$ & L10 / L4 & $+38.5\%$ \\
-  SZ Taxi & L2 / L0 & $+6.8\%$ & L1 / L0 & $+4.7\%$ & L0 / L0 & $+6.3\%$ \\
-  London Smart Meters & L3 / L0 & $+29.1\%$ & L1 / L0 & $+12.6\%$ & L8 / L0 & $+20.9\%$ \\
-  M5 & L0 / L0 & $+4.4\%$ & L0 / L0 & $+5.8\%$ & L0 / L0 & $+3.2\%$ \\
-  Wiki Daily & L2 / L1 & $+10.4\%$ & L0 / L0 & $+8.3\%$ & L1 / L0 & $+8.5\%$ \\
-  Monash Traffic & L11 / L1 & $+53.8\%$ & L12 / L1 & $+31.5\%$ & L12 / L11 & $+57.0\%$ \\
-  \midrule
-  \textbf{Median depth} & \textbf{29\% / 8\%} & & \textbf{5\% / 5\%} & & \textbf{79\% / 21\%} & \\
-  \textbf{Before final} & \textbf{14 / 14} & & \textbf{14 / 14} & & \textbf{12 / 14} & \\
-  \textbf{Median $\Delta$ final} & & \textbf{$+27.2\%$} & & \textbf{$+15.9\%$} & & \textbf{$+20.9\%$} \\
-  \bottomrule
-  \end{tabular}
+\centering
+\caption{\textbf{Sustained 5\% forecasting-tunnel entrances for architecture-aware and content-mean readouts.}
+Each pair gives the entrance of the architecture-aware (Native) and generic content-mean (Pooled) readout, selected using validation loss relative to that readout's own final block. L0 denotes the representation before the first block. Median depth is the median entrance as a fraction of total model depth.}
+\vspace{4pt}
+\label{tab:content_mean_entrances}
+\small
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{@{}lcc cc cc@{}}
+\toprule
+& \multicolumn{2}{c}{Chronos-2}
+& \multicolumn{2}{c}{TimesFM-3}
+& \multicolumn{2}{c}{TiRex} \\
+\cmidrule(lr){2-3}
+\cmidrule(lr){4-5}
+\cmidrule(l){6-7}
+Dataset
+& Native & Pooled
+& Native & Pooled
+& Native & Pooled \\
+\midrule
+M4 & L8 & L9 & L16 & L18 & L12 & L7 \\
+Electricity & L9 & L10 & L15 & L1 & L11 & L10 \\
+Uber TLC & L4 & L0 & L1 & L1 & L10 & L8 \\
+Wind Farms & L3 & L2 & L0 & L1 & L11 & L1 \\
+SG Carpark & L10 & L1 & L12 & L1 & L11 & L9 \\
+Coastal T-S & L1 & L1 & L5 & L0 & L1 & L1 \\
+BOOM & L3 & L2 & L0 & L1 & L8 & L5 \\
+LOOP Seattle & L9 & L8 & L14 & L1 & L9 & L0 \\
+Electricity (15-min) & L10 & L10 & L1 & L1 & L10 & L4 \\
+SZ Taxi & L2 & L0 & L1 & L0 & L0 & L0 \\
+London Smart Meters & L3 & L0 & L1 & L0 & L8 & L0 \\
+M5 & L0 & L0 & L0 & L0 & L0 & L0 \\
+Wiki Daily & L2 & L1 & L0 & L0 & L1 & L0 \\
+Monash Traffic & L11 & L1 & L12 & L1 & L12 & L11 \\
+\midrule
+\textbf{Median depth}
+& \textbf{29\%} & \textbf{8\%}
+& \textbf{5\%} & \textbf{5\%}
+& \textbf{79\%} & \textbf{21\%} \\
+\textbf{Before final}
+& \textbf{14/14} & \textbf{14/14}
+& \textbf{14/14} & \textbf{14/14}
+& \textbf{12/14} & \textbf{14/14} \\
+\bottomrule
+\end{tabular}
 \end{table}
 
 \begin{figure}[t]
-  \centering
-  \includegraphics[width=\textwidth]{figures/pooled_curves_main.pdf}
-  \caption{\textbf{Architecture-aware versus generic readouts for Electricity, Uber TLC and London Smart Meters.} Test $Q=9$ loss across depth for the architecture-aware readout (as in Figure~\ref{fig:recov_main}), the generic content mean, and the native-state mean control. Circles mark each readout's sustained 5\% tunnel entrance, selected on validation loss against that readout's own final block. Bands show 95\% series-level cluster-bootstrap intervals ($B=5000$).}
-  \label{fig:app_content_mean_curves}
+\centering
+\includegraphics[width=\textwidth]{figures/pooled_curves_main.pdf}
+\caption{\textbf{Architecture-aware versus content-mean readouts for Electricity, Uber TLC, and London Smart Meters.}
+Test $Q=9$ forecasting loss across depth for the architecture-aware readout, generic content-mean pooling, and the native-state mean control. Circles mark the sustained 5\% tunnel entrances, selected using validation loss relative to each readout's final block. Shaded bands show 95\% series-level cluster-bootstrap confidence intervals ($B=5000$).}
+\label{fig:app_content_mean_curves}
 \end{figure}
+
 
 \subsection{Additional geometry results}
 \label{app:geometry}
