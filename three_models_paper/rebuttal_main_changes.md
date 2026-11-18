@@ -179,7 +179,7 @@ We conclude that \textit{recoverability precedes native-pathway compatibility in
 
 ## Section 4.4, first paragraph: TimesFM-3 accuracy and Chronos-2-small
 
-**Why.** Adds the corrected TimesFM-3 accuracy (offline), and states plainly that Chronos-2-small is better at moderate speedups, by a larger margin at batch size 256, and where truncation is still useful (Reviewer 2p99's weakness).
+**Why.** Adds the corrected TimesFM-3 accuracy (computed offline, physically confirmed at seven depths), and states plainly that Chronos-2-small is better at moderate speedups, by a larger margin at batch size 256, and where truncation is still useful (Reviewer 2p99's weakness).
 
 **OLD**
 
@@ -229,7 +229,7 @@ Because inference speed depends only on the cut depth, we compare datasets at th
 
 ## Table 3 (tab:h4_operating_points), caption: Which TimesFM-3 adapter
 
-**Why.** The TimesFM-3 operating points now use the zero-anchored adapter, with offline accuracy.
+**Why.** The TimesFM-3 operating points now use the zero-anchored adapter; at these three depths its offline accuracy is confirmed on physically truncated models (Appendix B.3.1).
 
 **OLD**
 
@@ -299,7 +299,7 @@ Across three state-of-the-art TSFMs and 14 datasets spanning five sampling frequ
 
 ## Section 5, limitations: TimesFM-3 gap, transfer, prefix-only truncation
 
-**Why.** The open question on cross-dataset transfer is answered (Appendices B.4.2 and B.4.3) and replaced by its result; the TimesFM-3 limitation is updated to the corrected adapter (about 10% gap, failure on BOOM and Wind Farms, offline evaluation); the prefix-only design is qualified (Reviewer dHTD, Appendix B.4.4).
+**Why.** The open question on cross-dataset transfer is answered (Appendices B.4.2 and B.4.3) and replaced by its result; the TimesFM-3 limitation is updated to the corrected adapter (about 10% gap; far from the full model on BOOM and Wind Farms); the prefix-only design is qualified (Reviewer dHTD, Appendix B.4.4).
 
 **OLD**
 
@@ -668,7 +668,7 @@ benefits more from batching ($1.80\times$ at batch size 1, $3.28\times$ at 256).
 
 ## Table tab:h4_frontier_full, caption: Which TimesFM-3 adapter
 
-**Why.** Caption notes the corrected adapter and offline accuracy.
+**Why.** Caption notes the corrected adapter and the seven depths at which its offline accuracy is physically confirmed.
 
 **OLD**
 
